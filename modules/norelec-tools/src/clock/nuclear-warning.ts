@@ -51,9 +51,13 @@ export function countBalls(state: Pick<GameState, 'players'>): BallCount {
 export const italianNumber = (n: number): string =>
   String(Math.round(n)).replace(/\B(?=(?:\d{3})+$)/gu, '.');
 
-/** A share of a ☢️, rounded to a whole percent, with its article: "il 74%", "l'8%", "lo 0%". */
+/**
+ * A share of a ☢️, rounded down to a whole percent, with its article: "il 73%", "l'8%", "lo 0%".
+ * Down, so that a share is never shown above what it is; the product comes first, so that a
+ * float's error does not push an exact percent (290,000 is 29%) below its floor.
+ */
 export function shareOfNuke(balls: number): string {
-  const pct = Math.round((balls / NUKE) * 100);
+  const pct = Math.floor((balls * 100) / NUKE);
   const digits = String(pct);
   const article =
     pct === 0 ? 'lo ' : pct === 1 || pct === 11 || digits.startsWith('8') ? "l'" : 'il ';

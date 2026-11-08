@@ -70,7 +70,7 @@ describe('formatWarning', () => {
       [
         '**AGGIORNAMENTO DELLA PROTEZIONE CIVILE**',
         'Ci sono 736.920 palle in circolazione.',
-        'È il 74% di una ☢️**BOMBATOMICA**☢️',
+        'È il 73% di una ☢️**BOMBATOMICA**☢️',
         '',
         '- Juno detiene il 32% di una ☢️',
         '- Gianpier detiene il 28% di una ☢️',
@@ -85,7 +85,7 @@ describe('formatWarning', () => {
       [
         '**AGGIORNAMENTO DELLA PROTEZIONE CIVILE**',
         'Ci sono 736.920 palle in circolazione.',
-        'È il 74% di una ☢️**BOMBATOMICA**☢️',
+        'È il 73% di una ☢️**BOMBATOMICA**☢️',
         '',
         '- Juno detiene il 32% di una ☢️',
         '',
@@ -122,17 +122,24 @@ describe('italianNumber', () => {
 });
 
 describe('shareOfNuke', () => {
-  it('rounds to a whole percent, with the article Italian wants', () => {
-    const shares = [0, 4_999, 5_000, 80_000, 110_000, 115_000, 180_000, 845_000, 1_000_000];
+  it('rounds down to a whole percent, with the article Italian wants', () => {
+    const shares = [
+      0, 4_999, 5_000, 80_000, 110_000, 115_000, 119_999, 180_000, 290_000, 845_000, 849_999,
+      999_999, 1_000_000,
+    ];
     expect(shares.map(shareOfNuke)).toEqual([
       'lo 0%',
       'lo 0%',
-      "l'1%",
+      'lo 0%',
       "l'8%",
       "l'11%",
-      'il 12%',
+      "l'11%",
+      "l'11%",
       'il 18%',
-      "l'85%",
+      'il 29%',
+      "l'84%",
+      "l'84%",
+      'il 99%',
       'il 100%',
     ]);
   });
@@ -154,10 +161,10 @@ describe('nuclearWarningCommand', () => {
         [
           '**AGGIORNAMENTO DELLA PROTEZIONE CIVILE**',
           'Ci sono 695.000 palle in circolazione.',
-          'È il 70% di una ☢️**BOMBATOMICA**☢️',
+          'È il 69% di una ☢️**BOMBATOMICA**☢️',
           '',
           '- Juno detiene il 42% di una ☢️',
-          '- Gianpier detiene il 25% di una ☢️',
+          '- Gianpier detiene il 24% di una ☢️',
         ].join('\n'),
     ]);
   });
