@@ -154,7 +154,7 @@ describe('the norelec plugin', () => {
     expect(game.state.players.get('Alfa')?.location).toBe('travelling');
     expect(lines).toContain('follower: error: on norelec.message: a broken part');
     expect(bus.filter((r) => r.type === 'norelec.message')).toEqual([
-      { type: 'norelec.message', t: T0, text: RAID, events: heard[0]?.events },
+      { type: 'norelec.message', t: T0, text: RAID, events: heard[0]?.events, instance: 'norelec' },
     ]);
     // The lines and the statuses are irc's, the notices on the bus; played back, a line is
     // logged and not read.
@@ -169,6 +169,7 @@ describe('the norelec plugin', () => {
       {
         type: 'norelec.notice',
         t: T0 + 91_000,
+        instance: 'norelec',
         notice: expect.objectContaining({ kind: 'incomingRaid', player: 'Bravo', by: 'Alfa' }),
       },
     ]);

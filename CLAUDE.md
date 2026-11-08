@@ -70,7 +70,7 @@ formatting. Address every error before marking a sub-task complete.
   plugin's channel, and the game bots' turn command, `/avventura`, which RegnoTron's parsers default
   to, since the shell's turn plugins default to `/play` and count only their configured command
   (README, "Configuration the game needs").
-- **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (`v0.1.0-alpha.1`). Never edit
+- **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (`v0.1.0-alpha.3`). Never edit
   it here: a change to the shell is made in its repository, and the pin is bumped here (with
   `npm install` for the lockfile) in a commit of its own.
 - **Coverage stays at or above 90%** on statements, branches, functions and lines, for the whole and
