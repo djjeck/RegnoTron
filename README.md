@@ -9,9 +9,8 @@ nothing: there is no automation here. Its models of the games include the rules 
 without announcing them, since a rule that is public levels the field.
 
 **Status: v1-alpha.** The code is the parsers, state and tools that ran in production on an earlier,
-monolithic version, now split into modules. MegaBotTron1999's module loader is not built yet, so the
-modules cannot be installed into a running shell today; the format below is the one it will load.
-Everything here changes freely until the shell's launch.
+monolithic version, now split into modules for MegaBotTron1999 `v0.1.0-alpha.1`, whose loader
+installs them into a running shell. Everything here changes freely until the shell's launch.
 
 ## The modules
 
@@ -43,28 +42,35 @@ types, with a `module.json` (MegaBotTron1999's docs/bot-os.md D49):
 A module has no npm dependencies of its own: it imports only Node, the shell's packages
 (`@megabottron1999/*`), zod and other modules, all of which the shell resolves to its own copies.
 The map renders its PNG through the shell's render service (`ctx.render`), not a library of its own.
+Each plugin entry exports `plugins`, the plugins built from their saved config alone
+(MegaBotTron1999's docs/bot-os-api.md §7.2): no factory takes a deployment's values, so every node
+is data the shell's editor makes.
 
-Once the loader lands, the owner of an instance installs a module by copying its directory into the
-data volume, `/data/modules/<id>/`, with the modules it imports, and restarting: for the map,
-`modules/norelec` and `modules/norelec-tools`. The plugins then appear in the web UI's graph, where
-the owner adds and wires their nodes. Modules run with the shell's full rights, unsandboxed: install
-only what you have read.
+The owner of an instance installs a module through the shell's control API (`POST /modules`, from a
+directory or a tarball, `git archive --prefix=norelec/ -o norelec.tar.gz HEAD:modules/norelec`),
+with the modules it imports, and restarts it: for the map, `norelec` and `norelec-tools`. The
+plugins then appear in `GET /available` and the web UI's graph, where the owner adds and wires their
+nodes. Modules run with the shell's full rights, unsandboxed: install only what you have read.
 
 **Configuration the game needs.** The shell knows no game, so its defaults are generic:
 
-- The `norelec` plugin is given the game's IRC channel.
-- The game bots' parsers count only the turn commands they are configured with, and the shell's
-  default is a placeholder, `/play`: configure each with `{ "commands": ["/avventura"] }`
-  (@EpicLorelecBot's also `/rompimiilcazzo`; `TURN_COMMANDS` in `modules/game-bots/src/replies.ts`).
-  A shell turn-actor run beside one needs `{ "command": "/avventura" }`.
-- The nuclear clock posts only to the group it is given, and only with its `nuclearClock` setting
-  on.
+- The `norelec` node's config names the game's IRC channel (`channel`), and its edge from `irc`
+  reads it.
+- The game bots' parsers count only the turn commands they are configured with. The shell's base
+  defaults to a placeholder, `/play`; RegnoTron's parsers default to their bot's own (`/avventura`,
+  and @EpicLorelecBot's `/rompimiilcazzo` too: `TURN_COMMANDS` in
+  `modules/game-bots/src/replies.ts`). An edge that also reads the game's group has them read the
+  turns played there. A shell turn-actor run beside one needs `{ "command": "/avventura" }`.
+- The nuclear clock posts only to the group its config names (`group`), which its edge from
+  `telegram-bot` must send to, and only with its `nuclearClock` setting on.
+
+Each module's README lists its plugins' config fields.
 
 ## Developing
 
-MegaBotTron1999 is vendored as a git submodule, `vendor/MegaBotTron1999`, pinned to a commit of its
-`main`; its packages are workspaces here, beside the modules, which are workspaces too (each
-`@regnotron/<id>`, with `exports` `./*` → `./src/*`), so that imports and tests resolve as the
+MegaBotTron1999 is vendored as a git submodule, `vendor/MegaBotTron1999`, pinned to a tag
+(`v0.1.0-alpha.1`); its packages are workspaces here, beside the modules, which are workspaces too
+(each `@regnotron/<id>`, with `exports` `./*` → `./src/*`), so that imports and tests resolve as the
 loader will resolve them.
 
 ```sh
@@ -74,9 +80,11 @@ nvm use && npm ci
 npm run validate   # tests with coverage, types, lint, formatting
 ```
 
-To take newer shell code, move the submodule to a newer commit of MegaBotTron1999's `main` and
-commit the new pin with the lockfile. See [CLAUDE.md](CLAUDE.md) for the repository's rules, and
-`docs/` for the game: [the rules](docs/game-rules.md),
+To take newer shell code, move the submodule to a newer tag of MegaBotTron1999 and commit the new
+pin with the lockfile.
+`node vendor/MegaBotTron1999/packages/core/tools/modules.ts modules/norelec modules/norelec-tools modules/game-bots`
+loads the modules as an instance does, and exits 1 if one is refused. See [CLAUDE.md](CLAUDE.md) for
+the repository's rules, and `docs/` for the game: [the rules](docs/game-rules.md),
 [NorelecBot's messages and the parser](docs/bot-protocol.md), and
 [the other game bots](docs/game-bots.md).
 

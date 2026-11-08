@@ -11,8 +11,28 @@ The turns of three game bots of the group, read on the turn plugins of `@megabot
 
 It plays nothing. The bots are described in [docs/game-bots.md](../../docs/game-bots.md).
 
-**Configure the turn command.** The shell's turn plugins count only the commands they are configured
-with, and default to a placeholder, `/play`. Each parser node here needs
-`{ "commands": ["/avventura"] }` (`TURN_COMMANDS`; @EpicLorelecBot's also takes `/rompimiilcazzo`),
-or it reads none of the owner's turns. A turn-actor of the shell, if the owner runs one beside a
-parser, needs `{ "command": "/avventura" }` likewise.
+## Configuration
+
+Every plugin is built from its node's config alone.
+
+**The parsers** (`inventorybot`, `loregame`, `epiclorelec`, on the shell's `turnParserPlugin`,
+through `src/plugins/game-parser.ts`): their `chat` input is an edge from the owner's
+`telegram-user` node that reads the private chat with the bot (`@InventoryBot`, …), and the game's
+group too when the owner's turns there should count.
+
+| Config     | Default                                                                 | Meaning                                               |
+| ---------- | ----------------------------------------------------------------------- | ----------------------------------------------------- |
+| `commands` | `["/avventura"]`; @EpicLorelecBot's `["/avventura", "/rompimiilcazzo"]` | The owner's turn commands it counts (`TURN_COMMANDS`) |
+
+The shell's own base defaults to a placeholder, `/play`; these default to their bot's. A turn-actor
+of the shell, if the owner runs one beside a parser, needs `{ "command": "/avventura" }`.
+
+**`metagame`:** its optional events inputs `inventorybot-events` and `loregame-events` take the two
+parsers' turns. Another game's parser (outside RegnoTron) adds its outcomes through the action `add`
+(`{ t, outcomes }`), over an interface edge to `metagame`. Its store's two migrations are no-ops,
+kept so that v0's store (at version 2) can be imported as its instance.
+
+| Config   | Default                           | Meaning                                                               |
+| -------- | --------------------------------- | --------------------------------------------------------------------- |
+| `ledger` | `true`                            | Keep the ledger; off, `/loot` says there is none                      |
+| `bots`   | `["InventoryBot", "LoreGameBot"]` | The bots whose gains `/loot` lists, in its order (another game's too) |

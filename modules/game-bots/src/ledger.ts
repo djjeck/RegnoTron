@@ -7,9 +7,7 @@
  * so that the list can say how many turns were empty.
  *
  * The entries are pages of up to `PAGE_SIZE` (`ledger-000001`, …), so that adding one rewrites a
- * page, not the whole ledger; the cursor is the document `cursor`. In an older version they were the lines
- * of `metagame-ledger.jsonl` and `metagame-cursor.json`, in the data volume's root, which the
- * plugin's migration adopts (`ledgerLines`, `cursorOf`, `pagesOf`).
+ * page, not the whole ledger; the cursor is the document `cursor`.
  */
 import { INVENTORYBOT, LOREGAMEBOT, type Outcome } from './replies.ts';
 
@@ -49,25 +47,7 @@ export function pagesOf(entries: readonly LedgerEntry[], first = 1): [string, Le
   return pages;
 }
 
-/**
- * The entries of the older version's ledger file, in its order: a line cut short by a crash, or one
- * that is no entry, is skipped, as its reader skipped it.
- */
-export function ledgerLines(text: string): LedgerEntry[] {
-  const out: LedgerEntry[] = [];
-  for (const line of text.split('\n')) {
-    if (line === '') continue;
-    try {
-      const e = JSON.parse(line) as unknown;
-      if (typeof e === 'object' && e !== null && !Array.isArray(e)) out.push(e as LedgerEntry);
-    } catch {
-      // A line cut short by a crash: the rest still counts.
-    }
-  }
-  return out;
-}
-
-/** The time a cursor document or file holds, or 0 for one that makes no sense. */
+/** The time a cursor document holds, or 0 for one that makes no sense. */
 export function cursorOf(value: unknown): number {
   const t = (value as { t?: unknown } | null | undefined)?.t;
   return typeof t === 'number' ? t : 0;

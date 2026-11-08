@@ -18,5 +18,20 @@ The design is in [docs/bot-protocol.md](../../docs/bot-protocol.md), the rules i
 `src/game/parse-line.test.ts` and, if it spans lines, a fixture in `test/bot-messages.ts`, which
 both parsers are tested against.
 
-**Plugin:** `norelec` (`src/plugins/norelec.ts`). Its factory takes the game's IRC channel and what
-the game logs to, prints to and reads the time from (`norelecPlugin({ channel, game })`).
+**Plugin:** `norelec` (`src/plugins/norelec.ts`), a parser, built from its node's config alone. It
+reads the game's channel through its `channel` input, an edge from an `irc` node that reads the
+channel, and replays the last hours of bot messages from the event log (`ctx.events`) at `ready`. A
+fresh instance learns the players who are Telegram accounts from the whole log once, and keeps them
+in its store (`accounts`).
+
+| Config         | Default      | Meaning                                                                     |
+| -------------- | ------------ | --------------------------------------------------------------------------- |
+| `channel`      | (required)   | The game's IRC channel; its edge from `irc` reads it too                    |
+| `self`         | the IRC nick | The game account whose notices are printed                                  |
+| `restS`        | `90`         | Rest after a return, in seconds                                             |
+| `historyHours` | `6`          | The hours of `norelec.message` records replayed from the event log at start |
+
+It offers `state.game` (the game, for the plugins that use it through an interface edge) and
+`state.status` (the channel's health), and publishes `norelec.message` and `norelec.notice`. Its
+store's one migration is a no-op, kept so that v0's store (at version 1) can be imported as its
+instance (MegaBotTron1999's docs/bot-os.md D54).

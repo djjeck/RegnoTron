@@ -1,7 +1,9 @@
 import { runParser as run, T0 } from '@megabottron1999/turns/test/parser-run.ts';
 import { describe, expect, it } from 'vitest';
-import { INVENTORYBOT, TURN_COMMANDS } from '#src/replies.ts';
-import { inventorybotPlugin } from './inventorybot.ts';
+import { EPICLORELECBOT, INVENTORYBOT, LOREGAMEBOT, TURN_COMMANDS } from '#src/replies.ts';
+import { epiclorelecPlugin, plugins as epiclorelec } from './epiclorelec.ts';
+import { inventorybotPlugin, plugins as inventorybot } from './inventorybot.ts';
+import { loregamePlugin, plugins as loregame } from './loregame.ts';
 
 const CONFIG = { commands: TURN_COMMANDS[INVENTORYBOT] };
 
@@ -11,7 +13,7 @@ const KNOWN = 'il re di Quamser, contento delle tue gesta, ti elargisce ';
 
 describe('the inventorybot parser', () => {
   it("reads alice's drops in either chat, and the cooldown in private, with the rests", async () => {
-    const p = await run(inventorybotPlugin({ group: GROUP }), CONFIG);
+    const p = await run(inventorybotPlugin, CONFIG, GROUP);
     const bot = { sender: 'InventoryBot' };
     p.hear({ ...bot, chat: '@InventoryBot', text: `@alice, ${KNOWN}una giuggiola [C]!` });
     expect(p.iface.rest()).toMatchObject({ until: T0 + 15 * MIN, why: 'its rest after a turn' });
@@ -37,7 +39,7 @@ describe('the inventorybot parser', () => {
   });
 
   it('claims the first message after a turn in private, and reports it to drift if unread', async () => {
-    const p = await run(inventorybotPlugin(), CONFIG);
+    const p = await run(inventorybotPlugin, CONFIG);
     p.hear({ chat: '@InventoryBot', sender: 'alice', own: true, text: '/avventura' });
     p.hear({ chat: '@InventoryBot', sender: 'InventoryBot', text: 'Qualcosa di nuovo' });
     // Only the first; and nothing once the window has passed.
@@ -50,12 +52,32 @@ describe('the inventorybot parser', () => {
   });
 
   it('reports a lucky adventure it cannot read', async () => {
-    const p = await run(inventorybotPlugin(), CONFIG);
+    const p = await run(inventorybotPlugin, CONFIG);
     p.hear({
       chat: '@InventoryBot',
       sender: 'InventoryBot',
       text: "Complimenti @alice, questa e' l'avventura FORTUNATA del giorno! Hai vinto: qualcosa",
     });
     expect(p.outcomes()).toEqual(['unknown']);
+  });
+});
+
+describe('the game bots’ parsers', () => {
+  it('count their bot’s own turn commands unless their config names others', () => {
+    for (const [plugin, bot] of [
+      [inventorybotPlugin, INVENTORYBOT],
+      [loregamePlugin, LOREGAMEBOT],
+      [epiclorelecPlugin, EPICLORELECBOT],
+    ] as const) {
+      expect(plugin.manifest.config?.parse({})).toEqual({ commands: TURN_COMMANDS[bot] });
+      expect(plugin.manifest.config?.parse({ commands: ['/play'] })).toEqual({
+        commands: ['/play'],
+      });
+    }
+    expect([...inventorybot, ...loregame, ...epiclorelec]).toEqual([
+      inventorybotPlugin,
+      loregamePlugin,
+      epiclorelecPlugin,
+    ]);
   });
 });

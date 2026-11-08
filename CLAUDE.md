@@ -60,15 +60,18 @@ formatting. Address every error before marking a sub-task complete.
   `version`, `api`, `provides` `@regnotron/<id>`, the modules it `imports` with version ranges, its
   `plugins`) and is also a workspace package of the same name and version, with `exports` `./*` →
   `./src/*`. **A module has no npm dependencies:** it imports only `node:*`, `@megabottron1999/*`,
-  `zod` and the modules it declares. ESLint and `test/modules.test.ts` enforce it. What a module
-  needs beyond that is a service of the shell (the map's PNG is `ctx.render.svgToPng`); if the shell
-  lacks one, ask for it there rather than adding a dependency.
+  `zod` and the modules it declares. ESLint and `test/modules.test.ts` enforce it. Each plugin entry
+  exports `plugins: Plugin[]`, every plugin built from its saved config alone (`ctx.config`, its
+  edges and its context: the event log through `ctx.events`, the time through `ctx.clock`), never
+  from a factory's arguments (MegaBotTron1999's docs/bot-os-api.md §4, §7.2). What a module needs
+  beyond that is a service of the shell (the map's PNG is `ctx.render.svgToPng`); if the shell lacks
+  one, ask for it there rather than adding a dependency.
 - **The shell knows no game,** so whatever the game needs of it is configuration: the `norelec`
-  plugin's channel, and the game bots' turn command, `/avventura`, since the shell's turn plugins
-  default to `/play` and count only their configured command (README, "Configuration the game
-  needs").
-- **The shell** is the submodule, pinned to a commit of MegaBotTron1999's `main`. Never edit it
-  here: a change to the shell is made in its repository, and the pin is bumped here (with
+  plugin's channel, and the game bots' turn command, `/avventura`, which RegnoTron's parsers default
+  to, since the shell's turn plugins default to `/play` and count only their configured command
+  (README, "Configuration the game needs").
+- **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (`v0.1.0-alpha.1`). Never edit
+  it here: a change to the shell is made in its repository, and the pin is bumped here (with
   `npm install` for the lockfile) in a commit of its own.
 - **Coverage stays at or above 90%** on statements, branches, functions and lines, for the whole and
   for each module's `src/` on its own (`vitest.config.ts` sets a threshold per module).

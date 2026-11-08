@@ -5,7 +5,7 @@ import { type Pair } from '#src/map/measurements.ts';
 import { type MapService, MEASUREMENTS, MEASUREMENTS_VERSION } from '#src/map/service.ts';
 import { syntheticHomes } from '#test/homes.ts';
 import { answer, kitWith, RAID, T0 } from '#test/plugins.ts';
-import { MAP_COMMANDS, NORELEC_MAP, norelecMapPlugin } from './norelec-map.ts';
+import { MAP_COMMANDS, NORELEC_MAP, norelecMapPlugin, plugins } from './norelec-map.ts';
 
 /** The map, as the plugin's interface offers it. */
 const mapOf = (core: Core): MapService | undefined => {
@@ -32,17 +32,19 @@ function measured(seed: number, n: number) {
 
 describe('the norelec-map plugin', () => {
   it('declares /map, the game it reads, and the map it offers', () => {
-    const m = parseManifest(norelecMapPlugin().manifest);
+    const m = parseManifest(norelecMapPlugin.manifest);
     expect(Object.keys(m.interface.commands ?? {})).toEqual(Object.keys(MAP_COMMANDS));
     expect(m.inputs['game']).toMatchObject({ type: 'interface', plugin: 'norelec' });
     expect(m.outputs['interface']).toMatchObject({ members: ['state.map'] });
+    expect(plugins).toEqual([norelecMapPlugin]);
+    expect(norelecMapPlugin.manifest.config?.parse({})).toEqual({ restS: 90, settleMs: 60_000 });
   });
 
   it('answers /map with a line until the map can be drawn, and reads a first start’s trips', async () => {
-    const { command, lines, k } = await kitWith(
-      NORELEC_MAP,
-      norelecMapPlugin({ logged: () => [{ time: T0 - 1000, text: RAID }], settleMs: 0 })
-    );
+    const { command, lines, k } = await kitWith(NORELEC_MAP, norelecMapPlugin, {
+      config: { settleMs: 0 },
+      logged: [{ time: T0 - 1000, text: RAID }],
+    });
     expect(lines).toContain('norelec-map: map: read the trips of 1 logged bot messages');
     expect(mapOf(k.core)?.hasMeasurements).toBe(true);
     const r = answer();
@@ -51,7 +53,9 @@ describe('the norelec-map plugin', () => {
   });
 
   it('starts with no trips without a log, and takes them live from the bus', async () => {
-    const { k, say, lines, game } = await kitWith(NORELEC_MAP, norelecMapPlugin({ settleMs: 0 }));
+    const { k, say, lines, game } = await kitWith(NORELEC_MAP, norelecMapPlugin, {
+      config: { settleMs: 0 },
+    });
     expect(lines).toContain('norelec-map: map: read the trips of 0 logged bot messages');
     // Known to carry no 🚀, so that the trip's time is the base time.
     game().state.player('Alfa').carried = [];
@@ -62,7 +66,8 @@ describe('the norelec-map plugin', () => {
   });
 
   it('draws the map with the shell’s render service, and sends it as a photo', async () => {
-    const { command, lines } = await kitWith(NORELEC_MAP, norelecMapPlugin({ settleMs: 0 }), {
+    const { command, lines } = await kitWith(NORELEC_MAP, norelecMapPlugin, {
+      config: { settleMs: 0 },
       documents: { [MEASUREMENTS]: measured(1, 8) },
     });
     // Kept measurements: no first start's backfill.

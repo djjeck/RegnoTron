@@ -5,7 +5,6 @@ import {
   Ledger,
   type LedgerDocuments,
   type LedgerEntry,
-  ledgerLines,
   PAGE_SIZE,
   pageName,
   pagesOf,
@@ -92,15 +91,7 @@ describe('Ledger.take', () => {
   });
 });
 
-describe('the files of the older version', () => {
-  it('reads every entry in its order, skipping a line cut short or one that is no entry', () => {
-    const lines = [drop('un salame', T0 + 1), drop('un cubo', T0)].map((e) => JSON.stringify(e));
-    expect(
-      ledgerLines([lines[0], '{"t":1793', 'null', '[1]', '', lines[1], ''].join('\n'))
-    ).toEqual([drop('un salame', T0 + 1), drop('un cubo', T0)]);
-    expect(ledgerLines('')).toEqual([]);
-  });
-
+describe('the documents', () => {
   it('reads the cursor, or 0', () => {
     expect(cursorOf({ t: T0 })).toBe(T0);
     expect(cursorOf({ t: 'yesterday' })).toBe(0);

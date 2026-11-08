@@ -9,7 +9,7 @@
  * fight lost, or the wait it states.
  */
 import { type Plugin } from '@megabottron1999/core';
-import { turnParserPlugin, type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
+import { type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
 import {
   LORE_DEFEAT_REST_MS,
   LOREGAMEBOT,
@@ -17,6 +17,7 @@ import {
   parseLoreGameBot,
   TURN_REST_MS,
 } from '#src/replies.ts';
+import { gameParserPlugin } from './game-parser.ts';
 
 export const LOREGAME_PARSER = 'loregame';
 
@@ -30,21 +31,18 @@ function restOf(o: Outcome): number | undefined {
   return undefined;
 }
 
-export function loregamePlugin(o: { group?: string } = {}): Plugin {
-  return turnParserPlugin(
-    {
-      id: LOREGAME_PARSER,
-      bot: LOREGAMEBOT,
-      description:
-        "@LoreGameBot's answers to the owner's turns: the items, the fights, and its rest",
-      read: (m): TurnReading => {
-        if (!m.answers && !(m.private && m.replies)) return undefined;
-        const outcome = parseLoreGameBot(m.text);
-        if (outcome.kind === 'unknown') return m.answers ? { unread: true } : undefined;
-        const restMs = restOf(outcome);
-        return restMs === undefined ? { outcome } : { outcome, restMs };
-      },
-    },
-    o
-  );
-}
+export const loregamePlugin: Plugin = gameParserPlugin({
+  id: LOREGAME_PARSER,
+  bot: LOREGAMEBOT,
+  description: "@LoreGameBot's answers to the owner's turns: the items, the fights, and its rest",
+  read: (m): TurnReading => {
+    if (!m.answers && !(m.private && m.replies)) return undefined;
+    const outcome = parseLoreGameBot(m.text);
+    if (outcome.kind === 'unknown') return m.answers ? { unread: true } : undefined;
+    const restMs = restOf(outcome);
+    return restMs === undefined ? { outcome } : { outcome, restMs };
+  },
+});
+
+/** The module's plugin entry (MegaBotTron1999's docs/bot-os-api.md §7.2). */
+export const plugins: Plugin[] = [loregamePlugin];

@@ -19,7 +19,6 @@ import {
   type BusEvent,
   definePlugin,
   type LogEntry,
-  type MigrationStore,
   type Plugin,
   type Reading,
 } from '@megabottron1999/core';
@@ -90,144 +89,173 @@ export function botMessageOf(event: { t: number; text?: unknown; events?: unknow
   return { time: event.t, text: String(event.text), events: event.events as GameEvent[] };
 }
 
-/** Where the Telegram accounts were kept before the core, in the data volume's root. */
-export const LEGACY_ACCOUNTS_FILE = 'telegram.json';
 /** The store's document of the Telegram accounts. */
 export const ACCOUNTS = 'accounts';
 
-export interface NorelecOptions {
-  /** The game's IRC channel, where NorelecBot speaks. */
-  channel: string;
-  /** What the game logs to, prints to and reads the time from, and the account the client plays. */
-  game: GameDeps;
-  /**
-   * The bot messages of the whole log, oldest first: read once, when the store keeps no Telegram
-   * accounts (a fresh instance).
-   */
-  logged?: () => readonly { time: number; text: string }[];
-  /** The bot messages of the last hours, oldest first: replayed at `ready`, a restart's memory. */
-  history?: () => readonly { time: number; text: string }[];
+/** An hour, in ms. */
+export const HOUR = 3_600_000;
+
+/** Its configuration: what the owner sets on its node. */
+export const norelecConfig = z.object({
+  /** The game's IRC channel: the edge from `irc` reads it too. */
+  channel: z
+    .string()
+    .regex(/^[#&]\S+$/u, 'expected an IRC channel')
+    .describe("The game's IRC channel, where NorelecBot speaks; the edge from irc reads it"),
+  /** The game account the owner plays, whose notices are printed; the IRC account's nick without. */
+  self: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("The game account whose notices are printed; the IRC account's own nick if unset"),
+  /** Rest after a return, in seconds. */
+  restS: z.number().int().min(0).default(90).describe('Rest after a return, in seconds'),
+  /** The hours of bot messages replayed from the event log at `ready`, a restart's memory. */
+  historyHours: z
+    .number()
+    .min(0)
+    .default(6)
+    .describe('Hours of bot messages replayed from the event log at a start'),
+});
+export type NorelecConfig = z.output<typeof norelecConfig>;
+
+/** The bot messages among the event log's records, oldest first, as the transport hands them. */
+export function messagesOf(records: readonly LogEntry[]): { time: number; text: string }[] {
+  const out: { time: number; text: string }[] = [];
+  for (const r of records)
+    if (r.type === MESSAGE_EVENT && typeof r['text'] === 'string')
+      out.push({ time: r.t, text: stripZeroWidth(r['text']) });
+  return out;
 }
 
 /**
- * The plugin, on the game's channel. Its running instance offers the game to the wiring as its
- * `service` too, for the app's parts not yet plugins (the health, the map, the control).
+ * The plugin, built from its config alone (MegaBotTron1999's docs/bot-os-api.md §7.2): it reads the
+ * channel its edge from `irc` reads, and the game's history from the event log (`ctx.events`).
  */
-export function norelecPlugin(options: NorelecOptions): Plugin {
-  const { channel } = options;
-  return definePlugin({
-    manifest: {
-      id: NORELEC,
-      version: '0.1.0',
-      kinds: ['parser'],
-      description: "NorelecBot's game: its messages read, and the game state they make",
-      inputs: {
-        channel: {
-          type: 'chat',
-          network: 'irc',
-          help: "NorelecBot's channel, read into the game",
-          bind: { node: IRC, reads: [channel], sends: [channel] },
-        },
+export const norelecPlugin: Plugin = definePlugin({
+  manifest: {
+    id: NORELEC,
+    version: '0.1.0',
+    kinds: ['parser'],
+    description: "NorelecBot's game: its messages read, and the game state they make",
+    config: norelecConfig,
+    inputs: {
+      channel: {
+        type: 'chat',
+        network: 'irc',
+        help: "NorelecBot's channel, read into the game: the edge reads the config's channel",
+        bind: { node: IRC, reads: [], sends: [] },
       },
-      games: { registers: [NORELEC] },
-      events: { [MESSAGE_EVENT]: messageSchema, [NOTICE_EVENT]: noticeSchema },
-      interface: {
-        state: {
-          game: {
-            help: 'the game: its state, and every bot message, command, notice and tick as it comes',
-            output: z.custom<NorelecGame>((v) => v instanceof NorelecGame),
-          },
-          // The owner's: whether the channel is read, and when the bot last spoke.
-          status: {
-            help: "the channel's health: connected, the last line and the last bot message",
-            output: z.object({ health: z.record(z.string(), z.unknown()) }),
-          },
-        },
-      },
+    },
+    games: { registers: [NORELEC] },
+    events: { [MESSAGE_EVENT]: messageSchema, [NOTICE_EVENT]: noticeSchema },
+    interface: {
       state: {
-        migrations: [
-          (store: MigrationStore) => {
-            store.adopt(LEGACY_ACCOUNTS_FILE, ACCOUNTS);
-          },
-        ],
+        game: {
+          help: 'the game: its state, and every bot message, command, notice and tick as it comes',
+          output: z.custom<NorelecGame>((v) => v instanceof NorelecGame),
+        },
+        // The owner's: whether the channel is read, and when the bot last spoke.
+        status: {
+          help: "the channel's health: connected, the last line and the last bot message",
+          output: z.object({ health: z.record(z.string(), z.unknown()) }),
+        },
       },
     },
-    create: (ctx) => {
-      const game = new NorelecGame(options.game);
-      const accounts = new TelegramAccounts({
-        read: () => ctx.store.read<StoredAccounts>(ACCOUNTS),
-        write: (value) => ctx.store.write(ACCOUNTS, value),
-      });
-      // A fresh instance learns them from the whole log, once.
-      if (!accounts.kept) {
-        const logged = options.logged?.() ?? [];
-        accounts.backfill(
-          logged.map(({ time, text }) => ({ time, text, events: parseMessage(text) }))
+    // v0's one step, which brought in a file of the volume's root, is a no-op now: kept so that a
+    // store imported from v0 (at version 1, MegaBotTron1999's docs/bot-os.md D54) reads.
+    state: { migrations: [() => {}] },
+  },
+  create: (ctx) => {
+    const config = ctx.config as NorelecConfig;
+    const handle = ctx.connector('channel');
+    const channel = config.channel.toLowerCase();
+    const deps: GameDeps = {
+      // Only while the plugin does not run: running, the game publishes on the bus instead.
+      log: {
+        write: ({ type, t: _, ...fields }) => ctx.record(`${NORELEC}.${type}`, fields),
+      },
+      print: (line) => ctx.log.info(line),
+      now: () => ctx.clock.now(),
+      restS: config.restS,
+      // Read at each notice: the IRC account's nick is known once it is connected.
+      get self() {
+        return config.self ?? handle.self() ?? '';
+      },
+    };
+    const game = new NorelecGame(deps);
+    const accounts = new TelegramAccounts({
+      read: () => ctx.store.read<StoredAccounts>(ACCOUNTS),
+      write: (value) => ctx.store.write(ACCOUNTS, value),
+    });
+    // A fresh instance learns them from the whole log, once.
+    if (!accounts.kept) {
+      const logged = messagesOf(ctx.events.read({ type: MESSAGE_EVENT }));
+      accounts.backfill(
+        logged.map(({ time, text }) => ({ time, text, events: parseMessage(text) }))
+      );
+      ctx.log.info(
+        `${accounts.list().length} Telegram accounts in ${logged.length} logged bot messages`
+      );
+    }
+    accounts.apply(game.state);
+    accounts.sync(game.state);
+    const off: (() => void)[] = [];
+    /** The channel's lines heard before the history is replayed, which wait for it. */
+    let waiting: ChannelLine[] | undefined = [];
+    let ticking: ReturnType<typeof ctx.clock.setTimeout> | undefined;
+    const tick = (): void => {
+      ticking = ctx.clock.setTimeout(tick, TICK_MS);
+      game.tick();
+    };
+    const offered: NorelecInterface = { state: { game: () => game } };
+    return {
+      interface: { state: { ...offered.state, status: () => ({ health: { ...game.health } }) } },
+      start: () => {
+        game.publish = (m) => {
+          ctx.bus.publish(MESSAGE_EVENT, { text: m.text, events: m.events }, m.time);
+          // Drift (P5): a message with a line no template knows is claimed but unread.
+          const r = reading(m.text, m.events);
+          if (r.kind === 'unread') ctx.drift.unread({ text: r.text, lines: r.lines, t: m.time });
+          else ctx.drift.read(m.time);
+          accounts.sync(game.state);
+        };
+        game.publishNotice = (r) => ctx.bus.publish(NOTICE_EVENT, { notice: r.notice }, r.t);
+        off.push(
+          handle.onMessage((m) => {
+            if (m.chat.toLowerCase() !== channel) return;
+            const line = { nick: m.sender, text: m.text, time: m.time, playback: m.playback };
+            if (waiting === undefined) game.line(line);
+            else waiting.push(line);
+          }),
+          handle.onStatus((s) => game.status(s.phase))
         );
-        ctx.log.info(
-          `${accounts.list().length} Telegram accounts in ${logged.length} logged bot messages`
-        );
-      }
-      accounts.apply(game.state);
-      accounts.sync(game.state);
-      const handle = ctx.connector('channel');
-      const off: (() => void)[] = [];
-      /** The channel's lines heard before the history is replayed, which wait for it. */
-      let waiting: ChannelLine[] | undefined = [];
-      let ticking: ReturnType<typeof ctx.clock.setTimeout> | undefined;
-      const tick = (): void => {
-        ticking = ctx.clock.setTimeout(tick, TICK_MS);
-        game.tick();
-      };
-      const offered: NorelecInterface = { state: { game: () => game } };
-      return {
-        interface: { state: { ...offered.state, status: () => ({ health: { ...game.health } }) } },
-        service: game,
-        start: () => {
-          game.publish = (m) => {
-            ctx.bus.publish(MESSAGE_EVENT, { text: m.text, events: m.events }, m.time);
-            // Drift (P5): a message with a line no template knows is claimed but unread.
-            const r = reading(m.text, m.events);
-            if (r.kind === 'unread') ctx.drift.unread({ text: r.text, lines: r.lines, t: m.time });
-            else ctx.drift.read(m.time);
-            accounts.sync(game.state);
-          };
-          game.publishNotice = (r) => ctx.bus.publish(NOTICE_EVENT, { notice: r.notice }, r.t);
-          off.push(
-            handle.onMessage((m) => {
-              const line = { nick: m.sender, text: m.text, time: m.time, playback: m.playback };
-              if (waiting === undefined) game.line(line);
-              else waiting.push(line);
-            }),
-            handle.onStatus((s) => game.status(s.phase))
-          );
-          // The status the game first hears is the connector's at once.
-          const now = handle.status();
-          if (now.state !== 'closed') game.status(now.phase);
-        },
-        ready: () => {
-          const history = options.history?.() ?? [];
-          const replayed = game.replay(history);
-          if (replayed > 0)
-            options.game.print(
-              `${new Date(options.game.now()).toISOString().slice(11, 19)}  replayed ${replayed} bot messages`
-            );
-          const heard = waiting ?? [];
-          waiting = undefined;
-          for (const line of heard) game.line(line);
-          // The first tick once every plugin is ready, so that the plugins that play have taken up their
-          // modes, and a simulator its facts, before anything is decided: at once if the
-          // channel is up already (a simulator's), else after a tick's wait, which gives the
-          // connection time to come up, as the client always waited.
-          ticking = ctx.clock.setTimeout(tick, handle.status().state === 'connected' ? 0 : TICK_MS);
-        },
-        stop: () => {
-          for (const f of off.splice(0)) f();
-          ctx.clock.clearTimeout(ticking);
-          game.publish = undefined;
-          game.publishNotice = undefined;
-        },
-      };
-    },
-  });
-}
+        // The status the game first hears is the connector's at once.
+        const now = handle.status();
+        if (now.state !== 'closed') game.status(now.phase);
+      },
+      ready: () => {
+        const since = ctx.clock.now() - config.historyHours * HOUR;
+        const replayed = game.replay(messagesOf(ctx.events.read({ type: MESSAGE_EVENT, since })));
+        if (replayed > 0) ctx.log.info(`replayed ${replayed} bot messages`);
+        const heard = waiting ?? [];
+        waiting = undefined;
+        for (const line of heard) game.line(line);
+        // The first tick once every plugin is ready, so that the plugins that play have taken up their
+        // modes, and a simulator its facts, before anything is decided: at once if the
+        // channel is up already (a simulator's), else after a tick's wait, which gives the
+        // connection time to come up, as the client always waited.
+        ticking = ctx.clock.setTimeout(tick, handle.status().state === 'connected' ? 0 : TICK_MS);
+      },
+      stop: () => {
+        for (const f of off.splice(0)) f();
+        ctx.clock.clearTimeout(ticking);
+        game.publish = undefined;
+        game.publishNotice = undefined;
+      },
+    };
+  },
+});
+
+/** The module's plugin entry (MegaBotTron1999's docs/bot-os-api.md §7.2). */
+export const plugins: Plugin[] = [norelecPlugin];

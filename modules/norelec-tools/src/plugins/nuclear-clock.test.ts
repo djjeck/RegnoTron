@@ -8,6 +8,7 @@ import {
   CLOCK_COMMANDS,
   NUCLEAR_CLOCK,
   nuclearClockPlugin,
+  plugins,
 } from './nuclear-clock.ts';
 
 const EMPTY: ClockState = { level: 0, posted: {}, balances: {} };
@@ -15,7 +16,7 @@ const on = { nuclearClock: 'on' };
 
 describe('the nuclear-clock plugin', () => {
   it('declares its command, aliases out of the menus, within the names Telegram takes there', () => {
-    const m = parseManifest(nuclearClockPlugin().manifest);
+    const m = parseManifest(nuclearClockPlugin.manifest);
     const commands = m.interface.commands ?? {};
     expect(Object.keys(commands)).toEqual(Object.keys(CLOCK_COMMANDS));
     expect(commands['nuclear_warning']?.aliases).toEqual([
@@ -30,10 +31,14 @@ describe('the nuclear-clock plugin', () => {
       network: 'telegram-bot',
       bind: { node: 'telegram-bot', reads: [], sends: [] },
     });
+    expect(plugins).toEqual([nuclearClockPlugin]);
+    expect(nuclearClockPlugin.manifest.config?.parse({})).toEqual({ restS: 90 });
   });
 
   it('answers /nuclear_warning with the balls the game state knows, deleted from the group', async () => {
-    const { game, command } = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin({ group: GROUP }));
+    const { game, command } = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
+      config: { group: GROUP },
+    });
     game().state.player('Alfa').balance = { balls: 320_000, at: T0 };
     const r = answer();
     await command('nuclear_warning').run(r.a, { args: '' });
@@ -44,11 +49,11 @@ describe('the nuclear-clock plugin', () => {
   });
 
   it('posts a threshold crossed to the group through the outbox, in Markdown, with the footer', async () => {
-    const { game, k, bot, sends, say, lines } = await kitWith(
-      NUCLEAR_CLOCK,
-      nuclearClockPlugin({ group: GROUP }),
-      { settings: on, documents: { [CLOCK]: EMPTY } }
-    );
+    const { game, k, bot, sends, say, lines } = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
+      config: { group: GROUP },
+      settings: on,
+      documents: { [CLOCK]: EMPTY },
+    });
     game().state.player('Alfa').balance = { balls: 60_000, at: T0 };
     // A bot message checks the total.
     say(RAID, T0);
@@ -71,7 +76,8 @@ describe('the nuclear-clock plugin', () => {
   });
 
   it('names the bare alias once the bot is an admin of the group', async () => {
-    const { game, k, bot } = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin({ group: GROUP }), {
+    const { game, k, bot } = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
+      config: { group: GROUP },
       admin: true,
       settings: on,
       documents: { [CLOCK]: EMPTY },
@@ -83,7 +89,8 @@ describe('the nuclear-clock plugin', () => {
   });
 
   it('logs a post its mode refuses as failed, and posts nothing while the setting is off', async () => {
-    const readOnly = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin({ group: GROUP }), {
+    const readOnly = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
+      config: { group: GROUP },
       mode: 'read-only',
       settings: on,
       documents: { [CLOCK]: EMPTY },
@@ -95,7 +102,8 @@ describe('the nuclear-clock plugin', () => {
     expect(readOnly.lines).toContain(
       'nuclear-clock: nuclear failed: 50000: 60000 balls: Error: read-only'
     );
-    const off = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin({ group: GROUP }), {
+    const off = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
+      config: { group: GROUP },
       documents: { [CLOCK]: EMPTY },
     });
     off.game().state.player('Alfa').balance = { balls: 60_000, at: T0 };
@@ -108,7 +116,8 @@ describe('the nuclear-clock plugin', () => {
   });
 
   it('waits for the bot to connect before a post', async () => {
-    const { game, k, bot } = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin({ group: GROUP }), {
+    const { game, k, bot } = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
+      config: { group: GROUP },
       settings: on,
       documents: { [CLOCK]: EMPTY },
     });
@@ -123,11 +132,11 @@ describe('the nuclear-clock plugin', () => {
   });
 
   it('takes a first start’s level from the log, posting nothing', async () => {
-    const { k, lines, bot } = await kitWith(
-      NUCLEAR_CLOCK,
-      nuclearClockPlugin({ group: GROUP, logged: () => [{ time: T0 - 1000, text: RAID }] }),
-      { settings: on }
-    );
+    const { k, lines, bot } = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
+      config: { group: GROUP },
+      settings: on,
+      logged: [{ time: T0 - 1000, text: RAID }],
+    });
     expect(lines).toContain('nuclear-clock: nuclear: first start, at 0+ balls');
     expect(k.core.state(NUCLEAR_CLOCK)?.state).toBe('running');
     k.runUntil(T0 + CHECK_MS);
@@ -136,7 +145,7 @@ describe('the nuclear-clock plugin', () => {
   });
 
   it('has no clock without a group', async () => {
-    const { k, bot, game } = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin(), {
+    const { k, bot, game } = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
       settings: on,
     });
     expect(k).toBeInstanceOf(DevKit);

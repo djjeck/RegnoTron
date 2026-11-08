@@ -9,12 +9,14 @@ import {
   DevKit,
   FakeConnector,
   fakeConnectorPlugin,
+  type LogEntry,
   type Mode,
   type Plugin,
   type SendRecord,
 } from '@megabottron1999/core';
-import { norelecPlugin } from '@regnotron/norelec/plugins/norelec.ts';
+import { MESSAGE_EVENT, norelecPlugin } from '@regnotron/norelec/plugins/norelec.ts';
 import { type NorelecGame } from '@regnotron/norelec/plugins/norelec-game.ts';
+import { withChats } from '@regnotron/norelec/test/graph.ts';
 
 /** 13:00 in Italy, out of the clock's quiet hours. */
 export const T0 = Date.UTC(2026, 10, 6, 12, 0, 0);
@@ -29,7 +31,13 @@ export interface KitOptions {
   settings?: Record<string, unknown>;
   mode?: Mode;
   documents?: Record<string, unknown>;
+  /** The bot messages of the event log before the start. */
+  logged?: readonly { time: number; text: string }[];
 }
+
+/** Bot messages, as the event log keeps them. */
+export const logOf = (messages: readonly { time: number; text: string }[]): LogEntry[] =>
+  messages.map(({ time, text }) => ({ type: MESSAGE_EVENT, t: time, text }));
 
 /** `plugin` (instance `id`) on a dev kit with the game and the fake connectors. */
 export async function kitWith(id: string, plugin: Plugin, o: KitOptions = {}) {
@@ -42,18 +50,25 @@ export async function kitWith(id: string, plugin: Plugin, o: KitOptions = {}) {
   const lines: string[] = [];
   const ref: { kit?: DevKit } = {};
   const now = (): number => ref.kit?.clock.now() ?? T0;
+  const group = o.config?.['group'] as string | undefined;
   const k = new DevKit({
     start: T0,
     plugins: [
       fakeConnectorPlugin('irc', irc),
       fakeConnectorPlugin('telegram-bot', bot),
-      norelecPlugin({
-        channel: CHANNEL,
-        game: { log: { write: () => {} }, print: () => {}, now, restS: 60, self: 'alice' },
-      }),
+      norelecPlugin,
       plugin,
     ],
-    config: { [id]: { restS: 60, ...o.config } },
+    config: {
+      norelec: { channel: CHANNEL, restS: 60, self: 'alice' },
+      [id]: { restS: 60, ...o.config },
+    },
+    // The chats the owner gives the edges: the game's channel, and the group the clock posts to.
+    graph: (defaults) => {
+      const g = withChats(defaults, 'norelec.channel', { reads: [CHANNEL] });
+      return group === undefined ? g : withChats(g, `${id}.group`, { sends: [group] });
+    },
+    ...(o.logged === undefined ? {} : { history: logOf(o.logged) }),
     ...(o.settings === undefined ? {} : { settings: { [id]: o.settings } }),
     modes: { [id]: o.mode ?? 'live' },
     ...(o.documents === undefined ? {} : { documents: { [id]: o.documents } }),
@@ -68,9 +83,9 @@ export async function kitWith(id: string, plugin: Plugin, o: KitOptions = {}) {
   bot.open();
   await k.start();
   const game = (): NorelecGame => {
-    const g = k.core.service<NorelecGame>('norelec');
-    if (g === undefined) throw new Error('no game');
-    return g;
+    const g = k.core.controls.read('norelec', 'game');
+    if (!('value' in g)) throw new Error(g.error);
+    return g.value as NorelecGame;
   };
   const command = (name: string): ChatCommand => {
     const c = k.core.commands().find((x) => x.name === name);

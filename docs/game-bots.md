@@ -45,7 +45,8 @@ Good etiquette is not to play a bot at its limit [S].
 
 ## 3. How the parsers tell the owner's turns
 
-Each parser plugin reads the direct chat between the owner's account and its bot, and the group:
+Each parser plugin reads the direct chat between the owner's account and its bot, and the group when
+its edge reads it too:
 
 - **In the direct chat** every turn is the owner's, so the bot's first message after a turn answers
   it. An answer there that a parser cannot read is reported as drift.

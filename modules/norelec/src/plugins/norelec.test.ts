@@ -1,19 +1,28 @@
 import { ircPlugin } from '@megabottron1999/connectors/plugins/irc.ts';
 import { IRC_CONFIG, IRC_SECRETS } from '@megabottron1999/connectors/test/irc.ts';
 import { type TransportEvents } from '@megabottron1999/connectors/transport/transport.ts';
-import { type BusEvent, Core, definePlugin, VirtualClock } from '@megabottron1999/core';
+import {
+  type BusEvent,
+  Core,
+  definePlugin,
+  MemoryEventLog,
+  VirtualClock,
+} from '@megabottron1999/core';
 import { secretsWith } from '@megabottron1999/core/test/secrets.ts';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type BotMessage } from '#src/game/bot-message.ts';
+import { withChats } from '#test/graph.ts';
 import {
   ACCOUNTS,
   botMessageOf,
   MESSAGE_EVENT,
+  messagesOf,
   type NorelecInterface,
   norelecPlugin,
+  plugins,
   readExportRow,
   readLogged,
   TICK_MS,
@@ -40,33 +49,33 @@ const AT_GIANPIER = 'Juno (🎈) hai bucato il palloncino di @Gianpier il lombar
 function setup(
   logged: { time: number; text: string }[] = [],
   history: { time: number; text: string }[] = [],
-  joined = false
+  joined = false,
+  config: Record<string, unknown> = {}
 ) {
   let now = T0;
   const clock = new VirtualClock(now);
-  const records: { type: string }[] = [];
   const logged2: BusEvent[] = [];
   const lines: string[] = [];
   const heard: BotMessage[] = [];
   let irc: TransportEvents | undefined;
-  const norelec = norelecPlugin({
-    channel: IRC_CONFIG.channel,
-    game: {
-      log: { write: (r) => records.push(r) },
-      print: (l) => lines.push(l),
-      now: () => now,
-      restS: 60,
-      self: 'alice',
-    },
-    logged: () => logged,
-    history: () => history,
-  });
+  // The event log before the start: the whole log's bot messages, then the last hours'.
+  const log = new MemoryEventLog(
+    [...logged, ...history].map(({ time, text }) => ({ type: MESSAGE_EVENT, t: time, text }))
+  );
   const core = new Core({
     clock,
     dataDir,
-    config: { irc: IRC_CONFIG },
+    config: {
+      irc: IRC_CONFIG,
+      norelec: { channel: IRC_CONFIG.channel, restS: 60, self: 'alice', ...config },
+    },
+    graph: (defaults) => withChats(defaults, 'norelec.channel', { reads: [IRC_CONFIG.channel] }),
     secrets: secretsWith(IRC_SECRETS),
-    record: (r) => logged2.push(r as BusEvent),
+    events: log,
+    record: (r) => {
+      logged2.push(r as BusEvent);
+      log.write(r);
+    },
     print: (l) => lines.push(l),
     validateEvents: true,
   });
@@ -100,12 +109,12 @@ function setup(
         return {};
       },
     }),
-    norelec
+    norelecPlugin
   );
   const game = (): NorelecGame => {
-    const g = core.service<NorelecGame>('norelec');
-    if (g === undefined) throw new Error('no game');
-    return g;
+    const g = core.controls.read('norelec', 'game');
+    if (!('value' in g)) throw new Error(g.error);
+    return g.value as NorelecGame;
   };
   const say = (text: string, playback = false): void => {
     irc?.line({ nick: 'NorelecBot', text, time: now, playback });
@@ -120,7 +129,6 @@ function setup(
       clock.advanceTo(now);
     },
     game,
-    records,
     bus: logged2,
     lines,
     heard,
@@ -131,7 +139,7 @@ function setup(
 
 describe('the norelec plugin', () => {
   it('reads the channel into its game, and publishes each bot message to the parts that follow', async () => {
-    const { core, game: gameOf, records, bus, lines, heard, say, status } = setup();
+    const { core, game: gameOf, bus, lines, heard, say, status } = setup();
     await core.start();
     const game = gameOf();
     expect(core.status().map((s) => s.id)).toEqual(['irc', 'norelec', 'follower']);
@@ -148,10 +156,9 @@ describe('the norelec plugin', () => {
     expect(bus.filter((r) => r.type === 'norelec.message')).toEqual([
       { type: 'norelec.message', t: T0, text: RAID, events: heard[0]?.events },
     ]);
-    // Nothing goes to the game's own log now: the lines and the statuses are irc's, the
-    // notices on the bus; played back, a line is logged and not read.
+    // The lines and the statuses are irc's, the notices on the bus; played back, a line is
+    // logged and not read.
     say(RAID, true);
-    expect(records).toEqual([]);
     expect(bus.filter((r) => r.type.startsWith('irc.')).map((r) => r.type)).toEqual([
       'irc.status',
       'irc.status',
@@ -183,13 +190,14 @@ describe('the norelec plugin', () => {
       },
     ]);
     await core.stop();
-    // Stopped, it hears nothing more, and the game logs its messages itself again.
+    // Stopped, it hears nothing more, and the game records its messages itself again.
     say(RAID);
     expect(heard).toHaveLength(4);
+    const before = bus.length;
     game.line({ nick: 'NorelecBot', text: RAID, time: T0 + 9000, playback: false });
     game.line({ nick: 'Alfa', text: 'ciao', time: T0 + 9500, playback: false });
     game.tick();
-    expect(records.map((r) => r.type)).toEqual(['message', 'notice']);
+    expect(bus.slice(before).map((r) => r.type)).toEqual(['norelec.message', 'norelec.notice']);
   });
 
   it('offers its game, replays the history at ready, then reads what waited and ticks', async () => {
@@ -226,7 +234,7 @@ describe('the norelec plugin', () => {
       })
     );
     await core.start();
-    expect(lines).toContain('10:00:00  replayed 1 bot messages');
+    expect(lines).toContain('norelec: replayed 1 bot messages');
     expect(game().state.holder?.name).toBe('Juno');
     // The line heard at the start waited for the replay, and is read at the next tick.
     expect(heard).toEqual([{ replaying: true, holder: 'Juno' }]);
@@ -285,7 +293,7 @@ describe('the norelec plugin', () => {
     expect(first.game().state.players.get('Gianpier')?.telegram).toBe(true);
     first.say('Juno (🎈) hai bucato il palloncino di @Mirco777 (🎈)!');
     await first.core.stop();
-    const kept = path.join(dataDir, 'plugins', 'norelec', `${ACCOUNTS}.json`);
+    const kept = path.join(dataDir, 'instances', 'norelec', `${ACCOUNTS}.json`);
     expect(JSON.parse(fs.readFileSync(kept, 'utf8'))).toEqual({ names: ['Gianpier', 'Mirco777'] });
     // A restart reads them from the store, not from the log.
     const again = setup([]);
@@ -294,18 +302,61 @@ describe('the norelec plugin', () => {
     expect(again.game().state.players.get('Mirco777')?.telegram).toBe(true);
     await again.core.stop();
   });
+});
 
-  it('adopts the accounts kept before the core, at its first start', async () => {
-    fs.writeFileSync(path.join(dataDir, 'telegram.json'), '{"names":["Gianpier"]}\n');
-    const { core, game, lines } = setup([
-      { time: T0, text: 'Juno (🎈) hai bucato il palloncino di @Juno (🎈)!' },
-    ]);
+describe('the norelec plugin, from its config', () => {
+  it('is its entry’s one plugin, and needs the channel', () => {
+    expect(plugins).toEqual([norelecPlugin]);
+    const config = norelecPlugin.manifest.config;
+    expect(config?.safeParse({}).success).toBe(false);
+    expect(config?.parse({ channel: '#lobby' })).toEqual({
+      channel: '#lobby',
+      restS: 90,
+      historyHours: 6,
+    });
+  });
+
+  it('replays only the last hours of the log', async () => {
+    const old = {
+      time: T0 - 3 * 3_600_000,
+      text: 'Juno hai cacciato Alfa da @TheConquister37.\nJuno sei in @TheConquister37!',
+    };
+    const recent = {
+      time: T0 - 60_000,
+      text: 'Bravo hai cacciato Juno da @TheConquister37.\nBravo sei in @TheConquister37!',
+    };
+    const { core, game, lines } = setup([old], [recent], true, { historyHours: 2 });
     await core.start();
-    expect(game().state.players.get('Gianpier')?.telegram).toBe(true);
-    expect(game().state.players.get('Juno')).toBeUndefined();
-    expect(lines.some((l) => l.includes('Telegram accounts in'))).toBe(false);
-    expect(fs.existsSync(path.join(dataDir, 'telegram.json.migrated'))).toBe(true);
+    expect(lines).toContain('norelec: replayed 1 bot messages');
+    expect(game().state.holder?.name).toBe('Bravo');
     await core.stop();
+  });
+
+  it('reads only the channel of its config', async () => {
+    const { core, say, heard } = setup([], [], true, { channel: '#elsewhere' });
+    await core.start();
+    say(RAID);
+    expect(heard).toEqual([]);
+    await core.stop();
+  });
+
+  it('prints the notices of the IRC account’s own nick when its config names no player', async () => {
+    const { core, say, lines, status } = setup([], [], false, { self: undefined });
+    await core.start();
+    status('joined');
+    say('Bravo parti per alice: arrivi tra 1 minuto e 31 secondi. Casa tua resta scoperta.');
+    expect(lines.some((l) => l.includes('incomingRaid alice by Bravo'))).toBe(true);
+    await core.stop();
+  });
+
+  it('reads the bot messages out of the log’s records, without the zero-width characters', () => {
+    expect(
+      messagesOf([
+        { type: MESSAGE_EVENT, t: 1, text: 'Ju\u200bno' },
+        { type: 'norelec.notice', t: 2 },
+        { type: MESSAGE_EVENT, t: 3 },
+      ])
+    ).toEqual([{ time: 1, text: 'Juno' }]);
   });
 });
 

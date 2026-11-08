@@ -8,7 +8,7 @@
  * - In private, the first message after a turn that is neither: claimed and unread (drift).
  */
 import { type Plugin } from '@megabottron1999/core';
-import { turnParserPlugin, type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
+import { type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
 import {
   INVENTORYBOT,
   inventoryCooldown,
@@ -16,33 +16,32 @@ import {
   parseInventoryBot,
   TURN_REST_MS,
 } from '#src/replies.ts';
+import { gameParserPlugin } from './game-parser.ts';
 
 export const INVENTORYBOT_PARSER = 'inventorybot';
 
-export function inventorybotPlugin(o: { group?: string } = {}): Plugin {
-  return turnParserPlugin(
-    {
-      id: INVENTORYBOT_PARSER,
-      bot: INVENTORYBOT,
-      description: "@InventoryBot's answers to the owner's turns: the items, and its rest",
-      read: (m): TurnReading => {
-        const gain = m.self === undefined ? undefined : parseInventoryBot(m.text, m.self);
-        if (gain?.kind === 'unknown') return { unread: true };
-        if (gain !== undefined) return { outcome: gain, restMs: TURN_REST_MS };
-        if (!m.private) return undefined;
-        const wait = inventoryCooldown(m.text);
-        if (wait !== undefined) {
-          const outcome: Outcome = {
-            kind: 'nothing',
-            bot: INVENTORYBOT,
-            reason: 'cooldown',
-            retryMs: wait,
-          };
-          return { outcome, restMs: wait };
-        }
-        return m.answers ? { unread: true } : undefined;
-      },
-    },
-    o
-  );
-}
+export const inventorybotPlugin: Plugin = gameParserPlugin({
+  id: INVENTORYBOT_PARSER,
+  bot: INVENTORYBOT,
+  description: "@InventoryBot's answers to the owner's turns: the items, and its rest",
+  read: (m): TurnReading => {
+    const gain = m.self === undefined ? undefined : parseInventoryBot(m.text, m.self);
+    if (gain?.kind === 'unknown') return { unread: true };
+    if (gain !== undefined) return { outcome: gain, restMs: TURN_REST_MS };
+    if (!m.private) return undefined;
+    const wait = inventoryCooldown(m.text);
+    if (wait !== undefined) {
+      const outcome: Outcome = {
+        kind: 'nothing',
+        bot: INVENTORYBOT,
+        reason: 'cooldown',
+        retryMs: wait,
+      };
+      return { outcome, restMs: wait };
+    }
+    return m.answers ? { unread: true } : undefined;
+  },
+});
+
+/** The module's plugin entry (MegaBotTron1999's docs/bot-os-api.md §7.2). */
+export const plugins: Plugin[] = [inventorybotPlugin];

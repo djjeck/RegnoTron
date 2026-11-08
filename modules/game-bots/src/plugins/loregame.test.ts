@@ -10,7 +10,7 @@ const MIN = 60_000;
 
 describe('the loregame parser', () => {
   it("reads replies to alice's turns, by hand or sent by the actor, with the rests", async () => {
-    const p = await run(loregamePlugin({ group: GROUP }), CONFIG);
+    const p = await run(loregamePlugin, CONFIG, GROUP);
     const lore = { sender: 'LoreGameBot' };
     // By hand in the group, addressed to it.
     const hand = p.hear({

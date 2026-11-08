@@ -8,9 +8,7 @@ const MIN = 60_000;
 
 describe('the epiclorelec parser', () => {
   it('reads its count in private and its cooldown where it answers a turn', async () => {
-    const p = await run(epiclorelecPlugin({ group: GROUP }), {
-      commands: TURN_COMMANDS[EPICLORELECBOT],
-    });
+    const p = await run(epiclorelecPlugin, { commands: TURN_COMMANDS[EPICLORELECBOT] }, GROUP);
     const epic = { sender: 'EpicLorelecBot' };
     p.hear({
       ...epic,

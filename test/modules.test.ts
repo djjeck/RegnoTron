@@ -5,6 +5,7 @@
  * version, with no npm dependencies; and its code imports only Node, the shell, zod, its own files
  * and the modules it declares.
  */
+import { parseManifest, type Plugin } from '@megabottron1999/core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -77,12 +78,17 @@ describe('the modules', () => {
           expect(pkg[key]).toBeUndefined();
       });
 
-      it('names plugin entry points that exist, each exporting a plugin factory', () => {
+      it('names plugin entry points that exist, each exporting its plugins, built from config', async () => {
         expect(json.plugins.length).toBeGreaterThan(0);
         for (const entry of json.plugins) {
           expect(entry).toMatch(/^src\/plugins\/[\w-]+\.ts$/u);
-          const text = fs.readFileSync(path.join(ROOT, dir, entry), 'utf8');
-          expect(text).toMatch(/export function \w+Plugin\(/u);
+          // The loader's contract (MegaBotTron1999's docs/bot-os-api.md §7.2): `plugins`, an array
+          // of plugins whose manifests are valid; no factory takes a deployment's values.
+          const exported = (await import(path.join(ROOT, dir, entry))) as { plugins?: unknown };
+          expect(Array.isArray(exported.plugins), `${dir}/${entry}`).toBe(true);
+          const plugins = exported.plugins as Plugin[];
+          expect(plugins.length).toBeGreaterThan(0);
+          for (const p of plugins) expect(() => parseManifest(p.manifest)).not.toThrow();
         }
       });
 
