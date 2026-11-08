@@ -1,0 +1,3 @@
+[submodule "vendor/MegaBotTron1999"]
+	path = vendor/MegaBotTron1999
+	url = https://github.com/djjeck/MegaBotTron1999.git
