@@ -1,0 +1,236 @@
+import { describe, expect, it } from 'vitest';
+import { INVENTORYBOT_TEMPLATES } from './inventorybot-templates.ts';
+import {
+  inventoryCooldown,
+  inventoryItem,
+  italianWait,
+  parseEpicLorelecBot,
+  parseInventoryBot,
+  parseLoreGameBot,
+} from './replies.ts';
+
+const KNOWN = 'il re di Quamser, contento delle tue gesta, ti elargisce ';
+
+describe('inventoryItem', () => {
+  it('cuts a known template off the front', () => {
+    expect(INVENTORYBOT_TEMPLATES).toContain(KNOWN);
+    expect(inventoryItem(`${KNOWN}un piccolo cuscino da divano con disegnato un gattone`)).toEqual({
+      item: 'un piccolo cuscino da divano con disegnato un gattone',
+      sure: true,
+    });
+  });
+
+  it('guesses from the last indefinite article with an unknown template, and says so', () => {
+    expect(inventoryItem('scavi in un orto sconosciuto e trovi una zappa')).toEqual({
+      item: 'una zappa',
+      sure: false,
+    });
+    expect(inventoryItem("nel fango trovi un'ancora")).toEqual({ item: "un'ancora", sure: false });
+    expect(inventoryItem('nulla di nulla')).toEqual({ item: 'nulla di nulla', sure: false });
+  });
+});
+
+describe('parseInventoryBot', () => {
+  it("reads alice's drop, with its rarity and tags, the addressee in any case", () => {
+    expect(
+      parseInventoryBot(`@alice, ${KNOWN}un baule di quercia 📦 [R] [usabile]!`, 'ALice')
+    ).toEqual({
+      kind: 'gain',
+      bot: 'InventoryBot',
+      item: 'un baule di quercia 📦',
+      rarity: 'R',
+      tags: ['usabile'],
+      sure: true,
+    });
+  });
+
+  it('reads an addressee with a title, and a rarity with a plus', () => {
+    expect(
+      parseInventoryBot(`@alice il pizzaiolo, ${KNOWN}una giuggiola farinosa [C+]!`, 'alice')
+    ).toMatchObject({ item: 'una giuggiola farinosa', rarity: 'C+', tags: [] });
+  });
+
+  it('reads the lucky adventure', () => {
+    expect(
+      parseInventoryBot(
+        "Complimenti @alice, questa e' l'avventura FORTUNATA del giorno! Hai vinto: una Sfera del Grillo da 1 stella ⭐️ [X]",
+        'alice'
+      )
+    ).toEqual({
+      kind: 'gain',
+      bot: 'InventoryBot',
+      item: 'una Sfera del Grillo da 1 stella ⭐️',
+      rarity: 'X',
+      tags: [],
+      sure: true,
+    });
+  });
+
+  it("ignores others' adventures, the cooldown and other replies", () => {
+    for (const text of [
+      `@TeamPalla, ${KNOWN}un pesante bullone [C]!`,
+      "Complimenti @TeamPalla, questa e' l'avventura FORTUNATA del giorno! Hai vinto: una Sfera [X]",
+      'Troppo presto, devi riposare ancora per 9 minuti e 29 secondi prima di poterti avventurare di nuovo.',
+      'alice, hai: > un generatore [X] x1',
+    ])
+      expect(parseInventoryBot(text, 'alice')).toBeUndefined();
+  });
+
+  it('ignores its other messages to alice, and keeps a lucky one it cannot read', () => {
+    for (const text of ['@alice, possiedi:', '@alice, non hai niente del genere di usabile.'])
+      expect(parseInventoryBot(text, 'alice')).toBeUndefined();
+    expect(
+      parseInventoryBot(
+        "Complimenti @alice, questa e' l'avventura FORTUNATA del giorno! Hai vinto: qualcosa",
+        'alice'
+      )
+    ).toMatchObject({ kind: 'unknown' });
+  });
+});
+
+describe('parseLoreGameBot', () => {
+  it('reads the gain on the last line, after the story', () => {
+    expect(
+      parseLoreGameBot(
+        'Lore - Il Paradiso ⛅️ [B1]\n\nUna lunga storia, con [B1] dentro.\nHai ottenuto lo SPAM 🥩 [B1]!'
+      )
+    ).toEqual({
+      kind: 'gain',
+      bot: 'LoreGameBot',
+      item: 'lo SPAM 🥩',
+      rarity: 'B1',
+      tags: [],
+      sure: true,
+    });
+  });
+
+  it('takes the last rarity as the rarity, and lower-case tags after it', () => {
+    expect(
+      parseLoreGameBot('Storia.\nHai ottenuto un generatore di oggetti [X] [generatore] [M1]!')
+    ).toMatchObject({
+      item: 'un generatore di oggetti [X] [generatore]',
+      rarity: 'M1',
+    });
+    expect(parseLoreGameBot('Hai ottenuto un colpo di frusta [M1] [usabile]!')).toMatchObject({
+      item: 'un colpo di frusta',
+      tags: ['usabile'],
+    });
+    expect(
+      parseLoreGameBot(
+        'Hai ottenuto una spada a forma di palloncino (0 - 1) [M1] [equipaggiabile 🗡]!'
+      )
+    ).toMatchObject({
+      item: 'una spada a forma di palloncino (0 - 1)',
+      tags: ['equipaggiabile 🗡'],
+    });
+  });
+
+  it('reads an item whose name spans lines', () => {
+    expect(
+      parseLoreGameBot('Storia.\nHai ottenuto 👍🏽👇🏽👍🏽\n👉🏽/avventura👈🏽\n👍🏽👆🏽👍🏽 [M1] [usabile]!')
+    ).toMatchObject({
+      kind: 'gain',
+      item: '👍🏽👇🏽👍🏽\n👉🏽/avventura👈🏽\n👍🏽👆🏽👍🏽',
+      rarity: 'M1',
+    });
+  });
+
+  it('reads the outcomes that give nothing, accents decomposed or not', () => {
+    const nothing = (text: string) => parseLoreGameBot(text);
+    expect(nothing('Non e\u0300 passato abbastanza tempo! Riprova fra 3 secondi.')).toMatchObject({
+      reason: 'cooldown',
+    });
+    expect(nothing('Non è passato abbastanza tempo! Riprova fra 5 minuti e 3 secondi.')).toEqual({
+      kind: 'nothing',
+      bot: 'LoreGameBot',
+      reason: 'cooldown',
+      retryMs: 303_000,
+    });
+    expect(
+      nothing('Non è passato abbastanza tempo! Riprova fra 31 secondi.\n\nXDXDXDXDXD')
+    ).toMatchObject({
+      reason: 'cooldown',
+    });
+    expect(
+      nothing(
+        'Il combattimento inizia...\nX sconfigge alice [L1]!\n\nTorni a casa dolorante e a mani vuote...'
+      )
+    ).toMatchObject({ reason: 'defeated' });
+    expect(
+      nothing("Nessuno dei due sembra avere la meglio...\n\nL'oggetto si perde nello scontro...")
+    ).toMatchObject({ reason: 'lost' });
+    expect(nothing('Stai calmo maschio...')).toMatchObject({ reason: 'calm' });
+    expect(
+      nothing(
+        'Non sei registrato! Usa /registrami per registrarti o /help per informazioni sul gioco.'
+      )
+    ).toMatchObject({ reason: 'unregistered' });
+  });
+
+  it('keeps anything else as not understood, a level-up list included', () => {
+    expect(parseLoreGameBot('È giunto il livello 5! 🎉\nOttieni:\n> 50 monete\n')).toEqual({
+      kind: 'unknown',
+      bot: 'LoreGameBot',
+      text: 'È giunto il livello 5! 🎉\nOttieni:\n> 50 monete',
+    });
+    expect(parseLoreGameBot('Hai ottenuto qualcosa senza rarità')).toMatchObject({
+      kind: 'unknown',
+    });
+  });
+});
+
+describe('italianWait', () => {
+  it('reads the waits the bots state, and nothing else', () => {
+    expect(italianWait('9 minuti e 29 secondi')).toBe(569_000);
+    expect(italianWait('1 minuto e 1 secondo')).toBe(61_000);
+    expect(italianWait('10 secondi')).toBe(10_000);
+    expect(italianWait('4 ore e 58 minuti')).toBe(17_880_000);
+    expect(italianWait('1 ora')).toBe(3_600_000);
+    expect(italianWait('un po')).toBeUndefined();
+  });
+});
+
+describe('inventoryCooldown', () => {
+  it('reads the wait of the cooldown, which names nobody', () => {
+    expect(
+      inventoryCooldown(
+        'Troppo presto, devi riposare ancora per 9 minuti e 29 secondi prima di poterti avventurare di nuovo. Nelle /faq puoi trovare gruppi per scambiare oggetti e giocare con altri utenti! :P'
+      )
+    ).toBe(569_000);
+    expect(
+      inventoryCooldown(
+        'Troppo presto, devi riposare ancora per un attimo prima di poterti avventurare'
+      )
+    ).toBe(15 * 60_000);
+    expect(inventoryCooldown('@alice, hai vinto')).toBeUndefined();
+  });
+});
+
+describe('parseEpicLorelecBot', () => {
+  it("reads the count of a turn, after the day's lines, negative too", () => {
+    expect(
+      parseEpicLorelecBot(
+        'Complimenti 78, Victor Esempio IL GRANDE, mi hai rotto il cazzo 53 volte!\n\nE me la spacchi'
+      )
+    ).toEqual({ kind: 'count', bot: 'EpicLorelecBot', count: 53 });
+    expect(
+      parseEpicLorelecBot(
+        'Oggi è Lunedì! Doppie rotture di cazzo!\nComplimenti 10, X del male 👿, mi hai rotto il cazzo -1 volta!'
+      )
+    ).toMatchObject({ count: -1 });
+  });
+
+  it('reads the cooldown, with a parenthesis before it or not, and ignores anything else', () => {
+    expect(
+      parseEpicLorelecBot(
+        "Non e\u0300 passato abbastanza tempo dall'ultima rottura! Riprova fra 14 minuti e 57 secondi."
+      )
+    ).toEqual({ kind: 'nothing', bot: 'EpicLorelecBot', reason: 'cooldown', retryMs: 897_000 });
+    expect(
+      parseEpicLorelecBot(
+        "(🔟 piedento) Non è passato abbastanza tempo dall'ultima rottura! Riprova fra un po."
+      )
+    ).toEqual({ kind: 'nothing', bot: 'EpicLorelecBot', reason: 'cooldown' });
+    expect(parseEpicLorelecBot('Turno 1\n\nBasi - 1000 HP')).toBeUndefined();
+  });
+});

@@ -1,0 +1,13 @@
+{
+  "id": "game-bots",
+  "version": "0.1.0",
+  "api": "1",
+  "provides": "@regnotron/game-bots",
+  "imports": {},
+  "plugins": [
+    "src/plugins/inventorybot.ts",
+    "src/plugins/loregame.ts",
+    "src/plugins/epiclorelec.ts",
+    "src/plugins/metagame.ts"
+  ]
+}
