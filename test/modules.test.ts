@@ -31,6 +31,30 @@ function modules(root: string): string[] {
 
 const read = <T>(file: string): T => JSON.parse(fs.readFileSync(file, 'utf8')) as T;
 
+/**
+ * The library modules of other repositories the modules import, vendored as submodules and run as
+ * workspaces (README, "Development"): each by the name it provides, with its version.
+ */
+const VENDORED: Record<string, string> = Object.fromEntries(
+  ['vendor/inventorybot-wiki/packages/grammar'].map((dir) => {
+    const json = read<ModuleJson>(path.join(ROOT, dir, 'module.json'));
+    return [json.provides, json.version];
+  })
+);
+
+/** Whether `version` satisfies a caret range (`^1.2.3`, `^0.2.0`), the form the modules use. */
+function satisfiesCaret(version: string, range: string): boolean {
+  const [v, r] = [version, range.replace(/^\^/u, '')].map((x) => x.split('.').map(Number)) as [
+    number[],
+    number[],
+  ];
+  const major = r[0] === 0 ? 2 : 1; // ^0.x.y fixes the minor too
+  for (let i = 0; i < major; i++) if (v[i] !== r[i]) return false;
+  for (let i = 0; i < 3; i++)
+    if ((v[i] as number) !== (r[i] as number)) return (v[i] as number) > (r[i] as number);
+  return true;
+}
+
 /** The `.ts` files under `dir`, relative to it. */
 function sources(dir: string): string[] {
   return fs
@@ -49,6 +73,21 @@ function specifiers(text: string): string[] {
 
 describe('the modules', () => {
   const all = modules(ROOT);
+
+  it('satisfy caret ranges as npm does', () => {
+    expect(['0.2.0', '0.2.5', '0.3.0', '0.1.9'].map((v) => satisfiesCaret(v, '^0.2.0'))).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+    expect(['1.2.3', '1.9.0', '2.0.0', '1.2.2'].map((v) => satisfiesCaret(v, '^1.2.3'))).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+  });
 
   it('are the three of RegnoTron', () => {
     expect(all.map((m) => path.basename(m)).sort()).toEqual([
@@ -94,7 +133,15 @@ describe('the modules', () => {
 
       it('imports only Node, the shell, zod, its own files and the modules it declares', () => {
         const declared = new Set(Object.keys(json.imports));
-        for (const name of declared) expect(all).toContain(`modules/${name.split('/')[1]}`);
+        for (const [name, range] of Object.entries(json.imports)) {
+          expect(range).toMatch(/^\^\d+\.\d+\.\d+$/u);
+          if (name.startsWith('@regnotron/'))
+            expect(all).toContain(`modules/${name.split('/')[1]}`);
+          else {
+            expect(VENDORED[name], name).toBeDefined();
+            expect(satisfiesCaret(VENDORED[name] as string, range), `${name} ${range}`).toBe(true);
+          }
+        }
         const found = new Set<string>();
         for (const dirName of ['src', 'test']) {
           const base = path.join(ROOT, dir, dirName);
@@ -109,10 +156,12 @@ describe('the modules', () => {
                 s.startsWith('#src/') ||
                 s.startsWith('./') ||
                 (test && (s === 'vitest' || s.startsWith('#test/'))) ||
-                s.startsWith('@regnotron/');
+                s.startsWith('@regnotron/') ||
+                s in VENDORED;
               expect(ok, `${dir}/${dirName}/${file}: ${s}`).toBe(true);
               const m = /^(@regnotron\/[\w-]+)/u.exec(s);
               if (m !== null && !test) found.add(m[1] as string);
+              if (s in VENDORED && !test) found.add(s);
             }
           }
         }

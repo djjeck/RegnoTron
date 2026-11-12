@@ -51,6 +51,46 @@ describe('the inventorybot parser', () => {
     expect(p.drift()).toMatchObject({ unread: 1 });
   });
 
+  it('reads no gain in a /mostra reply, and an announced [W] drop to alice', async () => {
+    const p = await run(inventorybotPlugin, CONFIG, GROUP);
+    const bot = { sender: 'InventoryBot', chat: GROUP };
+    p.hear({ ...bot, text: '@alice, mostri orgogliosamente di possedere 3x una giuggiola [C]' });
+    expect(p.outcomes()).toEqual([]);
+    p.hear({ ...bot, text: `[W] @alice il pizzaiolo, ${KNOWN}un baule 📦 [S] [usabile]!` });
+    expect(p.events).toMatchObject([
+      {
+        chat: GROUP,
+        outcome: {
+          kind: 'gain',
+          bot: 'InventoryBot',
+          item: 'un baule 📦',
+          rarity: 'S',
+          tags: ['usabile'],
+          sure: true,
+        },
+      },
+    ]);
+  });
+
+  it("learns the items of anyone's drops, and starts from what its store kept", async () => {
+    const p = await run(inventorybotPlugin, CONFIG, GROUP);
+    const bot = { sender: 'InventoryBot', chat: GROUP };
+    p.hear({ ...bot, text: `@lucia, ${KNOWN}una giuggiola [C]!` });
+    // A sentence it never shipped, before the item it learned: sure.
+    p.hear({ ...bot, text: '@alice, nel fosso trovi una giuggiola [C]!' });
+    // Unknown sentence and item: the grammar's guess, which says so.
+    p.hear({ ...bot, text: '@alice, sul molo raccogli una conchiglia [N]!' });
+    expect(p.events.map((e) => e['outcome'])).toMatchObject([
+      { item: 'una giuggiola', sure: true },
+      { item: 'una conchiglia', sure: false },
+    ]);
+    const q = await run(inventorybotPlugin, CONFIG, GROUP, {
+      knowledge: { items: ['una conchiglia'], prefixes: ['sul molo raccogli '] },
+    });
+    q.hear({ ...bot, text: '@alice, sul molo raccogli un granchio [C]!' });
+    expect(q.events[0]).toMatchObject({ outcome: { item: 'un granchio', sure: true } });
+  });
+
   it('reports a lucky adventure it cannot read', async () => {
     const p = await run(inventorybotPlugin, CONFIG);
     p.hear({

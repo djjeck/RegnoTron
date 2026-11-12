@@ -14,7 +14,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # MegaBotTron1999, the shell the modules are developed against, is a submodule.
+      # MegaBotTron1999, the shell the modules are developed against, and the InventoryBot wiki,
+      # whose grammar game-bots imports, are submodules.
       - uses: actions/checkout@v7.0.1
         with:
           submodules: true

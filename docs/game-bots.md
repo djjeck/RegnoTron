@@ -1,11 +1,12 @@
 # The game bots RegnoTron reads
 
-Documented as of 7 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
+Documented as of 12 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
 has other game bots, each with its own game played one turn at a time. RegnoTron reads the turns of
 three of them, @InventoryBot, @LoreGameBot and @EpicLorelecBot, in `modules/game-bots/`: their reply
-grammars in `src/replies.ts` (and @InventoryBot's sentences in `src/inventorybot-templates.ts`),
-their parser plugins in `src/plugins/`, and a ledger of what the turns brought, listed by `/loot`.
-Marks as in [game-rules.md](game-rules.md): **[S]** stated, **[M]** measured, **[?]** unknown.
+grammars (@InventoryBot's is the [InventoryBot wiki](https://github.com/djjeck/InventoryBot-wiki)'s,
+read onto RegnoTron's outcomes by `src/inventorybot.ts`; the others' are in `src/replies.ts`), their
+parser plugins in `src/plugins/`, and a ledger of what the turns brought, listed by `/loot`. Marks
+as in [game-rules.md](game-rules.md): **[S]** stated, **[M]** measured, **[?]** unknown.
 
 **Nothing here plays any bot.** RegnoTron's modules only read the bots' answers; they send no turn.
 @pescaccia_bot, the group's fishing game, does not allow automation, and nothing here plays it.
@@ -23,10 +24,13 @@ player's own.
 | @LoreGameBot    | `/avventura`                      | A story, replying to the command, that ends in an item (`Hai ottenuto un'aquila cieca [B1]!`), in a fight lost (`Torni a casa dolorante e a mani vuote...`) or in the item lost (`L'oggetto si perde nello scontro...`)                                                     |
 | @EpicLorelecBot | `/avventura` or `/rompimiilcazzo` | A running count of the player's "rotture": `Complimenti 78, <display name>, mi hai rotto il cazzo 53 volte!` (the count may be negative, and lines of the day's event may come first)                                                                                       |
 
-@InventoryBot's sentence and item are not delimited: the item is what is left once a known sentence
-is cut off. Its 88 known sentences cover nearly all the drops seen [M]; an unknown one falls back on
-the last indefinite article, and the gain is marked as a guess. The bots write some accented letters
-decomposed ("e" and a combining grave for "è"), so the text is read in its composed form (NFC).
+@InventoryBot's sentence and item are not delimited: the item is a known item that ends the drop, or
+what is left once a known sentence is cut off. The parser starts with 88 sentences, which covered
+nearly all the drops seen [M], and learns the items and the sentences of the drops it reads; a drop
+it cannot resolve takes the grammar's guess (what follows the last indefinite article), and the gain
+is marked as a guess. `/mostra`'s "mostri orgogliosamente di possedere 3x … [C]" names an item and a
+rarity too, and is no drop. The bots write some accented letters decomposed ("e" and a combining
+grave for "è"), so the text is read in its composed form (NFC).
 
 ## 2. Rests between turns
 
@@ -51,8 +55,9 @@ its edge reads it too:
 - **In the direct chat** every turn is the owner's, so the bot's first message after a turn answers
   it. An answer there that a parser cannot read is reported as drift.
 - **@InventoryBot** does not reply to the command but names the player (`@username, …`, sometimes
-  with a title after the name), so its drops are read in either chat when they name the owner. Its
-  "too soon" names nobody, so it is read only in the direct chat.
+  with a title after the name, and after `[W] ` when it announces the adventure to another group),
+  so its drops are read in either chat when they name the owner. Its "too soon" names nobody, so it
+  is read only in the direct chat.
 - **@LoreGameBot** replies to the command and names nobody: a reply to one of the owner's turns is
   read in either chat.
 - **@EpicLorelecBot** names the player by display name, so its count is read only in the direct

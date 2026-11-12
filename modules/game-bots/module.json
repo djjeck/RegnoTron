@@ -1,9 +1,9 @@
 {
   "id": "game-bots",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "api": "1",
   "provides": "@regnotron/game-bots",
-  "imports": {},
+  "imports": { "@inventorybot-wiki/grammar": "^0.2.0" },
   "plugins": [
     "src/plugins/inventorybot.ts",
     "src/plugins/loregame.ts",

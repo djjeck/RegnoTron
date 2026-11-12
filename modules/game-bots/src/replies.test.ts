@@ -1,92 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { INVENTORYBOT_TEMPLATES } from './inventorybot-templates.ts';
-import {
-  inventoryCooldown,
-  inventoryItem,
-  italianWait,
-  parseEpicLorelecBot,
-  parseInventoryBot,
-  parseLoreGameBot,
-} from './replies.ts';
-
-const KNOWN = 'il re di Quamser, contento delle tue gesta, ti elargisce ';
-
-describe('inventoryItem', () => {
-  it('cuts a known template off the front', () => {
-    expect(INVENTORYBOT_TEMPLATES).toContain(KNOWN);
-    expect(inventoryItem(`${KNOWN}un piccolo cuscino da divano con disegnato un gattone`)).toEqual({
-      item: 'un piccolo cuscino da divano con disegnato un gattone',
-      sure: true,
-    });
-  });
-
-  it('guesses from the last indefinite article with an unknown template, and says so', () => {
-    expect(inventoryItem('scavi in un orto sconosciuto e trovi una zappa')).toEqual({
-      item: 'una zappa',
-      sure: false,
-    });
-    expect(inventoryItem("nel fango trovi un'ancora")).toEqual({ item: "un'ancora", sure: false });
-    expect(inventoryItem('nulla di nulla')).toEqual({ item: 'nulla di nulla', sure: false });
-  });
-});
-
-describe('parseInventoryBot', () => {
-  it("reads alice's drop, with its rarity and tags, the addressee in any case", () => {
-    expect(
-      parseInventoryBot(`@alice, ${KNOWN}un baule di quercia 📦 [R] [usabile]!`, 'ALice')
-    ).toEqual({
-      kind: 'gain',
-      bot: 'InventoryBot',
-      item: 'un baule di quercia 📦',
-      rarity: 'R',
-      tags: ['usabile'],
-      sure: true,
-    });
-  });
-
-  it('reads an addressee with a title, and a rarity with a plus', () => {
-    expect(
-      parseInventoryBot(`@alice il pizzaiolo, ${KNOWN}una giuggiola farinosa [C+]!`, 'alice')
-    ).toMatchObject({ item: 'una giuggiola farinosa', rarity: 'C+', tags: [] });
-  });
-
-  it('reads the lucky adventure', () => {
-    expect(
-      parseInventoryBot(
-        "Complimenti @alice, questa e' l'avventura FORTUNATA del giorno! Hai vinto: una Sfera del Grillo da 1 stella ⭐️ [X]",
-        'alice'
-      )
-    ).toEqual({
-      kind: 'gain',
-      bot: 'InventoryBot',
-      item: 'una Sfera del Grillo da 1 stella ⭐️',
-      rarity: 'X',
-      tags: [],
-      sure: true,
-    });
-  });
-
-  it("ignores others' adventures, the cooldown and other replies", () => {
-    for (const text of [
-      `@TeamPalla, ${KNOWN}un pesante bullone [C]!`,
-      "Complimenti @TeamPalla, questa e' l'avventura FORTUNATA del giorno! Hai vinto: una Sfera [X]",
-      'Troppo presto, devi riposare ancora per 9 minuti e 29 secondi prima di poterti avventurare di nuovo.',
-      'alice, hai: > un generatore [X] x1',
-    ])
-      expect(parseInventoryBot(text, 'alice')).toBeUndefined();
-  });
-
-  it('ignores its other messages to alice, and keeps a lucky one it cannot read', () => {
-    for (const text of ['@alice, possiedi:', '@alice, non hai niente del genere di usabile.'])
-      expect(parseInventoryBot(text, 'alice')).toBeUndefined();
-    expect(
-      parseInventoryBot(
-        "Complimenti @alice, questa e' l'avventura FORTUNATA del giorno! Hai vinto: qualcosa",
-        'alice'
-      )
-    ).toMatchObject({ kind: 'unknown' });
-  });
-});
+import { italianWait, parseEpicLorelecBot, parseLoreGameBot } from './replies.ts';
 
 describe('parseLoreGameBot', () => {
   it('reads the gain on the last line, after the story', () => {
@@ -187,22 +100,6 @@ describe('italianWait', () => {
     expect(italianWait('4 ore e 58 minuti')).toBe(17_880_000);
     expect(italianWait('1 ora')).toBe(3_600_000);
     expect(italianWait('un po')).toBeUndefined();
-  });
-});
-
-describe('inventoryCooldown', () => {
-  it('reads the wait of the cooldown, which names nobody', () => {
-    expect(
-      inventoryCooldown(
-        'Troppo presto, devi riposare ancora per 9 minuti e 29 secondi prima di poterti avventurare di nuovo. Nelle /faq puoi trovare gruppi per scambiare oggetti e giocare con altri utenti! :P'
-      )
-    ).toBe(569_000);
-    expect(
-      inventoryCooldown(
-        'Troppo presto, devi riposare ancora per un attimo prima di poterti avventurare'
-      )
-    ).toBe(15 * 60_000);
-    expect(inventoryCooldown('@alice, hai vinto')).toBeUndefined();
   });
 });
 

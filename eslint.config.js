@@ -18,13 +18,15 @@ const TEST_IMPORTS = {
 
 /**
  * A module has no npm dependencies of its own (MegaBotTron1999's bot-os.md D49): its code imports
- * only Node, the shell (`@megabottron1999/*`), zod and other modules (`@regnotron/*`), besides its
- * own files. `test/modules.test.ts` checks the same, and that each module declares the modules it
+ * only Node, the shell (`@megabottron1999/*`), zod and other modules (`@regnotron/*`, and the
+ * InventoryBot wiki's grammar, `@inventorybot-wiki/grammar`, vendored), besides its own files. `test/modules.test.ts` checks the same, and that each module declares the modules it
  * imports in its `module.json`.
  */
 const FOREIGN_IMPORTS = {
-  regex: '^(?!node:|@megabottron1999/|@regnotron/|zod$|#src/|#test/|\\./|vitest$)',
-  message: 'A module imports only node:*, @megabottron1999/*, zod and @regnotron/* (D49).',
+  regex:
+    '^(?!node:|@megabottron1999/|@regnotron/|@inventorybot-wiki/grammar$|zod$|#src/|#test/|\\./|vitest$)',
+  message:
+    'A module imports only node:*, @megabottron1999/*, zod, @regnotron/* and @inventorybot-wiki/grammar (D49).',
 };
 
 /** RegnoTron plays nothing: no module imports the shell's actors. */

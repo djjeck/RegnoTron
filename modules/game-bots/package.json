@@ -1,8 +1,8 @@
 {
   "name": "@regnotron/game-bots",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "RegnoTron's game bots: @InventoryBot's, @LoreGameBot's and @EpicLorelecBot's grammars and parsers, and the ledger of their turns",
+  "description": "RegnoTron's game bots: @InventoryBot's, @LoreGameBot's and @EpicLorelecBot's parsers, and the ledger of their turns",
   "license": "MIT",
   "type": "module",
   "exports": {

@@ -1,18 +1,11 @@
 /**
- * What the owner gets from a turn, read from the replies of three of the five game
- * bots: @InventoryBot, @LoreGameBot and @EpicLorelecBot, in the private chat with each or in the
- * group. Pure: their parser plugins (@megabottron1999/turns/turn-parser.ts) decide which
- * messages answer the owner's turns. The rests between turns are here too, as the bots state them or
- * as measured (docs/game-bots.md §2).
+ * What the owner gets from a turn of the group's game bots, as their parser plugins publish it
+ * (`Outcome`), with the grammars of two of them: @LoreGameBot and @EpicLorelecBot, in the private
+ * chat with each or in the group. Pure: their parser plugins (@megabottron1999/turns/turn-parser.ts)
+ * decide which messages answer the owner's turns. The rests between turns are here too, as the bots
+ * state them or as measured (docs/game-bots.md §2). @InventoryBot's grammar is the InventoryBot
+ * wiki's, `@inventorybot-wiki/grammar`, read onto these outcomes by `src/inventorybot.ts`.
  *
- * - @InventoryBot answers in the group without replying to the command, and names the player:
- *   "@alice, <sentence><item> [C]!" (docs/game-bots.md §1). Nothing marks
- *   where the sentence ends and the item begins, so the item is what is left once a known sentence
- *   template is cut off (modules/game-bots/src/inventorybot-templates.ts). An unknown template
- *   falls back on the last indefinite article, and the gain says it is a guess. The rare lucky
- *   adventure names its item outright. The cooldown names nobody, so it is not read,
- *   and its other messages to the player (answers to `/usa`, `/inventario`, `/dai`, …) are no
- *   adventure's.
  * - @LoreGameBot replies to the command and names nobody; its last lines are the outcome: "Hai
  *   ottenuto <item> [M2]!" (the item's name may span lines), a fight lost ("Torni a casa dolorante
  *   e a mani vuote..."), the item lost in a fight ("L'oggetto si perde nello scontro..."), the
@@ -28,7 +21,6 @@
  * The bots write some accented letters decomposed ("e" and a combining grave for "è"), so the text
  * is read in its composed form (NFC), and the items are kept in it.
  */
-import { INVENTORYBOT_TEMPLATES } from './inventorybot-templates.ts';
 
 export const INVENTORYBOT = 'InventoryBot';
 export const LOREGAMEBOT = 'LoreGameBot';
@@ -69,7 +61,7 @@ export type Outcome =
       count?: number;
       /** The tags after the rarity, which start lower-case: `usabile`, `equipaggiabile 🗡`. */
       tags: string[];
-      /** False when the item's name is a guess (an unknown sentence template). */
+      /** False when the item's name is a guess (@InventoryBot's, from an unknown sentence). */
       sure: boolean;
     }
   | {
@@ -109,53 +101,6 @@ const RARITY_END = /^(.*?) \[([A-Z]+\d*\+?)\]((?: ?\[[a-z][^\]\n]*\])*)!?$/su;
 
 function tagsOf(s: string): string[] {
   return [...s.matchAll(/\[([a-z][^\]\n]*)\]/gu)].map((m) => m[1] as string);
-}
-
-/** Longest first, so that a template that extends another wins. */
-const TEMPLATES = [...INVENTORYBOT_TEMPLATES].sort((a, b) => b.length - a.length);
-
-/** The item at the end of an @InventoryBot sentence, and whether its template was known. */
-export function inventoryItem(sentence: string): { item: string; sure: boolean } {
-  const known = TEMPLATES.find((t) => sentence.startsWith(t) && sentence.length > t.length);
-  if (known !== undefined) return { item: sentence.slice(known.length), sure: true };
-  const articles = [...sentence.matchAll(/(?<=^|\s)(?:un|uno|una)\s|(?<=^|\s)un'/gu)];
-  const last = articles.at(-1);
-  return { item: last === undefined ? sentence : sentence.slice(last.index), sure: false };
-}
-
-/**
- * An @InventoryBot message, if it tells what `self` (a username, without `@`) got from an
- * adventure; undefined for anything else (others' adventures, other replies, the cooldown).
- */
-export function parseInventoryBot(text: string, self: string): Outcome | undefined {
-  const t = text.normalize('NFC').trim();
-  const lucky =
-    /^Complimenti @(\w+), questa e' l'avventura FORTUNATA del giorno! Hai vinto: (.*)$/su.exec(t);
-  if (lucky !== null) {
-    if (lucky[1]?.toLowerCase() !== self.toLowerCase()) return undefined;
-    const end = RARITY_END.exec(lucky[2] as string);
-    if (end === null) return { kind: 'unknown', bot: INVENTORYBOT, text: t };
-    return {
-      kind: 'gain',
-      bot: INVENTORYBOT,
-      item: end[1] as string,
-      rarity: end[2] as string,
-      tags: tagsOf(end[3] as string),
-      sure: true,
-    };
-  }
-  // The addressee may carry a title ("@Name il cuoco, …").
-  const drop = /^@(\w+)(?: [^,\n]*)?, (.*)$/su.exec(t);
-  if (drop === null || drop[1]?.toLowerCase() !== self.toLowerCase()) return undefined;
-  const end = RARITY_END.exec(drop[2] as string);
-  if (end === null) return undefined;
-  return {
-    kind: 'gain',
-    bot: INVENTORYBOT,
-    ...inventoryItem(end[1] as string),
-    rarity: end[2] as string,
-    tags: tagsOf(end[3] as string),
-  };
 }
 
 const LORE_NOTHING: [RegExp, Extract<Outcome, { kind: 'nothing' }>['reason']][] = [
@@ -199,17 +144,6 @@ export function parseLoreGameBot(raw: string): Outcome {
 function retryOf(text: string): number | undefined {
   const m = /Riprova fra ([^.!\n]+)/u.exec(text);
   return m === null ? undefined : italianWait(m[1] as string);
-}
-
-/**
- * @InventoryBot's cooldown (docs/game-bots.md §2), which names nobody: its wait in ms, or
- * undefined if `text` is not one.
- */
-export function inventoryCooldown(text: string): number | undefined {
-  const m = /^Troppo presto, devi riposare ancora per (.+?) prima di poterti avventurare/u.exec(
-    text.normalize('NFC').trim()
-  );
-  return m === null ? undefined : (italianWait(m[1] as string) ?? TURN_REST_MS);
 }
 
 const EPIC_COUNT = /mi hai rotto il cazzo (-?\d+) volt[ae]!/u;

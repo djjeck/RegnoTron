@@ -1,9 +1,11 @@
 /**
- * The sentence templates of @InventoryBot's adventure drops, measured from the group's export
- * by tools/measure/inventorybot_templates.py: re-run it on fresh data to refresh them.
- * 88 templates, covering 2394 of 2398 drops.
+ * The sentence prefixes of @InventoryBot's adventure drops, measured from the group's export (88,
+ * covering 2394 of 2398 drops then): the knowledge the `inventorybot` parser starts with, for the
+ * grammar's `resolveDrop` (`@inventorybot-wiki/grammar`), which finds the item after the longest of
+ * them that starts a drop. The parser learns more as it reads (`inventorybot-knowledge.ts`). They
+ * are the game's own texts, which the grammar's repository never ships.
  */
-export const INVENTORYBOT_TEMPLATES: readonly string[] = [
+export const INVENTORYBOT_PREFIXES: readonly string[] = [
   'accetti la quest del potente Mago del Sud che ha necessita di cinque conchiglie di Peltah per preparare un sortilegio. Ti impegni per trovarle e lui ti ricompensa con ',
   'accetti la quest di un contadino che ha perduto il suo toro di compagnia. Glielo riporti e tra le lacrime il contadino ti ricompensa con ',
   'accetti la quest di una principessa che ha bisogno di otto petali di Ragonath per la sua pozione, ti rechi a prenderli ed ella ti ricompensa con ',
