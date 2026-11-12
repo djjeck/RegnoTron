@@ -6,6 +6,7 @@ import {
   Core,
   definePlugin,
   MemoryEventLog,
+  parseManifest,
   VirtualClock,
 } from '@megabottron1999/core';
 import { secretsWith } from '@megabottron1999/core/test/secrets.ts';
@@ -308,6 +309,13 @@ describe('the norelec plugin', () => {
 describe('the norelec plugin, from its config', () => {
   it('is its entry’s one plugin, and needs the channel', () => {
     expect(plugins).toEqual([norelecPlugin]);
+    // It reads the channel and sends nothing: a chat-in input, and no chat-out output.
+    const m = parseManifest(norelecPlugin.manifest);
+    expect(m.inputs['channel']).toMatchObject({
+      type: 'chat-in',
+      bind: { node: 'irc', reads: [] },
+    });
+    expect(m.outputs['channel']).toBeUndefined();
     const config = norelecPlugin.manifest.config;
     expect(config?.safeParse({}).success).toBe(false);
     expect(config?.parse({ channel: '#lobby' })).toEqual({

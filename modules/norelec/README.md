@@ -19,10 +19,10 @@ The design is in [docs/bot-protocol.md](../../docs/bot-protocol.md), the rules i
 both parsers are tested against.
 
 **Plugin:** `norelec` (`src/plugins/norelec.ts`), a parser, built from its node's config alone. It
-reads the game's channel through its `channel` input, an edge from an `irc` node that reads the
-channel, and replays the last hours of bot messages from the event log (`ctx.events`) at `ready`. A
-fresh instance learns the players who are Telegram accounts from the whole log once, and keeps them
-in its store (`accounts`).
+reads the game's channel through its `channel` input, a chat-in edge from an `irc` node that reads
+the channel, and replays the last hours of bot messages from the event log (`ctx.events`) at
+`ready`. A fresh instance learns the players who are Telegram accounts from the whole log once, and
+keeps them in its store (`accounts`).
 
 | Config         | Default      | Meaning                                                                     |
 | -------------- | ------------ | --------------------------------------------------------------------------- |

@@ -140,11 +140,12 @@ export const norelecPlugin: Plugin = definePlugin({
     description: "NorelecBot's game: its messages read, and the game state they make",
     config: norelecConfig,
     inputs: {
+      // It reads and never sends (MegaBotTron1999's bot-os.md D60), so a chat-in input alone.
       channel: {
-        type: 'chat',
+        type: 'chat-in',
         network: 'irc',
         help: "NorelecBot's channel, read into the game: the edge reads the config's channel",
-        bind: { node: IRC, reads: [], sends: [] },
+        bind: { node: IRC, reads: [] },
       },
     },
     games: { registers: [NORELEC] },
