@@ -11,7 +11,7 @@
  * into the state the replay left. A first start takes the total of every bot message of the event
  * log (`ctx.events`), and posts nothing. Its posts leave through the outbox of the Telegram bot
  * account its `group` input is bound to, to the group its config names, which that edge must send
- * to, in the plugin's mode. Its one migration is a no-op, so that the store of v0's
+ * to, for real unless that edge is a dry run (MegaBotTron1999's bot-os.md D64). Its one migration is a no-op, so that the store of v0's
  * `norelec-utilities`, which kept the clock (at version 1), can be imported as its instance
  * (bot-os.md D54).
  */

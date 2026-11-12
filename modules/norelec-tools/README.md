@@ -29,8 +29,10 @@ and the clock, can be imported as either instance (MegaBotTron1999's docs/bot-os
 | `restS`    | `90`    | Rest after a return, in seconds, for the game state a first start replays        |
 | `settleMs` | `60000` | Quiet after the trips change before the map is drawn again; `0`: only when asked |
 
-**`nuclear-clock`:** inputs `game`, `messages` and `group`, a chat edge from a `telegram-bot` node
-that sends to the group; the setting `nuclearClock` (off until the owner turns it on).
+**`nuclear-clock`:** inputs `game`, `messages` and `group`, a chat of a `telegram-bot` node, which
+is two edges: a chat-in edge from it (reading nothing: the clock only asks the bot's name and
+status) and a chat-out edge to it that sends to the group, live or a dry run; the setting
+`nuclearClock` (off until the owner turns it on).
 
 | Config  | Default | Meaning                                                                     |
 | ------- | ------- | --------------------------------------------------------------------------- |

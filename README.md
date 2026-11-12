@@ -9,7 +9,7 @@ nothing: there is no automation here. Its models of the games include the rules 
 without announcing them, since a rule that is public levels the field.
 
 **Status: v1-alpha.** The code is the parsers, state and tools that ran in production on an earlier,
-monolithic version, now split into modules for MegaBotTron1999 `v0.1.0-alpha.3`, whose loader
+monolithic version, now split into modules for MegaBotTron1999 `v0.1.0-alpha.9`, whose loader
 installs them into a running shell. Everything here changes freely until the shell's launch.
 
 ## The modules
@@ -61,7 +61,7 @@ nodes. Modules run with the shell's full rights, unsandboxed: install only what 
   and @EpicLorelecBot's `/rompimiilcazzo` too: `TURN_COMMANDS` in
   `modules/game-bots/src/replies.ts`). An edge that also reads the game's group has them read the
   turns played there. A shell turn-actor run beside one needs `{ "command": "/avventura" }`.
-- The nuclear clock posts only to the group its config names (`group`), which its edge from
+- The nuclear clock posts only to the group its config names (`group`), which its chat-out edge to
   `telegram-bot` must send to, and only with its `nuclearClock` setting on.
 
 Each module's README lists its plugins' config fields.
@@ -69,7 +69,7 @@ Each module's README lists its plugins' config fields.
 ## Developing
 
 MegaBotTron1999 is vendored as a git submodule, `vendor/MegaBotTron1999`, pinned to a tag
-(`v0.1.0-alpha.3`); its packages are workspaces here, beside the modules, which are workspaces too
+(`v0.1.0-alpha.9`); its packages are workspaces here, beside the modules, which are workspaces too
 (each `@regnotron/<id>`, with `exports` `./*` → `./src/*`), so that imports and tests resolve as the
 loader will resolve them.
 

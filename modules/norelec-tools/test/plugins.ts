@@ -10,7 +10,6 @@ import {
   FakeConnector,
   fakeConnectorPlugin,
   type LogEntry,
-  type Mode,
   type Plugin,
   type SendRecord,
 } from '@megabottron1999/core';
@@ -29,7 +28,10 @@ export interface KitOptions {
   admin?: boolean;
   config?: Record<string, unknown>;
   settings?: Record<string, unknown>;
-  mode?: Mode;
+  /** The chats the clock's `group` edge sends to: by default its config's `group`. */
+  sends?: readonly string[];
+  /** Whether that edge is a dry run (MegaBotTron1999's bot-os.md D64); live by default. */
+  dryRun?: boolean;
   documents?: Record<string, unknown>;
   /** The bot messages of the event log before the start. */
   logged?: readonly { time: number; text: string }[];
@@ -66,11 +68,14 @@ export async function kitWith(id: string, plugin: Plugin, o: KitOptions = {}) {
     // The chats the owner gives the edges: the game's channel, and the group the clock posts to.
     graph: (defaults) => {
       const g = withChats(defaults, 'norelec.channel', { reads: [CHANNEL] });
-      return group === undefined ? g : withChats(g, `${id}.group`, { sends: [group] });
+      const sends = o.sends ?? (group === undefined ? [] : [group]);
+      return withChats(g, `${id}.group`, {
+        sends,
+        ...(o.dryRun === undefined ? {} : { dryRun: o.dryRun }),
+      });
     },
     ...(o.logged === undefined ? {} : { history: logOf(o.logged) }),
     ...(o.settings === undefined ? {} : { settings: { [id]: o.settings } }),
-    modes: { [id]: o.mode ?? 'live' },
     ...(o.documents === undefined ? {} : { documents: { [id]: o.documents } }),
     record: (r) => {
       if (r.type === 'core.send') sends.push(r as SendRecord);

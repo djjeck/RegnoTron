@@ -25,11 +25,17 @@ describe('the nuclear-clock plugin', () => {
     ]);
     for (const [name, c] of Object.entries(commands))
       if (c.menu !== undefined) expect(name.length).toBeLessThanOrEqual(32);
-    // Without a group it reaches the bot, and sends nowhere.
+    // Without a group it reaches the bot, and sends nowhere: module API 1's chat, read as a
+    // chat-in input (the bot's status and name) and a chat-out output (the posts).
     expect(m.inputs['group']).toMatchObject({
-      type: 'chat',
+      type: 'chat-in',
       network: 'telegram-bot',
-      bind: { node: 'telegram-bot', reads: [], sends: [] },
+      bind: { node: 'telegram-bot', reads: [] },
+    });
+    expect(m.outputs['group']).toMatchObject({
+      type: 'chat-out',
+      network: 'telegram-bot',
+      bind: { node: 'telegram-bot', sends: [] },
     });
     expect(plugins).toEqual([nuclearClockPlugin]);
     expect(nuclearClockPlugin.manifest.config?.parse({})).toEqual({ restS: 90 });
@@ -88,20 +94,32 @@ describe('the nuclear-clock plugin', () => {
     expect(bot.sent[0]?.text).toMatch(/\/aggiornamento_della_protezione_civile$/u);
   });
 
-  it('logs a post its mode refuses as failed, and posts nothing while the setting is off', async () => {
-    const readOnly = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
+  it('logs a post its edge refuses as failed, one its dry run logs as sent, and posts nothing while the setting is off', async () => {
+    const refused = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
       config: { group: GROUP },
-      mode: 'read-only',
+      sends: [],
       settings: on,
       documents: { [CLOCK]: EMPTY },
     });
-    readOnly.game().state.player('Alfa').balance = { balls: 60_000, at: T0 };
-    readOnly.k.runUntil(T0 + CHECK_MS);
+    refused.game().state.player('Alfa').balance = { balls: 60_000, at: T0 };
+    refused.k.runUntil(T0 + CHECK_MS);
     await flush();
-    expect(readOnly.bot.sent).toEqual([]);
-    expect(readOnly.lines).toContain(
-      'nuclear-clock: nuclear failed: 50000: 60000 balls: Error: read-only'
+    expect(refused.bot.sent).toEqual([]);
+    expect(refused.lines.some((l) => l.startsWith('nuclear-clock: nuclear failed: 50000'))).toBe(
+      true
     );
+    const dry = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
+      config: { group: GROUP },
+      dryRun: true,
+      settings: on,
+      documents: { [CLOCK]: EMPTY },
+    });
+    dry.game().state.player('Alfa').balance = { balls: 60_000, at: T0 };
+    dry.k.runUntil(T0 + CHECK_MS);
+    await flush();
+    expect(dry.bot.sent).toEqual([]);
+    expect(dry.sends.map((x) => x.outcome)).toEqual(['dry-run']);
+    expect(dry.lines.some((l) => l.startsWith('nuclear-clock: nuclear posted: '))).toBe(true);
     const off = await kitWith(NUCLEAR_CLOCK, nuclearClockPlugin, {
       config: { group: GROUP },
       documents: { [CLOCK]: EMPTY },
