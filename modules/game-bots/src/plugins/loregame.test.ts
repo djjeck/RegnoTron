@@ -1,16 +1,13 @@
 import { runParser as run, T0 } from '@megabottron1999/turns/test/parser-run.ts';
 import { describe, expect, it } from 'vitest';
-import { LOREGAMEBOT, TURN_COMMANDS } from '#src/replies.ts';
 import { loregamePlugin } from './loregame.ts';
-
-const CONFIG = { commands: TURN_COMMANDS[LOREGAMEBOT] };
 
 const GROUP = '-1001000000001';
 const MIN = 60_000;
 
 describe('the loregame parser', () => {
   it("reads replies to alice's turns, by hand or sent by the actor, with the rests", async () => {
-    const p = await run(loregamePlugin, CONFIG, GROUP);
+    const p = await run(loregamePlugin, {}, GROUP);
     const lore = { sender: 'LoreGameBot' };
     // By hand in the group, addressed to it.
     const hand = p.hear({

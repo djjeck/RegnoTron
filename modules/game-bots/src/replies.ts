@@ -28,9 +28,10 @@ export const EPICLORELECBOT = 'EpicLorelecBot';
 export type GameBot = typeof INVENTORYBOT | typeof LOREGAMEBOT | typeof EPICLORELECBOT;
 
 /**
- * The turn command each of the three bots takes, in private and in the group. The shell's turn
- * plugins default to a placeholder (`/play`), so each parser node is configured with
- * `commands: TURN_COMMANDS[bot]`, and each turn-actor with one of them as its `command`.
+ * The turn commands each of the three bots takes, in private and in the group: each parser's spec
+ * names its bot's (`turnCommands`, a fact of the game, MegaBotTron1999's bot-os.md D70), and a
+ * turn-actor of the shell, which defaults to a placeholder (`/play`), is configured with one of
+ * them as its `command`.
  */
 export const TURN_COMMANDS: Readonly<Record<GameBot, readonly string[]>> = {
   [INVENTORYBOT]: ['/avventura'],

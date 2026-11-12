@@ -19,18 +19,16 @@ It plays nothing. The bots are described in [docs/game-bots.md](../../docs/game-
 
 Every plugin is built from its node's config alone.
 
-**The parsers** (`inventorybot`, `loregame`, `epiclorelec`, on the shell's `turnParserPlugin`,
-through `src/plugins/game-parser.ts`; install the InventoryBot wiki's grammar module before this
-one): their `chat` input is an edge from the owner's `telegram-user` node that reads the private
-chat with the bot (`@InventoryBot`, …), and the game's group too when the owner's turns there should
-count.
-
-| Config     | Default                                                                 | Meaning                                               |
-| ---------- | ----------------------------------------------------------------------- | ----------------------------------------------------- |
-| `commands` | `["/avventura"]`; @EpicLorelecBot's `["/avventura", "/rompimiilcazzo"]` | The owner's turn commands it counts (`TURN_COMMANDS`) |
-
-The shell's own base defaults to a placeholder, `/play`; these default to their bot's. A turn-actor
-of the shell, if the owner runs one beside a parser, needs `{ "command": "/avventura" }`.
+**The parsers** (`inventorybot`, `loregame`, `epiclorelec`, on the shell's `turnParserPlugin`;
+install the InventoryBot wiki's grammar module before this one): their `chat` input is an edge from
+the owner's `telegram-user` node that reads the private chat with the bot (`@InventoryBot`, …), and
+the game's group too when the owner's turns there should count. They have no config: each spec names
+its bot's turn commands (`turnCommands`, from `TURN_COMMANDS`: `/avventura`, and @EpicLorelecBot's
+`/rompimiilcazzo` too), a fact of the game rather than of a deployment (MegaBotTron1999's bot-os.md
+D70). A node saved with a `commands` config, as they had before, still runs: the key is ignored, and
+may be removed from the graph. Each publishes `<id>.turn`, which the editor lists with its
+description. A turn-actor of the shell, if the owner runs one beside a parser, needs
+`{ "command": "/avventura" }`.
 
 **`metagame`:** its optional events inputs `inventorybot-events` and `loregame-events` take the two
 parsers' turns. Another game's parser (outside RegnoTron) adds its outcomes through the action `add`

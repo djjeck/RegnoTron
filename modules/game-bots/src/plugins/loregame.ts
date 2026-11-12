@@ -9,15 +9,15 @@
  * fight lost, or the wait it states.
  */
 import { type Plugin } from '@megabottron1999/core';
-import { type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
+import { turnParserPlugin, type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
 import {
   LORE_DEFEAT_REST_MS,
   LOREGAMEBOT,
   type Outcome,
   parseLoreGameBot,
+  TURN_COMMANDS,
   TURN_REST_MS,
 } from '#src/replies.ts';
-import { gameParserPlugin } from './game-parser.ts';
 
 export const LOREGAME_PARSER = 'loregame';
 
@@ -31,10 +31,11 @@ function restOf(o: Outcome): number | undefined {
   return undefined;
 }
 
-export const loregamePlugin: Plugin = gameParserPlugin({
+export const loregamePlugin: Plugin = turnParserPlugin({
   id: LOREGAME_PARSER,
   bot: LOREGAMEBOT,
   description: "@LoreGameBot's answers to the owner's turns: the items, the fights, and its rest",
+  turnCommands: TURN_COMMANDS[LOREGAMEBOT],
   read: (m): TurnReading => {
     if (!m.answers && !(m.private && m.replies)) return undefined;
     const outcome = parseLoreGameBot(m.text);

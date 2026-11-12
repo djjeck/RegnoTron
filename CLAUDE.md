@@ -69,11 +69,11 @@ formatting. Address every error before marking a sub-task complete.
   `ctx.clock`), never from a factory's arguments (MegaBotTron1999's docs/bot-os-api.md §4, §7.2).
   What a module needs beyond that is a service of the shell (the map's PNG is
   `ctx.render.svgToPng`); if the shell lacks one, ask for it there rather than adding a dependency.
-- **The shell knows no game,** so whatever the game needs of it is configuration: the `norelec`
-  plugin's channel, and the game bots' turn command, `/avventura`, which RegnoTron's parsers default
-  to, since the shell's turn plugins default to `/play` and count only their configured command
+- **The shell knows no game,** so whatever the game needs of it is given by the game: the `norelec`
+  plugin's channel, as its config, and the game bots' turn commands (`/avventura`), named in each
+  parser's spec (`turnCommands`, the shell's bot-os.md D70), and as a shell turn-actor's `command`
   (README, "Configuration the game needs").
-- **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (`v0.1.0-alpha.9`). Never edit
+- **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (`v0.1.0-alpha.15`). Never edit
   it here: a change to the shell is made in its repository, and the pin is bumped here (with
   `npm install` for the lockfile) in a commit of its own.
 - **The InventoryBot wiki** is the other submodule, `vendor/inventorybot-wiki`, pinned to the merge

@@ -13,26 +13,26 @@
  * than once in the factory.
  */
 import { type Plugin } from '@megabottron1999/core';
-import { type TurnParserSpec } from '@megabottron1999/turns/turn-parser.ts';
+import { turnParserPlugin, type TurnParserSpec } from '@megabottron1999/turns/turn-parser.ts';
 import { readInventoryBot } from '#src/inventorybot.ts';
 import { InventoryKnowledge } from '#src/inventorybot-knowledge.ts';
-import { type GameBot, INVENTORYBOT } from '#src/replies.ts';
-import { gameParserPlugin } from './game-parser.ts';
+import { INVENTORYBOT, TURN_COMMANDS } from '#src/replies.ts';
 
 export const INVENTORYBOT_PARSER = 'inventorybot';
 
-const spec = (read: TurnParserSpec['read']): TurnParserSpec & { bot: GameBot } => ({
+const spec = (read: TurnParserSpec['read']): TurnParserSpec => ({
   id: INVENTORYBOT_PARSER,
   bot: INVENTORYBOT,
   description: "@InventoryBot's answers to the owner's turns: the items, and its rest",
+  turnCommands: TURN_COMMANDS[INVENTORYBOT],
   read,
 });
 
 export const inventorybotPlugin: Plugin = {
-  manifest: gameParserPlugin(spec(() => undefined)).manifest,
+  manifest: turnParserPlugin(spec(() => undefined)).manifest,
   create: (ctx) => {
     const known = new InventoryKnowledge(ctx.store);
-    return gameParserPlugin(spec((m) => readInventoryBot(m, known))).create(ctx);
+    return turnParserPlugin(spec((m) => readInventoryBot(m, known))).create(ctx);
   },
 };
 

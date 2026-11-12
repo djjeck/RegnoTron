@@ -9,16 +9,16 @@
  * turn that is neither is claimed and unread (drift).
  */
 import { type Plugin } from '@megabottron1999/core';
-import { type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
-import { EPICLORELECBOT, parseEpicLorelecBot, TURN_REST_MS } from '#src/replies.ts';
-import { gameParserPlugin } from './game-parser.ts';
+import { turnParserPlugin, type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
+import { EPICLORELECBOT, parseEpicLorelecBot, TURN_COMMANDS, TURN_REST_MS } from '#src/replies.ts';
 
 export const EPICLORELEC_PARSER = 'epiclorelec';
 
-export const epiclorelecPlugin: Plugin = gameParserPlugin({
+export const epiclorelecPlugin: Plugin = turnParserPlugin({
   id: EPICLORELEC_PARSER,
   bot: EPICLORELECBOT,
   description: "@EpicLorelecBot's answers to the owner's turns: its count, and its rest",
+  turnCommands: TURN_COMMANDS[EPICLORELECBOT],
   read: (m): TurnReading => {
     const outcome = parseEpicLorelecBot(m.text);
     if (outcome?.kind === 'count' && m.private) return { outcome, restMs: TURN_REST_MS };

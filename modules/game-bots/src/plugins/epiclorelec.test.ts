@@ -1,6 +1,5 @@
 import { runParser as run, T0 } from '@megabottron1999/turns/test/parser-run.ts';
 import { describe, expect, it } from 'vitest';
-import { EPICLORELECBOT, TURN_COMMANDS } from '#src/replies.ts';
 import { epiclorelecPlugin } from './epiclorelec.ts';
 
 const GROUP = '-1001000000001';
@@ -8,7 +7,7 @@ const MIN = 60_000;
 
 describe('the epiclorelec parser', () => {
   it('reads its count in private and its cooldown where it answers a turn', async () => {
-    const p = await run(epiclorelecPlugin, { commands: TURN_COMMANDS[EPICLORELECBOT] }, GROUP);
+    const p = await run(epiclorelecPlugin, {}, GROUP);
     const epic = { sender: 'EpicLorelecBot' };
     p.hear({
       ...epic,

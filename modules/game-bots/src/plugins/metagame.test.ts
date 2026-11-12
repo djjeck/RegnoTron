@@ -12,7 +12,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { INVENTORYBOT, LOREGAMEBOT, TURN_COMMANDS } from '#src/replies.ts';
 import { epiclorelecPlugin } from './epiclorelec.ts';
 import { inventorybotPlugin } from './inventorybot.ts';
 import { loregamePlugin } from './loregame.ts';
@@ -97,10 +96,6 @@ describe('metagamePlugin', () => {
       clock: new VirtualClock(T0),
       dataDir,
       print: (l) => lines.push(l),
-      config: {
-        inventorybot: { commands: TURN_COMMANDS[INVENTORYBOT] },
-        loregame: { commands: TURN_COMMANDS[LOREGAMEBOT] },
-      },
     });
     core.register(
       fakeConnectorPlugin(TELEGRAM_USER, account),

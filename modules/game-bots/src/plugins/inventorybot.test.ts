@@ -1,11 +1,24 @@
+import { TELEGRAM_USER } from '@megabottron1999/connectors/plugins/telegram-user.ts';
+import {
+  Core,
+  FakeConnector,
+  fakeConnectorPlugin,
+  GraphFile,
+  VirtualClock,
+} from '@megabottron1999/core';
 import { runParser as run, T0 } from '@megabottron1999/turns/test/parser-run.ts';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { EPICLORELECBOT, INVENTORYBOT, LOREGAMEBOT, TURN_COMMANDS } from '#src/replies.ts';
-import { epiclorelecPlugin, plugins as epiclorelec } from './epiclorelec.ts';
-import { inventorybotPlugin, plugins as inventorybot } from './inventorybot.ts';
-import { loregamePlugin, plugins as loregame } from './loregame.ts';
-
-const CONFIG = { commands: TURN_COMMANDS[INVENTORYBOT] };
+import { EPICLORELEC_PARSER, epiclorelecPlugin, plugins as epiclorelec } from './epiclorelec.ts';
+import {
+  INVENTORYBOT_PARSER,
+  inventorybotPlugin,
+  plugins as inventorybot,
+} from './inventorybot.ts';
+import { LOREGAME_PARSER, loregamePlugin, plugins as loregame } from './loregame.ts';
 
 const GROUP = '-1001000000001';
 const MIN = 60_000;
@@ -13,7 +26,7 @@ const KNOWN = 'il re di Quamser, contento delle tue gesta, ti elargisce ';
 
 describe('the inventorybot parser', () => {
   it("reads alice's drops in either chat, and the cooldown in private, with the rests", async () => {
-    const p = await run(inventorybotPlugin, CONFIG, GROUP);
+    const p = await run(inventorybotPlugin, {}, GROUP);
     const bot = { sender: 'InventoryBot' };
     p.hear({ ...bot, chat: '@InventoryBot', text: `@alice, ${KNOWN}una giuggiola [C]!` });
     expect(p.iface.rest()).toMatchObject({ until: T0 + 15 * MIN, why: 'its rest after a turn' });
@@ -39,7 +52,7 @@ describe('the inventorybot parser', () => {
   });
 
   it('claims the first message after a turn in private, and reports it to drift if unread', async () => {
-    const p = await run(inventorybotPlugin, CONFIG);
+    const p = await run(inventorybotPlugin);
     p.hear({ chat: '@InventoryBot', sender: 'alice', own: true, text: '/avventura' });
     p.hear({ chat: '@InventoryBot', sender: 'InventoryBot', text: 'Qualcosa di nuovo' });
     // Only the first; and nothing once the window has passed.
@@ -52,7 +65,7 @@ describe('the inventorybot parser', () => {
   });
 
   it('reads no gain in a /mostra reply, and an announced [W] drop to alice', async () => {
-    const p = await run(inventorybotPlugin, CONFIG, GROUP);
+    const p = await run(inventorybotPlugin, {}, GROUP);
     const bot = { sender: 'InventoryBot', chat: GROUP };
     p.hear({ ...bot, text: '@alice, mostri orgogliosamente di possedere 3x una giuggiola [C]' });
     expect(p.outcomes()).toEqual([]);
@@ -73,7 +86,7 @@ describe('the inventorybot parser', () => {
   });
 
   it("learns the items of anyone's drops, and starts from what its store kept", async () => {
-    const p = await run(inventorybotPlugin, CONFIG, GROUP);
+    const p = await run(inventorybotPlugin, {}, GROUP);
     const bot = { sender: 'InventoryBot', chat: GROUP };
     p.hear({ ...bot, text: `@lucia, ${KNOWN}una giuggiola [C]!` });
     // A sentence it never shipped, before the item it learned: sure.
@@ -84,7 +97,7 @@ describe('the inventorybot parser', () => {
       { item: 'una giuggiola', sure: true },
       { item: 'una conchiglia', sure: false },
     ]);
-    const q = await run(inventorybotPlugin, CONFIG, GROUP, {
+    const q = await run(inventorybotPlugin, {}, GROUP, {
       knowledge: { items: ['una conchiglia'], prefixes: ['sul molo raccogli '] },
     });
     q.hear({ ...bot, text: '@alice, sul molo raccogli un granchio [C]!' });
@@ -92,7 +105,7 @@ describe('the inventorybot parser', () => {
   });
 
   it('reports a lucky adventure it cannot read', async () => {
-    const p = await run(inventorybotPlugin, CONFIG);
+    const p = await run(inventorybotPlugin);
     p.hear({
       chat: '@InventoryBot',
       sender: 'InventoryBot',
@@ -103,21 +116,78 @@ describe('the inventorybot parser', () => {
 });
 
 describe('the game bots’ parsers', () => {
-  it('count their bot’s own turn commands unless their config names others', () => {
-    for (const [plugin, bot] of [
-      [inventorybotPlugin, INVENTORYBOT],
-      [loregamePlugin, LOREGAMEBOT],
-      [epiclorelecPlugin, EPICLORELECBOT],
-    ] as const) {
-      expect(plugin.manifest.config?.parse({})).toEqual({ commands: TURN_COMMANDS[bot] });
-      expect(plugin.manifest.config?.parse({ commands: ['/play'] })).toEqual({
-        commands: ['/play'],
-      });
-    }
+  it('count their bot’s own turn commands, named in their specs, with no config', () => {
+    for (const plugin of [inventorybotPlugin, loregamePlugin, epiclorelecPlugin])
+      expect(plugin.manifest.config).toBeUndefined();
     expect([...inventorybot, ...loregame, ...epiclorelec]).toEqual([
       inventorybotPlugin,
       loregamePlugin,
       epiclorelecPlugin,
     ]);
+  });
+
+  it('run on a graph saved while their nodes named commands, which they ignore', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'game-parsers-'));
+    try {
+      const bots = [
+        [INVENTORYBOT_PARSER, INVENTORYBOT],
+        [LOREGAME_PARSER, LOREGAMEBOT],
+        [EPICLORELEC_PARSER, EPICLORELECBOT],
+      ] as const;
+      // A version 2 graph, as saved before: each parser node with its commands as config.
+      const graph = {
+        version: 2,
+        nodes: [
+          { id: TELEGRAM_USER, plugin: TELEGRAM_USER },
+          ...bots.map(([id]) => ({ id, plugin: id, config: { commands: ['/play'] } })),
+        ],
+        edges: bots.map(([id, bot]) => ({
+          from: `${TELEGRAM_USER}.chat`,
+          to: `${id}.chat`,
+          type: 'chat-in',
+          reads: [`@${bot}`],
+          senders: [`@${bot}`, 'me'],
+        })),
+      };
+      fs.writeFileSync(path.join(dir, 'graph.json'), JSON.stringify(graph));
+      const account = new FakeConnector({ account: 'telegram:alice' });
+      const turns: string[] = [];
+      const core = new Core({
+        clock: new VirtualClock(T0),
+        graphFile: new GraphFile(dir),
+        record: (r) => {
+          if (r.type.endsWith('.turn')) turns.push(`${r.type} ${String(r['chat'])}`);
+        },
+      });
+      core.register(
+        fakeConnectorPlugin(TELEGRAM_USER, account),
+        inventorybotPlugin,
+        loregamePlugin,
+        epiclorelecPlugin
+      );
+      await core.start();
+      expect(core.graphProblems()).toEqual([]);
+      expect(core.status().every((s) => s.state === 'running')).toBe(true);
+      // In private, an unreadable first answer to a turn is claimed: only to a turn it counts.
+      for (const [, bot] of bots) {
+        const chat = `@${bot}`;
+        const own = { chat, sender: 'alice', own: true, time: T0 };
+        account.hear({ ...own, text: '/play' });
+        account.hear({ chat, sender: bot, time: T0, text: 'Nothing like a turn.' });
+        for (const command of TURN_COMMANDS[bot]) {
+          account.hear({ ...own, text: command });
+          account.hear({ chat, sender: bot, time: T0, text: 'Nothing like a turn.' });
+        }
+      }
+      expect(turns).toEqual([
+        'inventorybot.turn @InventoryBot',
+        'loregame.turn @LoreGameBot',
+        'epiclorelec.turn @EpicLorelecBot',
+        'epiclorelec.turn @EpicLorelecBot',
+      ]);
+      await core.stop();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
