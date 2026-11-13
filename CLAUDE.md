@@ -2,9 +2,9 @@
 
 NorelecBot's game and the turns of the group's other game bots, as modules for MegaBotTron1999
 (`vendor/MegaBotTron1999`, a git submodule): `norelec` (the parser, the game state, the `norelec`
-plugin), `norelec-tools` (the map and the nuclear clock) and `game-bots` (the other bots' parser
-plugins and the ledger; it reads @InventoryBot with the InventoryBot wiki's grammar,
-`vendor/inventorybot-wiki`, another submodule). It reads the bots and plays nothing. See
+plugin), `norelec-tools` (the map and the nuclear clock) and `game-bots` (@LoreGameBot's and
+@EpicLorelecBot's parser plugins, and the ledger, which takes @InventoryBot's turns from
+InventoryBotTron's `inventorybot` parser). It reads the bots and plays nothing. See
 [README.md](README.md) for the overview.
 
 **This repository is public.** Everything committed here, history included, is readable by anyone.
@@ -61,10 +61,8 @@ formatting. Address every error before marking a sub-task complete.
   `version`, `api`, `provides` `@regnotron/<id>`, the modules it `imports` with version ranges, its
   `plugins`) and is also a workspace package of the same name and version, with `exports` `./*` →
   `./src/*`. **A module has no npm dependencies:** it imports only `node:*`, `@megabottron1999/*`,
-  `zod` and the modules it declares: RegnoTron's, and one library module of another repository, the
-  InventoryBot wiki's grammar (`@inventorybot-wiki/grammar`, whose `vendor/` copy is a workspace for
-  development; the owner installs it by its own link). ESLint and `test/modules.test.ts` enforce it.
-  Each plugin entry exports `plugins: Plugin[]`, every plugin built from its saved config alone
+  `zod` and the modules it declares, RegnoTron's. ESLint and `test/modules.test.ts` enforce it. Each
+  plugin entry exports `plugins: Plugin[]`, every plugin built from its saved config alone
   (`ctx.config`, its edges and its context: the event log through `ctx.events`, the time through
   `ctx.clock`), never from a factory's arguments (MegaBotTron1999's docs/bot-os-api.md §4, §7.2).
   What a module needs beyond that is a service of the shell (the map's PNG is
@@ -76,11 +74,10 @@ formatting. Address every error before marking a sub-task complete.
 - **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (`v0.1.0-alpha.17`). Never edit
   it here: a change to the shell is made in its repository, and the pin is bumped here (with
   `npm install` for the lockfile) in a commit of its own.
-- **The InventoryBot wiki** is the other submodule, `vendor/inventorybot-wiki`, pinned to the merge
-  commit of the grammar version `game-bots` imports (`^0.2.0`). @InventoryBot's grammar is changed
-  in the wiki, never here, and the real game texts (the sentence prefixes of
-  `modules/game-bots/src/inventorybot-prefixes.ts`) stay here: the wiki ships none. A new grammar
-  version is taken by moving the pin, with the range, in a commit of its own.
+- **@InventoryBot is read elsewhere:** its parser plugin, `inventorybot`, and its grammar live in
+  [InventoryBotTron](https://github.com/djjeck/InventoryBotTron). `metagame` takes its
+  `inventorybot.turn` events through the graph only (an events input of namespace `inventorybot`),
+  importing nothing of it; its tests stand a parser of that id and event in for it.
 - **Coverage stays at or above 90%** on statements, branches, functions and lines, for the whole and
   for each module's `src/` on its own (`vitest.config.ts` sets a threshold per module).
 - **Dependencies:** the root has dev dependencies only, as few as possible, each justified in the

@@ -33,10 +33,11 @@ const read = <T>(file: string): T => JSON.parse(fs.readFileSync(file, 'utf8')) a
 
 /**
  * The library modules of other repositories the modules import, vendored as submodules and run as
- * workspaces (README, "Development"): each by the name it provides, with its version.
+ * workspaces (README, "Development"): each by the name it provides, with its version. None now:
+ * @InventoryBot's grammar left with its parser for InventoryBotTron.
  */
 const VENDORED: Record<string, string> = Object.fromEntries(
-  ['vendor/inventorybot-wiki/packages/grammar'].map((dir) => {
+  ([] as string[]).map((dir) => {
     const json = read<ModuleJson>(path.join(ROOT, dir, 'module.json'));
     return [json.provides, json.version];
   })

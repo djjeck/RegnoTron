@@ -2,7 +2,7 @@
  * The metagame's ledger and `/loot` (MegaBotTron1999's docs/bot-os-api.md §5): the plugin
  * `metagame`, which keeps the ledger (modules/game-bots/src/ledger.ts) of what the owner's turns
  * bring, from the events of the @InventoryBot and @LoreGameBot parsers (`inventorybot.turn`,
- * `loregame.turn`); it answers `/loot`, the owner's. Another game's turns join through its action
+ * `loregame.turn`; the first is InventoryBotTron's parser, heard through the graph alone); it answers `/loot`, the owner's. Another game's turns join through its action
  * `add`, which that game's parser calls through an interface input bound to it. It sends nothing,
  * so it has no chat and no mode. It plays nothing either: the turns are the owner's, by hand or by
  * an actor outside RegnoTron.
@@ -17,10 +17,16 @@ import { type BusEvent, definePlugin, type Plugin } from '@megabottron1999/core'
 import { z } from 'zod';
 import { Ledger, LOOT_BOTS } from '#src/ledger.ts';
 import { INVENTORYBOT, LOREGAMEBOT, type Outcome } from '#src/replies.ts';
-import { INVENTORYBOT_PARSER } from './inventorybot.ts';
 import { LOREGAME_PARSER } from './loregame.ts';
 
 export const METAGAME = 'metagame';
+
+/**
+ * @InventoryBot's parser's id, the namespace of its `inventorybot.turn`: InventoryBotTron's module
+ * `inventorybot` (https://github.com/djjeck/InventoryBotTron), whose outcomes have the shape of
+ * `Outcome`. The ledger hears them through its events input, and imports nothing of it.
+ */
+export const INVENTORYBOT_PARSER = 'inventorybot';
 
 /** A game whose turns the ledger keeps (P7): its namespace, the event type, the bot it names. */
 export interface LedgerGame {

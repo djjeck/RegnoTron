@@ -14,17 +14,17 @@ installs them into a running shell. Everything here changes freely until the she
 
 ## The modules
 
-| Module          | Provides                   | What it holds                                                                                                                                                                |
-| --------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `norelec`       | `@regnotron/norelec`       | NorelecBot's game: its grammar (read and written), its parser over IRC and over Telegram exports, the game state, a simulator; the `norelec` parser plugin                   |
-| `norelec-tools` | `@regnotron/norelec-tools` | The map of the players' homes (`/map`) and the nuclear clock (`/nuclear_warning`), as the plugins `norelec-map` and `nuclear-clock`; imports `norelec`                       |
-| `game-bots`     | `@regnotron/game-bots`     | @InventoryBot's, @LoreGameBot's and @EpicLorelecBot's parser plugins, and `metagame`, the ledger of what the owner's turns brought (`/loot`); imports `inventorybot-grammar` |
+| Module          | Provides                   | What it holds                                                                                                                                              |
+| --------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `norelec`       | `@regnotron/norelec`       | NorelecBot's game: its grammar (read and written), its parser over IRC and over Telegram exports, the game state, a simulator; the `norelec` parser plugin |
+| `norelec-tools` | `@regnotron/norelec-tools` | The map of the players' homes (`/map`) and the nuclear clock (`/nuclear_warning`), as the plugins `norelec-map` and `nuclear-clock`; imports `norelec`     |
+| `game-bots`     | `@regnotron/game-bots`     | @LoreGameBot's and @EpicLorelecBot's parser plugins, and `metagame`, the ledger of what the owner's turns brought (`/loot`), @InventoryBot's included      |
 
-`game-bots` reads @InventoryBot with the grammar of the
-[InventoryBot wiki](https://github.com/djjeck/InventoryBot-wiki), its library module
-`inventorybot-grammar` (`@inventorybot-wiki/grammar`, `^0.2.0`), so that the wiki and the parser
-read the bot alike. Each module has its own README. The bots' texts are quoted in Italian, as they
-write them; the players' names in the tests and fixtures are made up.
+@InventoryBot's parser plugin, `inventorybot`, is the module `inventorybot` of
+[InventoryBotTron](https://github.com/djjeck/InventoryBotTron), beside the bot's grammar; `metagame`
+reads its `inventorybot.turn` events as any parser's. Each module has its own README. The bots'
+texts are quoted in Italian, as they write them; the players' names in the tests and fixtures are
+made up.
 
 ## Installing a module
 
@@ -51,12 +51,9 @@ is data the shell's editor makes.
 
 The owner of an instance installs a module through the shell's control API (`POST /modules`, from a
 directory or a tarball, `git archive --prefix=norelec/ -o norelec.tar.gz HEAD:modules/norelec`),
-with the modules it imports, and restarts it: for the map, `norelec` and `norelec-tools`; for
-`game-bots`, the InventoryBot wiki's grammar first, installed by the wiki's own GitHub link
-(`https://github.com/djjeck/InventoryBot-wiki`, where the shell finds it at `packages/grammar`),
-since an install of RegnoTron skips its `vendor/`. The plugins then appear in `GET /available` and
-the web UI's graph, where the owner adds and wires their nodes. Modules run with the shell's full
-rights, unsandboxed: install only what you have read.
+with the modules it imports, and restarts it: for the map, `norelec` and `norelec-tools`. The
+plugins then appear in `GET /available` and the web UI's graph, where the owner adds and wires their
+nodes. Modules run with the shell's full rights, unsandboxed: install only what you have read.
 
 **Configuration the game needs.** The shell knows no game, so its defaults are generic:
 
@@ -76,9 +73,7 @@ Each module's README lists its plugins' config fields.
 ## Developing
 
 MegaBotTron1999 is vendored as a git submodule, `vendor/MegaBotTron1999`, pinned to a tag
-(`v0.1.0-alpha.17`), and so is the InventoryBot wiki, `vendor/inventorybot-wiki`, pinned to the
-commit of the grammar `game-bots` imports. The shell's packages and the wiki's grammar
-(`vendor/inventorybot-wiki/packages/grammar`) are workspaces here, beside the modules, which are
+(`v0.1.0-alpha.17`). The shell's packages are workspaces here, beside the modules, which are
 workspaces too (each `@regnotron/<id>`, with `exports` `./*` → `./src/*`), so that imports and tests
 resolve as the loader will resolve them.
 
@@ -90,8 +85,8 @@ npm run validate   # tests with coverage, types, lint, formatting
 ```
 
 To take newer shell code, move the submodule to a newer tag of MegaBotTron1999 and commit the new
-pin with the lockfile; the same for a newer grammar, with the range `game-bots` imports.
-`node vendor/MegaBotTron1999/packages/core/tools/modules.ts vendor/inventorybot-wiki/packages/grammar modules/norelec modules/norelec-tools modules/game-bots`
+pin with the lockfile.
+`node vendor/MegaBotTron1999/packages/core/tools/modules.ts modules/norelec modules/norelec-tools modules/game-bots`
 loads the modules as an instance does, and exits 1 if one is refused. See [CLAUDE.md](CLAUDE.md) for
 the repository's rules, and `docs/` for the game: [the rules](docs/game-rules.md),
 [NorelecBot's messages and the parser](docs/bot-protocol.md), and

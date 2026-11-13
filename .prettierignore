@@ -1,4 +1,4 @@
 # Coverage reports (npm run test:coverage).
 coverage/
-# The shell and the InventoryBot wiki, vendored as git submodules: formatted by their repositories.
+# The shell, vendored as a git submodule: formatted by its repository.
 vendor/

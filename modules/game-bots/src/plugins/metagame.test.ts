@@ -12,8 +12,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { inventorybotStandIn } from '#test/inventorybot.ts';
 import { epiclorelecPlugin } from './epiclorelec.ts';
-import { inventorybotPlugin } from './inventorybot.ts';
 import { loregamePlugin } from './loregame.ts';
 import {
   LEDGER_GAMES,
@@ -33,7 +33,6 @@ afterEach(() => {
 });
 
 const T0 = Date.parse('2026-11-01T11:00:00Z');
-const KNOWN = 'il re di Quamser, contento delle tue gesta, ti elargisce ';
 
 /** What `/loot` answers. */
 async function loot(core: Core): Promise<string> {
@@ -99,7 +98,7 @@ describe('metagamePlugin', () => {
     });
     core.register(
       fakeConnectorPlugin(TELEGRAM_USER, account),
-      inventorybotPlugin,
+      inventorybotStandIn,
       loregamePlugin,
       metagamePlugin
     );
@@ -108,7 +107,7 @@ describe('metagamePlugin', () => {
       chat: '@InventoryBot',
       sender: 'InventoryBot',
       time: T0,
-      text: `@alice, ${KNOWN}un salame [C]!`,
+      text: '@alice, un salame [C]!',
     });
     account.hear({
       chat: '@LoreGameBot',
@@ -136,7 +135,7 @@ describe('metagamePlugin', () => {
     const core = new Core({ clock: new VirtualClock(T0), dataDir });
     core.register(
       fakeConnectorPlugin(TELEGRAM_USER, new FakeConnector({ account: 'telegram:alice' })),
-      inventorybotPlugin,
+      inventorybotStandIn,
       loregamePlugin,
       epiclorelecPlugin,
       metagamePlugin

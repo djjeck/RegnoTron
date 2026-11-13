@@ -3,8 +3,8 @@
  * (`Outcome`), with the grammars of two of them: @LoreGameBot and @EpicLorelecBot, in the private
  * chat with each or in the group. Pure: their parser plugins (@megabottron1999/turns/turn-parser.ts)
  * decide which messages answer the owner's turns. The rests between turns are here too, as the bots
- * state them or as measured (docs/game-bots.md §2). @InventoryBot's grammar is the InventoryBot
- * wiki's, `@inventorybot-wiki/grammar`, read onto these outcomes by `src/inventorybot.ts`.
+ * state them or as measured (docs/game-bots.md §2). @InventoryBot's parser is InventoryBotTron's
+ * (https://github.com/djjeck/InventoryBotTron), whose outcomes have this shape too.
  *
  * - @LoreGameBot replies to the command and names nobody; its last lines are the outcome: "Hai
  *   ottenuto <item> [M2]!" (the item's name may span lines), a fight lost ("Torni a casa dolorante

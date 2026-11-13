@@ -7,8 +7,7 @@
   "type": "module",
   "workspaces": [
     "modules/*",
-    "vendor/MegaBotTron1999/packages/*",
-    "vendor/inventorybot-wiki/packages/grammar"
+    "vendor/MegaBotTron1999/packages/*"
   ],
   "engines": {
     "node": ">=24"
