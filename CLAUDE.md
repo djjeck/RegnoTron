@@ -73,7 +73,7 @@ formatting. Address every error before marking a sub-task complete.
   plugin's channel, as its config, and the game bots' turn commands (`/avventura`), named in each
   parser's spec (`turnCommands`, the shell's bot-os.md D70), and as a shell turn-actor's `command`
   (README, "Configuration the game needs").
-- **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (`v0.1.0-alpha.15`). Never edit
+- **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (`v0.1.0-alpha.17`). Never edit
   it here: a change to the shell is made in its repository, and the pin is bumped here (with
   `npm install` for the lockfile) in a commit of its own.
 - **The InventoryBot wiki** is the other submodule, `vendor/inventorybot-wiki`, pinned to the merge
