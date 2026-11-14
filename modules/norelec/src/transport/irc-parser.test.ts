@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { BOT_MESSAGES } from '#test/bot-messages.ts';
-import { ircBotMessage, type IrcLine, IrcParser } from './irc-parser.ts';
+import { ircBotMessage, type IrcLine, IrcParser, SPLIT_RISK_BYTES } from './irc-parser.ts';
 import { fromIrc } from './relay.ts';
+
+const RAID = 'Alfa parti per Bravo: arrivi tra 1 minuto e 31 secondi. Casa tua resta scoperta.';
+
+/** The lines of a Telegram message as the relay splits them: parts under 390 bytes, at lines. */
+function relaySplit(lines: readonly string[]): string[] {
+  const parts: string[] = [];
+  let part = '';
+  for (const l of lines.map((x) => `\u200b${x}`)) {
+    const next = part === '' ? l : `${part} · ${l}`;
+    if (part !== '' && new TextEncoder().encode(next).length >= 390) {
+      parts.push(part);
+      part = l;
+    } else part = next;
+  }
+  return [...parts, part];
+}
 
 /**
  * A Telegram message of the bot as IRC shows it (seen live, 22 Oct): one line from the nick
@@ -73,32 +89,74 @@ describe('IrcParser', () => {
     received,
   });
 
-  it.each(BOT_MESSAGES)('$name: the same events, split or not', ({ text, kinds }) => {
+  it.each(BOT_MESSAGES)('$name: the same events, at once or after the join window', (f) => {
     const parser = new IrcParser();
-    const line = onIrc(text, 1000);
-    // As the relay splits a long message: the parts at line boundaries, within the join window.
-    const parts = line.text.split(' · ');
-    const half = Math.ceil(parts.length / 2);
-    const out = [
-      ...parser.push(bot(parts.slice(0, half).join(' · '), 1000)),
-      ...(half < parts.length
-        ? parser.push(bot('\u200b' + parts.slice(half).join(' · '), 1100))
-        : []),
-    ];
-    expect(out).toEqual([]);
-    expect(parser.flush(1100)).toEqual([]);
+    const out = [...parser.push(bot(onIrc(f.text, 1000).text, 1000)), ...parser.flush(1500)];
+    expect(out).toHaveLength(1);
+    expect(out[0]?.time).toBe(1000);
+    expect(out[0]?.events.map((e) => e.kind)).toEqual(f.kinds);
+  });
+
+  it('reads a short message of known lines with its line, without waiting', () => {
+    const parser = new IrcParser();
+    const [m] = parser.push(bot(`\u200b${RAID}`, 1000));
+    expect(m?.events.map((e) => e.kind)).toEqual(['depart']);
+    expect(parser.flush(10_000)).toEqual([]);
+  });
+
+  it('joins the parts of a long message, as the relay splits it, and reads it after the window', () => {
+    const rows = Array.from(
+      { length: 10 },
+      (_, i) => `${i + 1}) Giocatore${i} (🥷🎈🔥) — ${50_000 - i * 1000} palle — ${i} citazioni`
+    );
+    const text = ['Classifica @TheConquister37', ...rows, 'In @TheConquister37 ora: Alfa'];
+    const parts = relaySplit(text);
+    expect(parts).toHaveLength(2);
+    const parser = new IrcParser();
+    expect(parser.push(bot(String(parts[0]), 1000))).toEqual([]);
+    expect(parser.push(bot(String(parts[1]), 1100))).toEqual([]);
+    expect(parser.flush(1100 + 399)).toEqual([]);
     const [m] = parser.flush(1500);
-    expect(m?.time).toBe(1000);
-    expect(m?.events.map((e) => e.kind)).toEqual(kinds);
+    expect(m?.events.map((e) => e.kind)).toEqual([
+      'info',
+      ...rows.map(() => 'leaderboardRow'),
+      'holderIs',
+    ]);
+  });
+
+  it('waits for the quote after an entry, which completes it', () => {
+    const parser = new IrcParser();
+    expect(parser.push(bot('\u200bAlfa sei in @TheConquister37!', 1000))).toEqual([]);
+    const [m] = parser.push(bot('\u200bUna citazione qualunque.', 1100));
+    expect(m?.text).toBe('Alfa sei in @TheConquister37!\nUna citazione qualunque.');
+    expect(m?.events.map((e) => e.kind)).toEqual(['entered']);
+    // An entry and its quote on one line are complete at once.
+    const [whole] = new IrcParser().push(
+      bot('\u200bBravo sei in @TheConquister37! · Una citazione qualunque.', 2000)
+    );
+    expect(whole?.events.map((e) => e.kind)).toEqual(['entered']);
+  });
+
+  it('waits for the join window on a line no template knows, or a long one', () => {
+    const parser = new IrcParser();
+    expect(parser.push(bot('Una riga che nessun modello conosce.', 1000))).toEqual([]);
+    expect(parser.flush(1400)).toHaveLength(1);
+    const long = `\u200b${RAID} · `.repeat(3);
+    expect(new TextEncoder().encode(long).length).toBeGreaterThanOrEqual(SPLIT_RISK_BYTES);
+    expect(parser.push(bot(long, 2000))).toEqual([]);
+    expect(parser.flush(2400)[0]?.events).toHaveLength(3);
   });
 
   it('keeps messages apart when they are more than the join window apart', () => {
     const parser = new IrcParser(400);
     parser.push(bot('\u200bAlfa sei in @TheConquister37!', 0));
-    const [first] = parser.push(bot('\u200bBravo sei già in @Bravo!', 600));
+    const [first, second] = parser.push(bot('\u200bBravo sei già in @Bravo!', 600));
     expect(first?.events.map((e) => e.kind)).toEqual(['entered']);
-    const [second] = parser.push({ nick: 'Regno', text: '<Alfa> ciao', time: 700, received: 700 });
+    // The second is complete with its line.
     expect(second?.events.map((e) => e.kind)).toEqual(['alreadyAt']);
+    expect(parser.push({ nick: 'Regno', text: '<Alfa> ciao', time: 700, received: 700 })).toEqual(
+      []
+    );
     expect(parser.flush(10_000)).toEqual([]);
   });
 

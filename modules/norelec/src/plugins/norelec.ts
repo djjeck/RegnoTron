@@ -3,7 +3,9 @@
  * the game (modules/norelec/src/plugins/norelec-game.ts: the IRC parser and the game state) and
  * reads the game's channel into it through its handle on `irc`; it publishes each bot message on
  * the bus as `norelec.message` once the state has applied it, which writes the message to the event
- * log too, and reports each as read or unread (drift, P5). It keeps the players known to be
+ * log too, and reports each as read or unread (drift, P5). A message complete with its line is
+ * published inside the handler the shell calls with that line, the moment the shell counts as the
+ * channel heard (bot-os.md D93) and pairs answers (D98). It keeps the players known to be
  * Telegram accounts in its store (modules/norelec/src/plugins/norelec-accounts.ts), and publishes
  * the game's notices as `norelec.notice`.
  *

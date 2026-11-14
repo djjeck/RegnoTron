@@ -32,6 +32,10 @@ keeps them in its store (`accounts`).
 | `historyHours` | `6`          | The hours of `norelec.message` records replayed from the event log at start |
 
 It offers `state.game` (the game, for the plugins that use it through an interface edge) and
-`state.status` (the channel's health), and publishes `norelec.message` and `norelec.notice`. Its
-store is at version 1: its one migration, for a layout no store holds any more, is a no-op, kept
-because the shell refuses a store at a version above its plugin's count of migrations.
+`state.status` (the channel's health), and publishes `norelec.message` and `norelec.notice`. A bot
+message short enough not to be the start of a split one is read and published with its line, inside
+the shell's message handler (the others wait the 400 ms join window, for the plugin's tick), so that
+MegaBotTron1999's send watchdog hears the channel (bot-os.md D93): an `irc` node whose sends the bot
+answers needs no `unansweredAt: 0`. Its store is at version 1: its one migration, for a layout no
+store holds any more, is a no-op, kept because the shell refuses a store at a version above its
+plugin's count of migrations.

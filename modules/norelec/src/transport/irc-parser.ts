@@ -11,11 +11,20 @@
  * side (modules/norelec/src/export/export-parser.ts) reads it, so that both stay in step. Bot
  * lines the relay carries (`<Regno> <NorelecBot_> …`, as in September) are read the same way.
  *
- * Pure: each line comes with its `server-time` and the local time it was received; a message is
- * complete when another line arrives, or when `flush(now)` finds it waited `joinMs` on the local
- * clock. The two clocks are never compared with each other.
+ * A message that cannot be the first part of a split one is complete with its line, at once
+ * (`standsAlone`): short (the relay splits only past about 390 bytes, so a part under
+ * `SPLIT_RISK_BYTES` is the last unless the next line would be longer than any of the game's), of
+ * known lines, and of no kind that runs over several lines (a listing, the leaderboard, a profile,
+ * a house, an entry before its quote). So the bot's answers to commands, single short lines, are
+ * read as they arrive, not a join window later.
+ *
+ * Pure: each line comes with its `server-time` and the local time it was received; any other
+ * message is complete when another line arrives, or when `flush(now)` finds it waited `joinMs` on
+ * the local clock. The two clocks are never compared with each other.
  */
 import { BOT_NAME, type BotMessage } from '#src/game/bot-message.ts';
+import { type EventKind, type GameEvent } from '#src/game/events.ts';
+import { parseLine } from '#src/game/parse-line.ts';
 import { parseMessage } from '#src/game/parse-message.ts';
 import { fromIrc, IRC_LINE_SEPARATOR, unwrap } from './relay.ts';
 
@@ -31,6 +40,47 @@ export interface IrcLine {
 export interface ReceivedLine extends IrcLine {
   /** The local time it was received, in milliseconds. */
   received: number;
+}
+
+/**
+ * The IRC line's size, in UTF-8 bytes, from which a message may be the first part of a split one:
+ * the relay splits at about 390, so a shorter first part means a next line of more than about 190
+ * bytes, longer than the game's own lines (an entry's quote, which can be, is waited for).
+ */
+export const SPLIT_RISK_BYTES = 200;
+
+/** The kinds the bot's next IRC line may continue: they are read whole, over several lines. */
+const CONTINUED = new Set<EventKind>([
+  'unknown',
+  'info',
+  'leaderboardRow',
+  'holderIs',
+  'profile',
+  'house',
+]);
+
+const UTF8 = new TextEncoder();
+
+/**
+ * Whether a message, so far `irc` on the channel (its parts as they came), is complete as it is:
+ * see the module's comment. An entry is, once its quote (a line no template knows, after it) came.
+ */
+export function standsAlone(irc: string, m: BotMessage): boolean {
+  if (UTF8.encode(irc).length >= SPLIT_RISK_BYTES) return false;
+  if (m.events.length === 0 || m.events.some((e) => CONTINUED.has(e.kind))) return false;
+  return !m.events.some((e) => e.kind === 'entered') || quoteCame(m.text, m.events);
+}
+
+/** Whether a line no template knows, the random quote, follows the entry in `text`. */
+function quoteCame(text: string, events: readonly GameEvent[]): boolean {
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '');
+  const entry = events.find((e) => e.kind === 'entered')?.line;
+  return lines
+    .slice(lines.findIndex((l) => l === entry) + 1)
+    .some((l) => parseLine(l).kind === 'unknown');
 }
 
 /** Joins the parts of the bot's long messages, and reads each message once complete. */
@@ -56,6 +106,12 @@ export class IrcParser {
       this.parts.push(text);
       this.lastServer = line.time;
       this.lastReceived = line.received;
+      // Complete with this line already: read now, not a join window later.
+      const now = this.read();
+      if (standsAlone(this.parts.join(IRC_LINE_SEPARATOR), now)) {
+        this.parts = [];
+        return [...done, now];
+      }
     }
     return done;
   }
@@ -67,9 +123,15 @@ export class IrcParser {
 
   private close(): BotMessage[] {
     if (this.parts.length === 0) return [];
-    const body = fromIrc(this.parts.join(IRC_LINE_SEPARATOR));
+    const m = this.read();
     this.parts = [];
-    return [{ time: this.start, text: body, events: parseMessage(body) }];
+    return [m];
+  }
+
+  /** The pending message, as its parts so far read. */
+  private read(): BotMessage {
+    const body = fromIrc(this.parts.join(IRC_LINE_SEPARATOR));
+    return { time: this.start, text: body, events: parseMessage(body) };
   }
 }
 

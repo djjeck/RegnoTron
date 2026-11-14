@@ -5,7 +5,9 @@ import {
   type BusEvent,
   Core,
   definePlugin,
+  type Graph,
   MemoryEventLog,
+  type OutboxHandle,
   parseManifest,
   VirtualClock,
 } from '@megabottron1999/core';
@@ -51,7 +53,8 @@ function setup(
   logged: { time: number; text: string }[] = [],
   history: { time: number; text: string }[] = [],
   joined = false,
-  config: Record<string, unknown> = {}
+  config: Record<string, unknown> = {},
+  more: { irc?: Record<string, unknown>; graph?: (g: Graph) => Graph } = {}
 ) {
   let now = T0;
   const clock = new VirtualClock(now);
@@ -67,10 +70,13 @@ function setup(
     clock,
     dataDir,
     config: {
-      irc: IRC_CONFIG,
+      irc: { ...IRC_CONFIG, ...more.irc },
       norelec: { channel: IRC_CONFIG.channel, restS: 60, self: 'alice', ...config },
     },
-    graph: (defaults) => withChats(defaults, 'norelec.channel', { reads: [IRC_CONFIG.channel] }),
+    graph: (defaults) =>
+      (more.graph ?? ((g) => g))(
+        withChats(defaults, 'norelec.channel', { reads: [IRC_CONFIG.channel] })
+      ),
     secrets: secretsWith(IRC_SECRETS),
     events: log,
     record: (r) => {
@@ -238,15 +244,15 @@ describe('the norelec plugin', () => {
     await core.start();
     expect(lines).toContain('norelec: replayed 1 bot messages');
     expect(game().state.holder?.name).toBe('Juno');
-    // The line heard at the start waited for the replay, and is read at the next tick.
-    expect(heard).toEqual([{ replaying: true, holder: 'Juno' }]);
-    // The first tick a tick after every plugin is ready, the channel not up yet.
-    expect(ticks).toBe(0);
-    later(1000);
+    // The line heard at the start waited for the replay, and is read right after it: a short
+    // message of known lines needs no tick to complete.
     expect(heard).toEqual([
       { replaying: true, holder: 'Juno' },
       { replaying: false, holder: 'Juno' },
     ]);
+    // The first tick a tick after every plugin is ready, the channel not up yet.
+    expect(ticks).toBe(0);
+    later(1000);
     expect(bus.filter((r) => r.type === 'norelec.message')).toHaveLength(1);
     // Every TICK_MS from ready.
     expect(ticks).toBe(4);
@@ -303,6 +309,57 @@ describe('the norelec plugin', () => {
     expect(again.lines.some((l) => l.includes('Telegram accounts in'))).toBe(false);
     expect(again.game().state.players.get('Mirco777')?.telegram).toBe(true);
     await again.core.stop();
+  });
+});
+
+describe("the send watchdog, on the bot's channel (D93)", () => {
+  /** The plugin, and an actor that sends to the channel through `irc`, its outbox `out()`. */
+  async function answering(irc: Record<string, unknown> = {}) {
+    let outbox: OutboxHandle | undefined;
+    const t = setup(
+      [],
+      [],
+      true,
+      {},
+      {
+        irc,
+        graph: (g) => withChats(g, 'raider.chat', { sends: [IRC_CONFIG.channel] }),
+      }
+    );
+    t.core.register(
+      definePlugin({
+        manifest: {
+          id: 'raider',
+          version: '0.1.0',
+          kinds: ['actor'],
+          description: 'sends commands to the channel',
+          outputs: { chat: { type: 'chat-out', network: 'irc', bind: { node: 'irc', sends: [] } } },
+        },
+        create: (ctx) => {
+          outbox = ctx.outbox('chat');
+          return {};
+        },
+      })
+    );
+    await t.core.start();
+    return { ...t, out: () => outbox as OutboxHandle };
+  }
+  const channel = IRC_CONFIG.channel;
+
+  it('hears the channel while the bot answers, so it needs no unansweredAt: 0', async () => {
+    const { core, out, hear, later } = await answering({ unansweredAt: 2, minIntervalS: 1 });
+    for (let i = 0; i < 4; i++) {
+      expect(out().send(channel, '!back').outcome).toBe('sent');
+      hear('alice lasci perdere e torni in alice: arrivi tra 23 secondi.');
+      later(2000);
+    }
+    // Unanswered, it stops the node at its threshold, as before.
+    expect(out().send(channel, '!back').outcome).toBe('sent');
+    later(2000);
+    expect(out().send(channel, '!back').outcome).toBe('sent');
+    later(2000);
+    expect(out().send(channel, '!back').reason).toMatch(/^stopped: stalled/u);
+    await core.stop();
   });
 });
 

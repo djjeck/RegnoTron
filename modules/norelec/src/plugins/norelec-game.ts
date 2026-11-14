@@ -139,7 +139,10 @@ export class NorelecGame {
     if (command !== null) for (const listener of this.commandListeners) listener(command);
   }
 
-  /** The clock: completes a bot message whose parts have all arrived, and fires due timers. */
+  /**
+   * The clock: completes a bot message that waited for the join window (most are complete with
+   * their line, in `line`), and fires due timers.
+   */
   tick(): void {
     const now = this.deps.now();
     for (const m of this.parser.flush(now)) this.message(m);
