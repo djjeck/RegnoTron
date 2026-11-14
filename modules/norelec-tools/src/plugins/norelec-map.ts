@@ -10,8 +10,8 @@
  * the measurements, the map's layout and Telegram's file id, and the photo. A first start reads the
  * trips of every bot message of the event log (`ctx.events`) through a game state of its own, so
  * that each trip counts the 🚀 carried then; from then on, each message as it comes. Its one
- * migration is a no-op, so that the store of v0's `norelec-utilities`, which kept the map (at
- * version 1), can be imported as its instance (bot-os.md D54).
+ * migration, for a layout no store holds any more, is a no-op, kept because its stores are at
+ * version 1, and the shell refuses a store at a version above its plugin's count of migrations.
  */
 import { type CommandHandler, definePlugin, type Plugin } from '@megabottron1999/core';
 import { parseMessage } from '@regnotron/norelec/game/parse-message.ts';

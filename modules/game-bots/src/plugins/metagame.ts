@@ -8,10 +8,9 @@
  * an actor outside RegnoTron.
  *
  * It is built from its config alone (bot-os-api.md §7.2): whether it keeps the ledger, and the bots
- * `/loot` lists, in its order. Its store keeps the ledger (pages `ledger-…` and `cursor`). Its two
- * migrations brought in files of an older version's data volume; they are no-ops now, kept so that
- * a store imported from v0 (at version 2, bot-os.md D54) reads. A timer `adventure` left by an
- * older version, which played a turn itself, is dropped at the first start.
+ * `/loot` lists, in its order. Its store keeps the ledger (pages `ledger-…` and `cursor`), at
+ * version 2: its two migrations, for a layout no store holds any more, are no-ops, kept because the
+ * shell refuses a store at a version above its plugin's count of migrations.
  */
 import { type BusEvent, definePlugin, type Plugin } from '@megabottron1999/core';
 import { z } from 'zod';
@@ -45,9 +44,6 @@ export const LEDGER_GAMES: readonly LedgerGame[] = [
   { namespace: INVENTORYBOT_PARSER, type: `${INVENTORYBOT_PARSER}.turn`, bot: INVENTORYBOT },
   { namespace: LOREGAME_PARSER, type: `${LOREGAME_PARSER}.turn`, bot: LOREGAMEBOT },
 ];
-
-/** The timer of the older version's own turn, which it no longer plays. */
-export const RETIRED_TIMER = 'adventure';
 
 /** `/loot` without the ledger. */
 export const NO_LOOT = "No ledger: the metagame node's config has it off (ledger: false)";
@@ -107,15 +103,11 @@ export const metagamePlugin: Plugin = definePlugin({
         },
       },
     },
-    // An older version's steps, no-ops now (above).
+    // No-ops, kept for the stores' version (above).
     state: { migrations: [() => {}, () => {}] },
   },
   create: (ctx) => {
     const config = ctx.config as MetagameConfig;
-    if (ctx.scheduler.get(RETIRED_TIMER) !== undefined) {
-      ctx.scheduler.cancel(RETIRED_TIMER);
-      ctx.log.info('the older version’s own turn is retired: its plan dropped');
-    }
     const ledger = config.ledger ? new Ledger(ctx.store, config.bots) : undefined;
     const add = (t: number, outcome: Outcome): void => {
       ledger?.add({ t, outcome });

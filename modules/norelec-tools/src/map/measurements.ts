@@ -2,7 +2,7 @@
  * The measured travel times between homes (docs/game-rules.md §2.2), from the departures the client
  * sees. A departure always starts from the player's home, so "N parti per X: arrivi tra T" is the
  * time between N's and X's homes; times are symmetric, so a pair is unordered. Pure and
- * serialisable: the map service keeps it in the volume.
+ * serialisable: the map service keeps it in the plugin's store.
  *
  * Rockets: the departure line does not say whether the player carries 🚀 (on IRC it never has the
  * "🚀" form of docs/bot-protocol.md), but each carried 🚀 makes the trip 10% faster (§2.3). So a

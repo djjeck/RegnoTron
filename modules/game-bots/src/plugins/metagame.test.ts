@@ -21,7 +21,6 @@ import {
   metagamePlugin,
   NO_LOOT,
   plugins,
-  RETIRED_TIMER,
 } from './metagame.ts';
 
 let dataDir: string;
@@ -65,25 +64,16 @@ describe('metagamePlugin', () => {
     });
   });
 
-  it("drops the plan of the older version's own turn", async () => {
+  it('starts on a store at version 2, its migrations no-ops', async () => {
     const store = path.join(dataDir, 'instances', 'metagame');
     fs.mkdirSync(store, { recursive: true });
-    fs.writeFileSync(path.join(store, '_meta.json'), '{"version":1}');
-    fs.writeFileSync(
-      path.join(store, '_timers.json'),
-      JSON.stringify({ [RETIRED_TIMER]: { at: T0 + 60_000, late: 'fire', graceMs: 600_000 } })
-    );
-    fs.writeFileSync(path.join(store, 'state.json'), '{"last":1}');
-    const lines: string[] = [];
-    const clock = new VirtualClock(T0);
-    const core = new Core({ clock, dataDir, print: (l) => lines.push(l) });
+    fs.writeFileSync(path.join(store, '_meta.json'), '{"version":2}');
+    fs.writeFileSync(path.join(store, 'cursor.json'), '{"last":1}');
+    const core = new Core({ clock: new VirtualClock(T0), dataDir });
     core.register(metagamePlugin);
     await core.start();
-    clock.advance(120_000);
-    expect(lines.some((l) => l.includes('own turn is retired'))).toBe(true);
-    expect(lines.some((l) => l.includes('has no onTimer'))).toBe(false);
-    expect(JSON.parse(fs.readFileSync(path.join(store, '_timers.json'), 'utf8'))).toEqual({});
-    expect(JSON.parse(fs.readFileSync(path.join(store, 'state.json'), 'utf8'))).toEqual({
+    expect(core.state('metagame')?.state).toBe('running');
+    expect(JSON.parse(fs.readFileSync(path.join(store, 'cursor.json'), 'utf8'))).toEqual({
       last: 1,
     });
   });

@@ -58,8 +58,9 @@ runs one beside a parser, needs `{ "command": "/avventura" }`.
 **`metagame`:** its optional events inputs `inventorybot-events` and `loregame-events` take the two
 parsers' turns: InventoryBotTron's `inventorybot` and this module's `loregame`. Another game's
 parser (outside RegnoTron) adds its outcomes through the action `add` (`{ t, outcomes }`), over an
-interface edge to `metagame`. Its store's two migrations are no-ops, kept so that v0's store (at
-version 2) can be imported as its instance.
+interface edge to `metagame`. Its store is at version 2: its two migrations, for a layout no store
+holds any more, are no-ops, kept because the shell refuses a store at a version above its plugin's
+count of migrations.
 
 | Config   | Default                           | Meaning                                                               |
 | -------- | --------------------------------- | --------------------------------------------------------------------- |

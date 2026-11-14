@@ -33,5 +33,5 @@ keeps them in its store (`accounts`).
 
 It offers `state.game` (the game, for the plugins that use it through an interface edge) and
 `state.status` (the channel's health), and publishes `norelec.message` and `norelec.notice`. Its
-store's one migration is a no-op, kept so that v0's store (at version 1) can be imported as its
-instance (MegaBotTron1999's docs/bot-os.md D54).
+store is at version 1: its one migration, for a layout no store holds any more, is a no-op, kept
+because the shell refuses a store at a version above its plugin's count of migrations.

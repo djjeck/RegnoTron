@@ -18,9 +18,9 @@ measured trips have changed and settled; the rendering runs off it, in the shell
 ## Configuration
 
 Both are built from their node's config alone, and read the bot messages of the event log
-(`ctx.events`) once, at a first start, to measure the trips and take the clock's level. Each store's
-one migration is a no-op, so that v0's `norelec-utilities` store (at version 1), which kept the map
-and the clock, can be imported as either instance (MegaBotTron1999's docs/bot-os.md D54).
+(`ctx.events`) once, at a first start, to measure the trips and take the clock's level. Each store
+is at version 1: its one migration, for a layout no store holds any more, is a no-op, kept because
+the shell refuses a store at a version above its plugin's count of migrations.
 
 **`norelec-map`:** inputs `game` (`norelec`'s `state.game`) and `messages` (`norelec`'s events).
 

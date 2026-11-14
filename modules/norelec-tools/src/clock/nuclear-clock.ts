@@ -15,7 +15,7 @@
  *   off it still follows the level, so turning it on posts nothing for a crossing made before, and
  *   a threshold waiting for the morning is dropped.
  *
- * What it remembers is kept in the data volume (`/data/nuclear.json`): the level the total was last
+ * What it remembers is kept in the `nuclear-clock` plugin's store: the level the total was last
  * at, when each threshold was posted, a threshold waiting for the morning, and the balances the
  * game state knew. A restart replays only the last hours of the log, so the balances are put back
  * into the game state, each unless the replay has a newer one; a threshold crossed while the client

@@ -163,8 +163,8 @@ export const norelecPlugin: Plugin = definePlugin({
         },
       },
     },
-    // v0's one step, which brought in a file of the volume's root, is a no-op now: kept so that a
-    // store imported from v0 (at version 1, MegaBotTron1999's docs/bot-os.md D54) reads.
+    // A no-op, for a layout no store holds any more: kept because the stores are at version 1, and
+    // the shell refuses a store at a version above its plugin's count of migrations.
     state: { migrations: [() => {}] },
   },
   create: (ctx) => {

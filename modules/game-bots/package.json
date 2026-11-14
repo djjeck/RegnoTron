@@ -1,6 +1,6 @@
 {
   "name": "@regnotron/game-bots",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "RegnoTron's game bots: @LoreGameBot's and @EpicLorelecBot's parsers, and the ledger of their turns and @InventoryBot's",
   "license": "MIT",
