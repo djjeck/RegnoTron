@@ -312,7 +312,7 @@ describe('the norelec plugin', () => {
   });
 });
 
-describe("the send watchdog, on the bot's channel (D93)", () => {
+describe("the bot's answers to the owner's commands (D93, D98)", () => {
   /** The plugin, and an actor that sends to the channel through `irc`, its outbox `out()`. */
   async function answering(irc: Record<string, unknown> = {}) {
     let outbox: OutboxHandle | undefined;
@@ -344,9 +344,48 @@ describe("the send watchdog, on the bot's channel (D93)", () => {
     await t.core.start();
     return { ...t, out: () => outbox as OutboxHandle };
   }
+  const flush = () => new Promise((r) => setImmediate(r));
   const channel = IRC_CONFIG.channel;
 
-  it('hears the channel while the bot answers, so it needs no unansweredAt: 0', async () => {
+  it('pairs a command sent through the outbox with the answer read from the channel', async () => {
+    const { core, out, hear, bus } = await answering();
+    const q = out().enqueue(channel, '!raid Bravo');
+    await flush();
+    expect(q.status()).toBe('sent');
+    // Another player's departure answers nobody's command here; the owner's does, at once.
+    hear('Bravo parti per Juno: arrivi tra 58 secondi. Casa tua resta scoperta.');
+    hear('alice parti per Bravo: arrivi tra 1 minuto e 31 secondi. Casa tua resta scoperta.');
+    await expect(q).resolves.toMatchObject({
+      text: '!raid Bravo',
+      outcome: 'sent',
+      answer: {
+        status: 'ok',
+        event: { type: 'norelec.answer', rule: 'raid', player: 'alice', t: T0 },
+      },
+    });
+    expect(bus.filter((r) => r.type === 'norelec.answer')).toHaveLength(1);
+    await core.stop();
+  });
+
+  it('holds a command back for the time the bot says, and refuses as it does', async () => {
+    const { core, out, hear } = await answering();
+    const q = out().enqueue(channel, '!raid Bravo');
+    await flush();
+    hear('alice sei già in viaggio, torni tra 2 minuti.');
+    await expect(q).resolves.toMatchObject({
+      answer: { status: 'refused', reason: 'travelling', retryAt: T0 + 120_000 },
+    });
+    // Its cooldown holds the trips and the entry.
+    expect(out().held(channel, '!avventura')).toMatchObject({ until: T0 + 120_000 });
+    expect(out().held(channel, '!buy')).toBeUndefined();
+    const r = out().enqueue(channel, '!give Juno 500');
+    await flush();
+    expect(r.status()).not.toBe('sent');
+    r.cancel();
+    await core.stop();
+  });
+
+  it('keeps the watchdog quiet while the bot answers, so it needs no unansweredAt: 0', async () => {
     const { core, out, hear, later } = await answering({ unansweredAt: 2, minIntervalS: 1 });
     for (let i = 0; i < 4; i++) {
       expect(out().send(channel, '!back').outcome).toBe('sent');

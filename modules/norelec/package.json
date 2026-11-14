@@ -1,6 +1,6 @@
 {
   "name": "@regnotron/norelec",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "RegnoTron's NorelecBot: the game's grammar, its parser over IRC and the exports, the game state, and the arena's engine",
   "license": "MIT",

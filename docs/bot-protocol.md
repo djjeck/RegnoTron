@@ -246,6 +246,15 @@ a wording fix serves the Telegram exports and the live IRC side at once:
   send watchdog, bot-os.md D93) and pairs a command with its answer (D98). A message that waits for
   the join window is published from the plugin's tick, or with the next line of the channel, and
   answers no command.
+- **Answers to commands** (`modules/norelec/src/game/answers.ts`): an event about the owner's own
+  account (the plugin's `self`) that the bot says at once in reply to one of the game's commands
+  (§1.1 of the rules) is also published as `norelec.answer`, after its message, naming its rule. The
+  plugin's manifest declares each rule as a D98 answer of its `!` commands: `ok` (a departure, an
+  entry, a purchase, a turn back, …) or `refused` (`travelling`, `frozen`, `locked`, `invalid`,
+  `missing`, …), with `retryAt` where the bot states a time (already travelling, on the road,
+  frozen, a penalty, the door closed, buying on the way back) or the failed entry's measured penalty
+  of 300 s when it does not. Dreams and arrivals come later and answer nothing; another player's
+  events answer nobody's command.
 - **Coverage:** on the messages of 13–21 Oct, 17,322 bot messages give 30,736 events, of which 50
   lines (0.16%) are `unknown`, mostly human text the bot reposts. The formats before 13 Oct differ
   (the game had other rules and wording), and 24% of the year's lines are unknown: the parsers

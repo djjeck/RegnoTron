@@ -5,7 +5,8 @@
  * the bus as `norelec.message` once the state has applied it, which writes the message to the event
  * log too, and reports each as read or unread (drift, P5). A message complete with its line is
  * published inside the handler the shell calls with that line, the moment the shell counts as the
- * channel heard (bot-os.md D93) and pairs answers (D98). It keeps the players known to be
+ * channel heard (bot-os.md D93) and pairs answers (D98); its events about the owner's account that
+ * answer a command follow it as `norelec.answer`. It keeps the players known to be
  * Telegram accounts in its store (modules/norelec/src/plugins/norelec-accounts.ts), and publishes
  * the game's notices as `norelec.notice`.
  *
@@ -26,6 +27,7 @@ import {
 } from '@megabottron1999/core';
 import { z } from 'zod';
 import { exportBotMessage, type ExportMessage } from '#src/export/export-parser.ts';
+import { ANSWER_RULES, answerDeclarations, answerOf } from '#src/game/answers.ts';
 import { type BotMessage } from '#src/game/bot-message.ts';
 import { type GameEvent } from '#src/game/events.ts';
 import { parseMessage } from '#src/game/parse-message.ts';
@@ -46,6 +48,26 @@ export const messageSchema = z.object({
 export const NOTICE_EVENT = 'norelec.notice';
 export const noticeSchema = z.object({
   notice: z.looseObject({ kind: z.string(), player: z.string(), at: z.number() }),
+});
+
+/**
+ * NorelecBot's answer to a command of the owner's account (modules/norelec/src/game/answers.ts):
+ * published with its message, one per event of the message that answers, and declared in the
+ * manifest's `answers`, so that the core pairs it with the command sent (MegaBotTron1999's
+ * bot-os.md D98).
+ */
+export const ANSWER_EVENT = 'norelec.answer';
+const ruleNames = Object.keys(ANSWER_RULES) as [keyof typeof ANSWER_RULES];
+export const answerSchema = z.object({
+  /** Which answer (`ANSWER_RULES`), which the manifest's declarations match. */
+  rule: z.enum(ruleNames),
+  status: z.enum(['ok', 'refused']),
+  /** The owner's game account, which the event is about. */
+  player: z.string(),
+  /** When its commands may go again, as the bot says (ms). */
+  retryAt: z.number().optional(),
+  /** The event of the message that answers. */
+  event: z.looseObject({ kind: z.string() }),
 });
 
 /** A notice as the bus delivers it, in the form the game logged it. */
@@ -109,7 +131,9 @@ export const norelecConfig = z.object({
     .string()
     .min(1)
     .optional()
-    .describe("The game account whose notices are printed; the IRC account's own nick if unset"),
+    .describe(
+      "The game account whose notices are printed and whose events answer the owner's commands; the IRC account's own nick if unset"
+    ),
   /** Rest after a return, in seconds. */
   restS: z.number().int().min(0).default(90).describe('Rest after a return, in seconds'),
   /** The hours of bot messages replayed from the event log at `ready`, a restart's memory. */
@@ -151,7 +175,13 @@ export const norelecPlugin: Plugin = definePlugin({
       },
     },
     games: { registers: [NORELEC] },
-    events: { [MESSAGE_EVENT]: messageSchema, [NOTICE_EVENT]: noticeSchema },
+    events: {
+      [MESSAGE_EVENT]: messageSchema,
+      [NOTICE_EVENT]: noticeSchema,
+      [ANSWER_EVENT]: answerSchema,
+    },
+    // The bot's answers to the owner's commands on the channel (D98).
+    answers: answerDeclarations(ANSWER_EVENT),
     interface: {
       state: {
         game: {
@@ -217,6 +247,15 @@ export const norelecPlugin: Plugin = definePlugin({
       start: () => {
         game.publish = (m) => {
           ctx.bus.publish(MESSAGE_EVENT, { text: m.text, events: m.events }, m.time);
+          // Its answers to the owner's commands, after it: whoever hears one finds the state with
+          // the message applied.
+          const self = deps.self;
+          for (const event of self === '' ? [] : m.events) {
+            const a = answerOf(event, self, m.time);
+            if (a === undefined) continue;
+            const { status } = ANSWER_RULES[a.rule];
+            ctx.bus.publish(ANSWER_EVENT, { ...a, status, player: self, event }, m.time);
+          }
           // Drift (P5): a message with a line no template knows is claimed but unread.
           const r = reading(m.text, m.events);
           if (r.kind === 'unread') ctx.drift.unread({ text: r.text, lines: r.lines, t: m.time });

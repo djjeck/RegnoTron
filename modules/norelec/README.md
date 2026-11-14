@@ -9,8 +9,9 @@ NorelecBot's ball game, in its Telegram group and its IRC channel (bridged by a 
   exports' side.
 - `src/state/`: the game state: players, trips, freezes, the place's holder, the timers.
 - `src/plugins/`: the `norelec` parser plugin, which reads the channel through the `irc` connector
-  and publishes `norelec.message` and `norelec.notice`, and offers the game (`state.game`) to the
-  plugins that read it.
+  and publishes `norelec.message`, `norelec.notice` and `norelec.answer`, and offers the game
+  (`state.game`) to the plugins that read it. `src/game/answers.ts` says which events answer which
+  of the game's commands.
 - `src/arena/engine.ts`: the game, simulated, with the bot's wording, for testing offline.
 
 The design is in [docs/bot-protocol.md](../../docs/bot-protocol.md), the rules in
@@ -24,18 +25,23 @@ the channel, and replays the last hours of bot messages from the event log (`ctx
 `ready`. A fresh instance learns the players who are Telegram accounts from the whole log once, and
 keeps them in its store (`accounts`).
 
-| Config         | Default      | Meaning                                                                     |
-| -------------- | ------------ | --------------------------------------------------------------------------- |
-| `channel`      | (required)   | The game's IRC channel; its edge from `irc` reads it too                    |
-| `self`         | the IRC nick | The game account whose notices are printed                                  |
-| `restS`        | `90`         | Rest after a return, in seconds                                             |
-| `historyHours` | `6`          | The hours of `norelec.message` records replayed from the event log at start |
+| Config         | Default      | Meaning                                                                      |
+| -------------- | ------------ | ---------------------------------------------------------------------------- |
+| `channel`      | (required)   | The game's IRC channel; its edge from `irc` reads it too                     |
+| `self`         | the IRC nick | The game account whose notices are printed, and whose events answer commands |
+| `restS`        | `90`         | Rest after a return, in seconds                                              |
+| `historyHours` | `6`          | The hours of `norelec.message` records replayed from the event log at start  |
 
 It offers `state.game` (the game, for the plugins that use it through an interface edge) and
-`state.status` (the channel's health), and publishes `norelec.message` and `norelec.notice`. A bot
-message short enough not to be the start of a split one is read and published with its line, inside
-the shell's message handler (the others wait the 400 ms join window, for the plugin's tick), so that
-MegaBotTron1999's send watchdog hears the channel (bot-os.md D93): an `irc` node whose sends the bot
-answers needs no `unansweredAt: 0`. Its store is at version 1: its one migration, for a layout no
-store holds any more, is a no-op, kept because the shell refuses a store at a version above its
-plugin's count of migrations.
+`state.status` (the channel's health), and publishes `norelec.message`, `norelec.notice` and
+`norelec.answer`. A bot message short enough not to be the start of a split one is read and
+published with its line, inside the shell's message handler (the others wait the 400 ms join window,
+for the plugin's tick), so that MegaBotTron1999's send watchdog hears the channel (bot-os.md D93)
+and its command answers (D98) pair a command sent to the channel with the bot's reply:
+`norelec.answer`, for the events about the account `self` names, which the manifest declares as the
+answers of the game's `!` commands (`ok` or `refused`, and when the command may go again where the
+bot says; [docs/bot-protocol.md](../../docs/bot-protocol.md) §5). An `irc` node whose sends the bot
+answers needs no `unansweredAt: 0`. It needs MegaBotTron1999 0.1.21 or later, whose manifests
+declare answers. Its store is at version 1: its one migration, for a layout no store holds any more,
+is a no-op, kept because the shell refuses a store at a version above its plugin's count of
+migrations.
