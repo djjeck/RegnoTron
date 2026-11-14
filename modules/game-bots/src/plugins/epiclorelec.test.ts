@@ -18,7 +18,7 @@ describe('the epiclorelec parser', () => {
     p.hear({ ...epic, chat: GROUP, text: 'Complimenti 7, Juno, mi hai rotto il cazzo 3 volte!' });
     const hand = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/rompimiilcazzo' });
     const cooldown =
-      "(🔟 piedento) Non è passato abbastanza tempo dall'ultima rottura! Riprova fra 1 minuto e 22 secondi.";
+      "(🎲 un inciso) Non è passato abbastanza tempo dall'ultima rottura! Riprova fra 1 minuto e 22 secondi.";
     p.hear({ ...epic, chat: GROUP, replyTo: hand, text: cooldown });
     p.hear({ ...epic, chat: GROUP, replyTo: '5', text: cooldown });
     p.hear({

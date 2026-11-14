@@ -16,9 +16,14 @@ describe('the loregame parser', () => {
       own: true,
       text: '/avventura@LoreGameBot',
     });
-    p.hear({ ...lore, chat: GROUP, replyTo: hand, text: "Storia\nHai ottenuto un'aquila [B1]!" });
+    p.hear({
+      ...lore,
+      chat: GROUP,
+      replyTo: hand,
+      text: "Storia\nHai ottenuto un'ancora di burro [B1]!",
+    });
     // Another's turn in the group is not alice's.
-    p.hear({ ...lore, chat: GROUP, replyTo: '1', text: "Hai ottenuto un'aquila [B1]!" });
+    p.hear({ ...lore, chat: GROUP, replyTo: '1', text: "Hai ottenuto un'ancora di burro [B1]!" });
     // Sent by the actor in private: a fight lost, 30 minutes' rest.
     await p.iface.sent({ chat: '@LoreGameBot', id: '77', t: p.kit.clock.now() });
     await p.iface.sent({ chat: '@LoreGameBot', id: '77', t: p.kit.clock.now() });
@@ -41,7 +46,12 @@ describe('the loregame parser', () => {
       text: 'Non è passato abbastanza tempo! Riprova fra 40 minuti.',
     });
     p.hear({ ...lore, chat: '@LoreGameBot', replyTo: '80', text: 'Stai calmo maschio...' });
-    p.hear({ ...lore, chat: '@LoreGameBot', replyTo: '81', text: "Hai ottenuto un'ala [C]!" });
+    p.hear({
+      ...lore,
+      chat: '@LoreGameBot',
+      replyTo: '81',
+      text: "Hai ottenuto un'ampolla di nebbia [C]!",
+    });
     p.hear({
       ...lore,
       chat: '@LoreGameBot',

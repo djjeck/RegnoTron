@@ -16,7 +16,7 @@
  *   cazzo 53 volte!" (the count may be negative, and lines of the day's event may come first); it
  *   names the player by display name, so only its private chat tells it is the owner's. Its cooldown,
  *   "Non è passato abbastanza tempo dall'ultima rottura! Riprova fra …", may come after a
- *   parenthesis ("(🔟 piedento) "), and replies to the command.
+ *   parenthesis ("(🎲 un inciso) "), and replies to the command.
  *
  * The bots write some accented letters decomposed ("e" and a combining grave for "è"), so the text
  * is read in its composed form (NFC), and the items are kept in it.

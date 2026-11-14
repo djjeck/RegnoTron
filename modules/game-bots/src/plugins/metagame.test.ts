@@ -97,7 +97,7 @@ describe('metagamePlugin', () => {
       chat: '@InventoryBot',
       sender: 'InventoryBot',
       time: T0,
-      text: '@alice, un salame [C]!',
+      text: '@alice, un fermacarte di gelatina [C]!',
     });
     account.hear({
       chat: '@LoreGameBot',
@@ -115,7 +115,7 @@ describe('metagamePlugin', () => {
       text: 'È giunto il livello 5!',
     });
     const text = await loot(core);
-    expect(text).toContain('InventoryBot, 1 item:\n- un salame [C]');
+    expect(text).toContain('InventoryBot, 1 item:\n- un fermacarte di gelatina [C]');
     expect(text).toContain('Not understood: 1');
     expect(lines.some((l) => l.includes('not understood from LoreGameBot'))).toBe(true);
     expect(await loot(core)).toContain('nothing new');
@@ -187,8 +187,10 @@ describe('metagamePlugin', () => {
             tags: [],
             sure: true,
           });
-          expect(actions.add({ t: T0, outcomes: [gain('un tonno')] })).toEqual({ added: 1 });
-          actions.add({ t: T0 + 1000, outcomes: [gain('una sarda')] });
+          expect(actions.add({ t: T0, outcomes: [gain('un pesce di cartone')] })).toEqual({
+            added: 1,
+          });
+          actions.add({ t: T0 + 1000, outcomes: [gain('una triglia di stoffa')] });
         },
       }),
     });
@@ -200,7 +202,7 @@ describe('metagamePlugin', () => {
     core.register(metagamePlugin, fish);
     await core.start();
     expect(await loot(core)).toBe(
-      'Since the ledger began:\n\nFishBot, 2 items:\n- un tonno [C]\n- una sarda [C]'
+      'Since the ledger began:\n\nFishBot, 2 items:\n- un pesce di cartone [C]\n- una triglia di stoffa [C]'
     );
   });
 });

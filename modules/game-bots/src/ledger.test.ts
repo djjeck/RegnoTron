@@ -37,12 +37,12 @@ describe('Ledger', () => {
     const l = new Ledger(docs);
     expect(l.cursor()).toBe(0);
     expect(l.unread()).toEqual([]);
-    l.add(drop('un salame', T0));
-    l.add(drop('un cubo', T0 + 60_000));
+    l.add(drop('un fermacarte di gelatina', T0));
+    l.add(drop('un tostapane lunare', T0 + 60_000));
     l.markRead(T0);
     const again = new Ledger(docs);
     expect(again.cursor()).toBe(T0);
-    expect(again.unread().map((e) => e.outcome)).toMatchObject([{ item: 'un cubo' }]);
+    expect(again.unread().map((e) => e.outcome)).toMatchObject([{ item: 'un tostapane lunare' }]);
   });
 
   it('reads a cursor that makes no sense as none', () => {
@@ -58,21 +58,21 @@ describe('Ledger', () => {
     ))
       docs.write(name, page);
     const l = new Ledger(docs);
-    l.add(drop('un salame', T0 - 1));
-    l.add(drop('un cubo', T0 + 5));
+    l.add(drop('un fermacarte di gelatina', T0 - 1));
+    l.add(drop('un tostapane lunare', T0 + 5));
     expect(docs.names()).toEqual([pageName(1), pageName(2)]);
     expect(docs.read<LedgerEntry[]>(pageName(2))).toHaveLength(2);
     const unread = l.unread();
     expect(unread).toHaveLength(PAGE_SIZE + 2);
-    expect(unread.at(-2)?.outcome).toMatchObject({ item: 'un salame' });
-    expect(unread.at(-1)?.outcome).toMatchObject({ item: 'un cubo' });
+    expect(unread.at(-2)?.outcome).toMatchObject({ item: 'un fermacarte di gelatina' });
+    expect(unread.at(-1)?.outcome).toMatchObject({ item: 'un tostapane lunare' });
   });
 
   it('leaves alone the documents that are not its pages', () => {
     const docs = documents();
     docs.write('state', { last: 1 });
     const l = new Ledger(docs);
-    l.add(drop('un salame'));
+    l.add(drop('un fermacarte di gelatina'));
     expect(docs.names()).toEqual([pageName(1), 'state']);
     expect(l.unread()).toHaveLength(1);
   });
@@ -83,8 +83,8 @@ describe('Ledger.take', () => {
     const l = new Ledger(documents());
     expect(l.take()).toBe('Since the ledger began: nothing new.');
     expect(l.cursor()).toBe(0);
-    l.add(drop('un salame', T0 + 60_000));
-    l.add(drop('un cubo', T0));
+    l.add(drop('un fermacarte di gelatina', T0 + 60_000));
+    l.add(drop('un tostapane lunare', T0));
     expect(l.take()).toContain('InventoryBot, 2 items:');
     expect(l.cursor()).toBe(T0 + 60_000);
     expect(l.take()).toBe('Since 1 Nov, 12:01 (Italian time): nothing new.');
@@ -122,10 +122,10 @@ describe('formatLoot', () => {
     expect(
       formatLoot(
         [
-          gain('LoreGameBot', 'lo SPAM 🥩', 'B1'),
-          gain('InventoryBot', 'un salame', 'C'),
-          gain('InventoryBot', 'un salame', 'C'),
-          gain('InventoryBot', 'una nave', 'N', false),
+          gain('LoreGameBot', 'lo ZUCCOTTO 🥩', 'B1'),
+          gain('InventoryBot', 'un fermacarte di gelatina', 'C'),
+          gain('InventoryBot', 'un fermacarte di gelatina', 'C'),
+          gain('InventoryBot', 'una lanterna storta', 'N', false),
           gain('LoreGameBot', '👍🏽\n👉🏽 /avventura\n👍🏽', 'M1'),
           nothing('cooldown'),
           nothing('cooldown'),
@@ -142,11 +142,11 @@ describe('formatLoot', () => {
         'Since 1 Nov, 12:00 (Italian time):',
         '',
         'InventoryBot, 3 items:',
-        '- un salame [C] ×2',
-        '- una nave [N] (name guessed)',
+        '- un fermacarte di gelatina [C] ×2',
+        '- una lanterna storta [N] (name guessed)',
         '',
         'LoreGameBot, 2 items:',
-        '- lo SPAM 🥩 [B1]',
+        '- lo ZUCCOTTO 🥩 [B1]',
         '- 👍🏽 👉🏽 /avventura 👍🏽 [M1]',
         '',
         'Nothing: 2 too soon, 1 fight lost, 1 item lost in a fight, 1 "Stai calmo maschio", 1 not registered',
@@ -156,18 +156,21 @@ describe('formatLoot', () => {
   });
 
   it('says "1 item", and leaves out a bot with none', () => {
-    expect(formatLoot([gain('LoreGameBot', 'un cubo', 'M1')], 0)).toBe(
-      'Since the ledger began:\n\nLoreGameBot, 1 item:\n- un cubo [M1]'
+    expect(formatLoot([gain('LoreGameBot', 'un tostapane lunare', 'M1')], 0)).toBe(
+      'Since the ledger began:\n\nLoreGameBot, 1 item:\n- un tostapane lunare [M1]'
     );
   });
 
   it('lists the bots in the order given, and only those', () => {
-    const entries = [gain('InventoryBot', 'un salame', 'C'), gain('LoreGameBot', 'un cubo', 'M1')];
+    const entries = [
+      gain('InventoryBot', 'un fermacarte di gelatina', 'C'),
+      gain('LoreGameBot', 'un tostapane lunare', 'M1'),
+    ];
     expect(formatLoot(entries, 0, ['LoreGameBot', 'InventoryBot'])).toBe(
-      'Since the ledger began:\n\nLoreGameBot, 1 item:\n- un cubo [M1]\n\nInventoryBot, 1 item:\n- un salame [C]'
+      'Since the ledger began:\n\nLoreGameBot, 1 item:\n- un tostapane lunare [M1]\n\nInventoryBot, 1 item:\n- un fermacarte di gelatina [C]'
     );
     expect(formatLoot(entries, 0, ['LoreGameBot'])).toBe(
-      'Since the ledger began:\n\nLoreGameBot, 1 item:\n- un cubo [M1]'
+      'Since the ledger began:\n\nLoreGameBot, 1 item:\n- un tostapane lunare [M1]'
     );
   });
 

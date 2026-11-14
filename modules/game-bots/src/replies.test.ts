@@ -5,12 +5,12 @@ describe('parseLoreGameBot', () => {
   it('reads the gain on the last line, after the story', () => {
     expect(
       parseLoreGameBot(
-        'Lore - Il Paradiso ⛅️ [B1]\n\nUna lunga storia, con [B1] dentro.\nHai ottenuto lo SPAM 🥩 [B1]!'
+        'Lore - Il Bosco Inventato ⛅️ [B1]\n\nUna lunga storia, con [B1] dentro.\nHai ottenuto lo ZUCCOTTO 🥩 [B1]!'
       )
     ).toEqual({
       kind: 'gain',
       bot: 'LoreGameBot',
-      item: 'lo SPAM 🥩',
+      item: 'lo ZUCCOTTO 🥩',
       rarity: 'B1',
       tags: [],
       sure: true,
@@ -19,31 +19,31 @@ describe('parseLoreGameBot', () => {
 
   it('takes the last rarity as the rarity, and lower-case tags after it', () => {
     expect(
-      parseLoreGameBot('Storia.\nHai ottenuto un generatore di oggetti [X] [generatore] [M1]!')
+      parseLoreGameBot('Storia.\nHai ottenuto un costruttore di cose [X] [costruttore] [M1]!')
     ).toMatchObject({
-      item: 'un generatore di oggetti [X] [generatore]',
+      item: 'un costruttore di cose [X] [costruttore]',
       rarity: 'M1',
     });
-    expect(parseLoreGameBot('Hai ottenuto un colpo di frusta [M1] [usabile]!')).toMatchObject({
-      item: 'un colpo di frusta',
+    expect(parseLoreGameBot('Hai ottenuto un fischio di vapore [M1] [usabile]!')).toMatchObject({
+      item: 'un fischio di vapore',
       tags: ['usabile'],
     });
     expect(
       parseLoreGameBot(
-        'Hai ottenuto una spada a forma di palloncino (0 - 1) [M1] [equipaggiabile 🗡]!'
+        'Hai ottenuto una mestola a forma di nuvola (0 - 1) [M1] [equipaggiabile 🗡]!'
       )
     ).toMatchObject({
-      item: 'una spada a forma di palloncino (0 - 1)',
+      item: 'una mestola a forma di nuvola (0 - 1)',
       tags: ['equipaggiabile 🗡'],
     });
   });
 
   it('reads an item whose name spans lines', () => {
     expect(
-      parseLoreGameBot('Storia.\nHai ottenuto 👍🏽👇🏽👍🏽\n👉🏽/avventura👈🏽\n👍🏽👆🏽👍🏽 [M1] [usabile]!')
+      parseLoreGameBot('Storia.\nHai ottenuto 🌀🔺🌀\n🔸/avventura🔸\n🌀🔻🌀 [M1] [usabile]!')
     ).toMatchObject({
       kind: 'gain',
-      item: '👍🏽👇🏽👍🏽\n👉🏽/avventura👈🏽\n👍🏽👆🏽👍🏽',
+      item: '🌀🔺🌀\n🔸/avventura🔸\n🌀🔻🌀',
       rarity: 'M1',
     });
   });
@@ -60,7 +60,7 @@ describe('parseLoreGameBot', () => {
       retryMs: 303_000,
     });
     expect(
-      nothing('Non è passato abbastanza tempo! Riprova fra 31 secondi.\n\nXDXDXDXDXD')
+      nothing('Non è passato abbastanza tempo! Riprova fra 31 secondi.\n\nUna battuta qualunque.')
     ).toMatchObject({
       reason: 'cooldown',
     });
@@ -70,7 +70,7 @@ describe('parseLoreGameBot', () => {
       )
     ).toMatchObject({ reason: 'defeated' });
     expect(
-      nothing("Nessuno dei due sembra avere la meglio...\n\nL'oggetto si perde nello scontro...")
+      nothing("Lo scontro dura a lungo...\n\nL'oggetto si perde nello scontro...")
     ).toMatchObject({ reason: 'lost' });
     expect(nothing('Stai calmo maschio...')).toMatchObject({ reason: 'calm' });
     expect(
@@ -81,10 +81,10 @@ describe('parseLoreGameBot', () => {
   });
 
   it('keeps anything else as not understood, a level-up list included', () => {
-    expect(parseLoreGameBot('È giunto il livello 5! 🎉\nOttieni:\n> 50 monete\n')).toEqual({
+    expect(parseLoreGameBot('È giunto il livello 5! 🎉\nOttieni:\n> 3 gettoni\n')).toEqual({
       kind: 'unknown',
       bot: 'LoreGameBot',
-      text: 'È giunto il livello 5! 🎉\nOttieni:\n> 50 monete',
+      text: 'È giunto il livello 5! 🎉\nOttieni:\n> 3 gettoni',
     });
     expect(parseLoreGameBot('Hai ottenuto qualcosa senza rarità')).toMatchObject({
       kind: 'unknown',
@@ -107,12 +107,12 @@ describe('parseEpicLorelecBot', () => {
   it("reads the count of a turn, after the day's lines, negative too", () => {
     expect(
       parseEpicLorelecBot(
-        'Complimenti 78, Victor Esempio IL GRANDE, mi hai rotto il cazzo 53 volte!\n\nE me la spacchi'
+        'Complimenti 78, Victor Esempio IL PRIMO, mi hai rotto il cazzo 53 volte!\n\nUna riga in più.'
       )
     ).toEqual({ kind: 'count', bot: 'EpicLorelecBot', count: 53 });
     expect(
       parseEpicLorelecBot(
-        'Oggi è Lunedì! Doppie rotture di cazzo!\nComplimenti 10, X del male 👿, mi hai rotto il cazzo -1 volta!'
+        'Oggi è un giorno di prova!\nComplimenti 10, X del male 👿, mi hai rotto il cazzo -1 volta!'
       )
     ).toMatchObject({ count: -1 });
   });
@@ -125,7 +125,7 @@ describe('parseEpicLorelecBot', () => {
     ).toEqual({ kind: 'nothing', bot: 'EpicLorelecBot', reason: 'cooldown', retryMs: 897_000 });
     expect(
       parseEpicLorelecBot(
-        "(🔟 piedento) Non è passato abbastanza tempo dall'ultima rottura! Riprova fra un po."
+        "(🎲 un inciso) Non è passato abbastanza tempo dall'ultima rottura! Riprova fra un po."
       )
     ).toEqual({ kind: 'nothing', bot: 'EpicLorelecBot', reason: 'cooldown' });
     expect(parseEpicLorelecBot('Turno 1\n\nBasi - 1000 HP')).toBeUndefined();
