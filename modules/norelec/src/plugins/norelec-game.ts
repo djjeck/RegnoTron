@@ -15,7 +15,7 @@ import { parseMessage } from '#src/game/parse-message.ts';
 import { type PlayerCommand, playerCommand } from '#src/game/player-command.ts';
 import { GameState, type Notice } from '#src/state/game-state.ts';
 import { IrcParser } from '#src/transport/irc-parser.ts';
-import { unwrap } from '#src/transport/relay.ts';
+import { RELAYS, unwrap } from '#src/transport/relay.ts';
 
 /** A record the game writes, under the type the event log maps to `norelec.*`. */
 export type GameRecord =
@@ -33,6 +33,8 @@ export interface GameDeps {
   restS: number;
   /** The account the client plays: the notices about it are printed. */
   self: string;
+  /** The relay's IRC nicks, whose `<nick> text` lines are unwrapped; relay.ts `RELAYS` if unset. */
+  relays?: readonly string[];
 }
 
 /** A wait for a bot message, from `NorelecGame.waitForMessage`. */
@@ -71,7 +73,7 @@ export class NorelecGame {
   publishNotice: ((r: NoticeRecord) => void) | undefined;
   private readonly deps: GameDeps;
   private replayingNow = false;
-  private readonly parser = new IrcParser();
+  private readonly parser: IrcParser;
   private waiters: Waiter[] = [];
   private readonly listeners: ((m: BotMessage) => void)[] = [];
   private readonly commandListeners: ((c: PlayerCommand) => void)[] = [];
@@ -80,6 +82,7 @@ export class NorelecGame {
 
   constructor(deps: GameDeps) {
     this.deps = deps;
+    this.parser = new IrcParser(400, deps.relays ?? RELAYS);
     this.state = new GameState({ restS: deps.restS });
   }
 
@@ -134,7 +137,7 @@ export class NorelecGame {
     if (line.playback) return;
     this.health.lastLine = line.time;
     for (const m of this.parser.push({ ...line, received: this.deps.now() })) this.message(m);
-    const { author, text } = unwrap(line.nick, line.text);
+    const { author, text } = unwrap(line.nick, line.text, this.deps.relays ?? RELAYS);
     const command = playerCommand(line.time, author, text);
     if (command !== null) for (const listener of this.commandListeners) listener(command);
   }

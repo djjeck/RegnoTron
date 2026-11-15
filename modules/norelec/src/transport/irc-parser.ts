@@ -26,7 +26,7 @@ import { BOT_NAME, type BotMessage } from '#src/game/bot-message.ts';
 import { type EventKind, type GameEvent } from '#src/game/events.ts';
 import { parseLine } from '#src/game/parse-line.ts';
 import { parseMessage } from '#src/game/parse-message.ts';
-import { fromIrc, IRC_LINE_SEPARATOR, unwrap } from './relay.ts';
+import { fromIrc, IRC_LINE_SEPARATOR, RELAYS, unwrap } from './relay.ts';
 
 /** A line of the channel. */
 export interface IrcLine {
@@ -83,21 +83,30 @@ function quoteCame(text: string, events: readonly GameEvent[]): boolean {
     .some((l) => parseLine(l).kind === 'unknown');
 }
 
+/** Whether a line is one the templates know: what `fromIrc` needs to keep an emoji `·` whole. */
+export const knownLine = (line: string): boolean => parseLine(line).kind !== 'unknown';
+
+/** A bot line's IRC text in its Telegram form, read as the parser reads it. */
+export const ircBody = (text: string): string => fromIrc(text, knownLine);
+
 /** Joins the parts of the bot's long messages, and reads each message once complete. */
 export class IrcParser {
   private readonly joinMs: number;
+  private readonly relays: readonly string[];
   private parts: string[] = [];
   private start = 0;
   private lastServer = 0;
   private lastReceived = 0;
 
-  constructor(joinMs = 400) {
+  /** `relays`: the relay's nicks, whose `<nick> text` lines are unwrapped (relay.ts). */
+  constructor(joinMs = 400, relays: readonly string[] = RELAYS) {
     this.joinMs = joinMs;
+    this.relays = relays;
   }
 
   /** Takes one line; returns the bot messages it completes, oldest first. */
   push(line: ReceivedLine): BotMessage[] {
-    const { author, text } = unwrap(line.nick, line.text);
+    const { author, text } = unwrap(line.nick, line.text, this.relays);
     const bot = BOT_NAME.test(author);
     const continues = bot && this.parts.length > 0 && line.time - this.lastServer <= this.joinMs;
     const done = continues ? [] : this.close();
@@ -130,15 +139,18 @@ export class IrcParser {
 
   /** The pending message, as its parts so far read. */
   private read(): BotMessage {
-    const body = fromIrc(this.parts.join(IRC_LINE_SEPARATOR));
+    const body = ircBody(this.parts.join(IRC_LINE_SEPARATOR));
     return { time: this.start, text: body, events: parseMessage(body) };
   }
 }
 
 /** The bot message a single channel line is, or null when it is not the bot's. */
-export function ircBotMessage(line: IrcLine): BotMessage | null {
-  const { author, text } = unwrap(line.nick, line.text);
+export function ircBotMessage(
+  line: IrcLine,
+  relays: readonly string[] = RELAYS
+): BotMessage | null {
+  const { author, text } = unwrap(line.nick, line.text, relays);
   if (!BOT_NAME.test(author)) return null;
-  const body = fromIrc(text);
+  const body = ircBody(text);
   return { time: line.time, text: body, events: parseMessage(body) };
 }

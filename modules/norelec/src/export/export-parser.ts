@@ -6,7 +6,8 @@
  */
 import { BOT_NAME, type BotMessage } from '#src/game/bot-message.ts';
 import { parseMessage } from '#src/game/parse-message.ts';
-import { fromIrc, unwrap } from '#src/transport/relay.ts';
+import { ircBody } from '#src/transport/irc-parser.ts';
+import { unwrap } from '#src/transport/relay.ts';
 
 /** The fields of an exported message this parser reads. */
 export interface ExportMessage {
@@ -38,6 +39,6 @@ export function exportBotMessage(m: ExportMessage): BotMessage | null {
   if (time === null) return null;
   // A bot line the relay carried from IRC has the IRC form
   // (modules/norelec/src/transport/relay.ts).
-  const body = relayed ? fromIrc(text) : text;
+  const body = relayed ? ircBody(text) : text;
   return { time, text: body, events: parseMessage(body) };
 }

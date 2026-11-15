@@ -25,12 +25,13 @@ the channel, and replays the last hours of bot messages from the event log (`ctx
 `ready`. A fresh instance learns the players who are Telegram accounts from the whole log once, and
 keeps them in its store (`accounts`).
 
-| Config         | Default      | Meaning                                                                      |
-| -------------- | ------------ | ---------------------------------------------------------------------------- |
-| `channel`      | (required)   | The game's IRC channel; its edge from `irc` reads it too                     |
-| `self`         | the IRC nick | The game account whose notices are printed, and whose events answer commands |
-| `restS`        | `90`         | Rest after a return, in seconds                                              |
-| `historyHours` | `6`          | The hours of `norelec.message` records replayed from the event log at start  |
+| Config         | Default           | Meaning                                                                                   |
+| -------------- | ----------------- | ----------------------------------------------------------------------------------------- |
+| `channel`      | (required)        | The game's IRC channel; its edge from `irc` reads it too                                  |
+| `self`         | the IRC nick      | The game account whose notices are printed, and whose events answer commands              |
+| `relays`       | `Regno`, `Regno_` | The relay's IRC nicks, whose `<nick> text` lines are a Telegram side's (case-insensitive) |
+| `restS`        | `90`              | Rest after a return, in seconds                                                           |
+| `historyHours` | `6`               | The hours of `norelec.message` records replayed from the event log at start               |
 
 It offers `state.game` (the game, for the plugins that use it through an interface edge) and
 `state.status` (the channel's health), and publishes `norelec.message`, `norelec.notice` and

@@ -19,7 +19,9 @@ examples are made up.
 
 ### 1.2 IRC and the relay
 
-- The group is bridged with an IRC channel by a relay account, named **Regno** on both sides. IRC
+- The group is bridged with an IRC channel by a relay account, named **Regno** on both sides. On IRC
+  its nick has been **`Regno_`** since 11 Nov 2026 (it reconnected while IRC still held `Regno`);
+  the `norelec` plugin unwraps the lines of every nick in its `relays` config, by default both. IRC
   players use the same commands with `!` (`!raid X`, `!buy 🧊`, `!back`, `!strada`, `!parola`).
 - **IRC → Telegram:** each IRC line arrives as a Telegram message from "Regno", text `<nick> text`.
   Actions arrive as `* nick text`; connection notices as
@@ -44,6 +46,11 @@ examples are made up.
   `/profile` reply (seen live, 22 Oct). `fromIrc` in `modules/norelec/src/transport/relay.ts`
   restores the Telegram form. The anti-ping space is U+200B only: the zero-width joiner U+200D
   inside emoji such as 🏴‍☠️ and 🥷🏻 is part of the emoji and must be kept.
+- **An emoji named `·` writes the separator inside a line.** The game sells any character
+  (`/buy · 5`, 13 Nov 2026), and `Alfa (🐶) · ora è con te: …` would split in two. `fromIrc`, given
+  the templates (both parsers give them), joins two neighbouring pieces back when the second starts
+  with a lower-case letter, either alone is unknown and together they are known. In a /house reply
+  such an emoji is indistinguishable from an empty slot (`5 ·`).
 - **A long message is split over several IRC lines,** at line boundaries, each part under about 390
   bytes: a leaderboard comes as two lines, a long entry with its quote as two. The parts follow each
   other within about 120 ms, and separate bot messages are usually 600 ms or more apart, but not

@@ -31,7 +31,7 @@ import { ANSWER_RULES, answerDeclarations, answerOf } from '#src/game/answers.ts
 import { type BotMessage } from '#src/game/bot-message.ts';
 import { type GameEvent } from '#src/game/events.ts';
 import { parseMessage } from '#src/game/parse-message.ts';
-import { stripZeroWidth } from '#src/transport/relay.ts';
+import { RELAYS, stripZeroWidth } from '#src/transport/relay.ts';
 import { type StoredAccounts, TelegramAccounts } from './norelec-accounts.ts';
 import { type GameDeps, NorelecGame, type NoticeRecord } from './norelec-game.ts';
 
@@ -134,6 +134,15 @@ export const norelecConfig = z.object({
     .describe(
       "The game account whose notices are printed and whose events answer the owner's commands; the IRC account's own nick if unset"
     ),
+  /**
+   * The relay's IRC nicks: their `<nick> text` lines are a Telegram player's (or the bot's), and
+   * unwrapped. The relay took `Regno_` on 11 Nov 2026, reconnecting while `Regno` was still held.
+   */
+  relays: z
+    .array(z.string().min(1))
+    .min(1)
+    .default([...RELAYS])
+    .describe("The relay's IRC nicks, whose <nick> text lines carry the Telegram side"),
   /** Rest after a return, in seconds. */
   restS: z.number().int().min(0).default(90).describe('Rest after a return, in seconds'),
   /** The hours of bot messages replayed from the event log at `ready`, a restart's memory. */
@@ -211,6 +220,7 @@ export const norelecPlugin: Plugin = definePlugin({
       print: (line) => ctx.log.info(line),
       now: () => ctx.clock.now(),
       restS: config.restS,
+      relays: config.relays,
       // Read at each notice: the IRC account's nick is known once it is connected.
       get self() {
         return config.self ?? handle.self() ?? '';

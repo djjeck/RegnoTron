@@ -25,6 +25,14 @@ const bot = (text: string, time: number) => ({
 });
 
 describe('NorelecGame', () => {
+  it("reads a Telegram player's command through the relay's other nick", () => {
+    const { run } = fakeRun();
+    const commands: string[] = [];
+    run.onCommand((c) => commands.push(`${c.player} ${c.verb}`));
+    run.line({ nick: 'Regno_', text: '<A\u200blfa> /raid @Bravo', time: T0, playback: false });
+    expect(commands).toEqual(['Alfa raid']);
+  });
+
   it('turns live bot lines into messages and notices, and logs everything', () => {
     let now = T0;
     const { run, records, printed } = fakeRun(() => now);

@@ -416,6 +416,7 @@ describe('the norelec plugin, from its config', () => {
     expect(config?.safeParse({}).success).toBe(false);
     expect(config?.parse({ channel: '#lobby' })).toEqual({
       channel: '#lobby',
+      relays: ['Regno', 'Regno_'],
       restS: 90,
       historyHours: 6,
     });
