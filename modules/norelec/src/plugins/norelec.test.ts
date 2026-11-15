@@ -168,6 +168,7 @@ describe('the norelec plugin', () => {
         t: T0,
         text: RAID,
         events: heard[0]?.events,
+        source: 'irc',
         instance: 'norelec',
       },
     ]);
@@ -414,19 +415,27 @@ describe("the bot's answers to the owner's commands (D93, D98)", () => {
 });
 
 describe('the norelec plugin, from its config', () => {
-  it('is its entry’s one plugin, and needs the channel', () => {
+  it('is its entry’s first plugin, and reads the channel, Telegram or both', () => {
     expect(plugins).toEqual([norelecPlugin]);
-    // It reads the channel and sends nothing: a chat-in input, and no chat-out output.
+    // It reads and sends nothing: chat-in inputs, and no chat-out output.
     const m = parseManifest(norelecPlugin.manifest);
     expect(m.inputs['channel']).toMatchObject({
       type: 'chat-in',
+      when: { config: 'channel' },
       bind: { node: 'irc', reads: [] },
+    });
+    expect(m.inputs['telegram']).toMatchObject({
+      type: 'chat-in',
+      network: 'telegram',
+      optional: true,
     });
     expect(m.outputs['channel']).toBeUndefined();
     const config = norelecPlugin.manifest.config;
-    expect(config?.safeParse({}).success).toBe(false);
+    expect(config?.safeParse({ channel: 'lobby' }).success).toBe(false);
+    expect(config?.parse({})).toMatchObject({ bot: 'NorelecBot' });
     expect(config?.parse({ channel: '#lobby' })).toEqual({
       channel: '#lobby',
+      bot: 'NorelecBot',
       relays: ['Regno', 'Regno_'],
       restS: 90,
       historyHours: 6,

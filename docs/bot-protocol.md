@@ -17,6 +17,18 @@ player or place, `#` for a number and `(…)` for an emoji list; the counts are 
 - The bot answers with a new message, not as a Telegram reply: its replies carry no `reply_to`, so a
   reply must be matched to its command by player name and time.
 - One message can hold several lines about several players (a theft and the ⚽ taken with it, §3.3).
+- **Read live too** (since 15 Nov 2026): the `norelec` plugin reads the group, and the owner's
+  private chat with the bot, through a Telegram connector (its `telegram` input), beside or instead
+  of IRC. The bot is known by its username (the plugin's `bot`, `NorelecBot` by default); a message
+  comes whole, so no join window; a file's caption is read as its text; an edit is not read again. A
+  player is named by their Telegram username (the bot names Telegram players by it), the owner's own
+  messages as the owner's account. In the private chat the bot's replies are the owner's: a line
+  that names nobody there (`COGLIONE`) is the owner's. The relay's copies of IRC lines in the group
+  (`<nick> text` from the relay) are read as the IRC side reads them.
+- **Both networks at once:** the relay copies every message, so the same bot message comes twice.
+  The first copy read is applied and published; a copy from the other network within 60 s whose
+  text, spacing and `·` aside, is the first's or a part of it (a message IRC split) is dropped, its
+  answers to the owner's commands alone published, for the commands sent to its chat.
 
 ### 1.2 IRC and the relay
 
@@ -231,7 +243,7 @@ only: `N prendi 🏚️ rovine: arrivi tra …`).
 ## 5. The parsers
 
 The formats above are implemented in `modules/norelec/src/`, as one core and two front ends, so that
-a wording fix serves the Telegram exports and the live IRC side at once:
+a wording fix serves the Telegram exports, the live IRC side and the live Telegram side at once:
 
 | Part                                          | Job                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -267,8 +279,8 @@ a wording fix serves the Telegram exports and the live IRC side at once:
   nobody's command.
 - **Each event on its own:** after a message, the plugin publishes each of its events (but `info`
   and `unknown`) as `norelec.<kind>` (`norelec.theft`, `norelec.ballTaken`, …), with the owner's
-  account (`self`): the input of the `norelec-state` node (modules/norelec/README.md), which keeps
-  the game's record from them.
+  account (`self`) and, for a message said while the instance was down, `playback`: the input of the
+  `norelec-state` node (modules/norelec/README.md), which keeps the game's record from them.
 - **Coverage:** on the messages of 13–21 Oct, 17,322 bot messages give 30,736 events, of which 50
   lines (0.16%) are `unknown`, mostly human text the bot reposts. The formats before 13 Oct differ
   (the game had other rules and wording), and 24% of the year's lines are unknown: the parsers

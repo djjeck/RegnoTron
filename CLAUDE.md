@@ -101,11 +101,11 @@ formatting. Address every error before marking a sub-task complete.
 - **Tests** sit next to the code they test (`foo.ts`, `foo.test.ts`) and run with Vitest; a module's
   shared helpers live in its `test/`. The loader ignores both.
 - **Parsers:** the bot's wording lives in one place, the templates of
-  `modules/norelec/src/game/parse-line.ts`, shared by the export side and the IRC side; whoever
-  writes the bot's lines uses the pieces of `modules/norelec/src/game/wording.ts`, which its test
-  reads back with those templates. The templates follow the live game: when its rules change they
-  are patched, and the earlier ones are left to the history (a tag such as `norelec-classic`), not
-  kept as old code paths. A new message form gets a test line in
+  `modules/norelec/src/game/parse-line.ts`, shared by the export side, the IRC side and the Telegram
+  side; whoever writes the bot's lines uses the pieces of `modules/norelec/src/game/wording.ts`,
+  which its test reads back with those templates. The templates follow the live game: when its rules
+  change they are patched, and the earlier ones are left to the history (a tag such as
+  `norelec-classic`), not kept as old code paths. A new message form gets a test line in
   `modules/norelec/src/game/parse-line.test.ts` and, if it spans lines, a fixture in
   `modules/norelec/test/bot-messages.ts` ([docs/bot-protocol.md](docs/bot-protocol.md) §5).
 - **Docs** say once at the top the date they describe ("Documented as of"); the game changes often,

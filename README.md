@@ -14,11 +14,11 @@ into a running shell. Everything here changes freely until the shell's launch.
 
 ## The modules
 
-| Module          | Provides                   | What it holds                                                                                                                                                                |
-| --------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `norelec`       | `@regnotron/norelec`       | NorelecBot's game: its grammar (read and written), its parser over IRC and over Telegram exports, the game state; the `norelec` parser plugin and the `norelec-state` record |
-| `norelec-tools` | `@regnotron/norelec-tools` | The map of the players' homes (`/map`) and the nuclear clock (`/nuclear_warning`), as the plugins `norelec-map` and `nuclear-clock`; imports `norelec`                       |
-| `game-bots`     | `@regnotron/game-bots`     | @LoreGameBot's and @EpicLorelecBot's parser plugins, and `metagame`, the ledger of what the owner's turns brought (`/loot`), @InventoryBot's included                        |
+| Module          | Provides                   | What it holds                                                                                                                                                                     |
+| --------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `norelec`       | `@regnotron/norelec`       | NorelecBot's game: its grammar (read and written), its parser over IRC, Telegram and Telegram exports, the game state; the `norelec` parser plugin and the `norelec-state` record |
+| `norelec-tools` | `@regnotron/norelec-tools` | The map of the players' homes (`/map`) and the nuclear clock (`/nuclear_warning`), as the plugins `norelec-map` and `nuclear-clock`; imports `norelec`                            |
+| `game-bots`     | `@regnotron/game-bots`     | @LoreGameBot's and @EpicLorelecBot's parser plugins, and `metagame`, the ledger of what the owner's turns brought (`/loot`), @InventoryBot's included                             |
 
 @InventoryBot's parser plugin, `inventorybot`, is the module `inventorybot` of
 [InventoryBotTron](https://github.com/djjeck/InventoryBotTron), beside the bot's grammar; `metagame`
@@ -37,7 +37,7 @@ types, with a `module.json` (MegaBotTron1999's docs/bot-os.md D49):
   "version": "0.1.0",
   "api": "1",
   "provides": "@regnotron/norelec-tools",
-  "imports": { "@regnotron/norelec": "^0.2.0" },
+  "imports": { "@regnotron/norelec": "^0.3.0" },
   "plugins": ["src/plugins/norelec-map.ts", "src/plugins/nuclear-clock.ts"]
 }
 ```
@@ -58,8 +58,9 @@ nodes. Modules run with the shell's full rights, unsandboxed: install only what 
 **Configuration the game needs.** The shell knows no game, so its defaults are generic:
 
 - The `norelec` node's config names the game's IRC channel (`channel`), and its edge from `irc`
-  reads it. A `norelec-state` node, bound to its events, keeps the game's record for scripts to
-  query.
+  reads it; to read Telegram too (or alone), an edge from a `telegram-user` node to its `telegram`
+  input reads the game's group and the private chat with the bot (`bot`, its username). A
+  `norelec-state` node, bound to its events, keeps the game's record for scripts to query.
 - The game bots' parsers need no config: each counts its bot's own turn commands, which its spec
   names (`/avventura`, and @EpicLorelecBot's `/rompimiilcazzo` too: `TURN_COMMANDS` in
   `modules/game-bots/src/replies.ts`), since which commands are turns is the game's (the shell's

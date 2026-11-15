@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describe as describeNotice, NorelecGame } from './norelec-game.ts';
+import { describe as describeNotice, NorelecGame, type TelegramMessage } from './norelec-game.ts';
 
 const T0 = Date.UTC(2026, 9, 22, 2, 0, 0);
 
@@ -156,6 +156,87 @@ describe('NorelecGame', () => {
   });
 });
 
+describe('NorelecGame on Telegram', () => {
+  const tg = (text: string, o: Partial<TelegramMessage> = {}): TelegramMessage => ({
+    sender: 'NorelecBot',
+    text,
+    time: T0,
+    private: false,
+    own: false,
+    playback: false,
+    ...o,
+  });
+  const RAID = 'Juno parti per alice: arrivi tra 1 minuto e 30 secondi. Casa tua resta scoperta.';
+
+  it("reads the bot's messages, and the players' commands, the owner's as theirs", () => {
+    const { run, records } = fakeRun();
+    const commands: string[] = [];
+    run.onCommand((c) => commands.push(`${c.player} ${c.verb}`));
+    run.telegram(tg(RAID));
+    run.telegram(tg('/raid @Juno', { sender: 'Bravo' }));
+    run.telegram(tg('/back', { sender: 'whatever', own: true }));
+    run.telegram(tg('/back', { sender: '' }));
+    expect(records.map((r) => r.type)).toEqual(['message', 'notice']);
+    expect(commands).toEqual(['Bravo raid', 'alice back']);
+    expect(run.health.lastBotMessage).toBe(T0);
+  });
+
+  it('reads the copy of the other network once, the first that came', () => {
+    const { run, records } = fakeRun();
+    const read: string[] = [];
+    run.publish = (_m, r) => read.push(`${r.source}${r.duplicate ? ' copy' : ''}`);
+    run.telegram(tg(RAID));
+    run.line({ nick: 'NorelecBot', text: `\u200b${RAID}`, time: T0 + 500, playback: false });
+    // The relay's copy of the bot's IRC line, in the group: the IRC side's too.
+    run.telegram(tg(`<NorelecBot> ${RAID}`, { sender: 'Regno' }));
+    // Another message, and one long after.
+    run.line({
+      nick: 'NorelecBot',
+      text: 'Juno sei già in viaggio, torni tra 5 secondi.',
+      time: T0 + 1000,
+      playback: false,
+    });
+    run.telegram(tg(RAID, { time: T0 + 120_000 }));
+    expect(read).toEqual(['telegram', 'irc copy', 'irc copy', 'irc', 'telegram']);
+    expect(records.map((r) => r.type)).toEqual(['notice', 'notice']);
+  });
+
+  it("takes the relay's copy of an IRC player's command, and plays back no command", () => {
+    const { run } = fakeRun();
+    const commands: string[] = [];
+    run.onCommand((c) => commands.push(`${c.player} ${c.verb}`));
+    run.telegram(tg('<Bravo> !raid Juno', { sender: 'Regno' }));
+    run.telegram(tg('<Bravo> !raid Juno', { sender: 'Regno', playback: true }));
+    run.telegram(tg('/raid @Juno', { sender: 'Bravo', playback: true }));
+    expect(commands).toEqual(['Bravo raid']);
+  });
+
+  it('names the banned player from their command, and the owner in the private chat', () => {
+    const { run } = fakeRun();
+    const banned: unknown[] = [];
+    run.onMessage((m) => banned.push(...m.events.filter((e) => e.kind === 'banned')));
+    run.telegram(tg('/avventura', { sender: 'Bravo' }));
+    run.telegram(tg('COGLIONE', { time: T0 + 1000 }));
+    run.telegram(tg('COGLIONE', { time: T0 + 60_000 }));
+    run.telegram(tg('COGLIONE', { time: T0 + 61_000, private: true }));
+    expect(banned).toEqual([
+      expect.objectContaining({ player: { name: 'Bravo' } }),
+      expect.not.objectContaining({ player: expect.anything() }),
+      expect.objectContaining({ player: { name: 'alice' } }),
+    ]);
+  });
+
+  it('applies a message played back, telling no listener and no notice', () => {
+    const { run, records } = fakeRun();
+    const heard: number[] = [];
+    run.onMessage((m) => heard.push(m.time));
+    run.telegram(tg(RAID, { playback: true }));
+    expect(heard).toEqual([]);
+    expect(records.map((r) => r.type)).toEqual(['message']);
+    expect(run.state.player('Juno').location).toBe('travelling');
+    expect(run.health.lastBotMessage).toBeUndefined();
+  });
+});
 describe('a banned player', () => {
   it('is named from the command the bot answers, the latest just before it', () => {
     const { run } = fakeRun();
