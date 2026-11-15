@@ -42,7 +42,9 @@ afterEach(() => {
 
 const T0 = Date.UTC(2026, 10, 1, 10, 0, 0);
 const RAID = 'Alfa parti per Bravo: arrivi tra 1 minuto e 31 secondi. Casa tua resta scoperta.';
-const AT_GIANPIER = 'Juno (🎈) hai bucato il palloncino di @Gianpier il lombardo (🎈)!';
+const AT_GIANPIER =
+  'Juno (🎈) hai bucato il palloncino di @Gianpier il lombardo (🎈) e rubato 5 palle! Torni in Juno tra 1 minuto.';
+const JUNO_LEAVES = 'Juno parti per Alfa: arrivi tra 10 minuti. Casa tua resta scoperta.';
 
 /**
  * The norelec plugin and a plugin that follows its messages on a core over `dataDir`, with a fake IRC client: `say`
@@ -161,7 +163,13 @@ describe('the norelec plugin', () => {
     expect(game.state.players.get('Alfa')?.location).toBe('travelling');
     expect(lines).toContain('follower: error: on norelec.message: a broken part');
     expect(bus.filter((r) => r.type === 'norelec.message')).toEqual([
-      { type: 'norelec.message', t: T0, text: RAID, events: heard[0]?.events, instance: 'norelec' },
+      {
+        type: 'norelec.message',
+        t: T0,
+        text: RAID,
+        events: heard[0]?.events,
+        instance: 'norelec',
+      },
     ]);
     // The lines and the statuses are irc's, the notices on the bus; played back, a line is
     // logged and not read.
@@ -212,11 +220,11 @@ describe('the norelec plugin', () => {
     const history = [
       {
         time: T0 - 120_000,
-        text: 'Juno hai cacciato Alfa da @TheConquister37.\nJuno sei in @TheConquister37!',
+        text: JUNO_LEAVES,
       },
     ];
     const { core, hear, later, game, lines, bus } = setup([], history);
-    const heard: { replaying: boolean; holder?: string }[] = [];
+    const heard: { replaying: boolean; juno?: string }[] = [];
     let ticks = 0;
     core.register(
       definePlugin({
@@ -231,8 +239,9 @@ describe('the norelec plugin', () => {
         create: (ctx) => {
           const g = ctx.use<NorelecInterface>('norelec').state.game();
           g.onMessage(() => {
-            const entry: { replaying: boolean; holder?: string } = { replaying: g.replaying };
-            if (g.state.holder !== undefined) entry.holder = g.state.holder.name;
+            const entry: { replaying: boolean; juno?: string } = { replaying: g.replaying };
+            const to = g.state.players.get('Juno')?.trip?.to;
+            if (to !== undefined) entry.juno = to;
             heard.push(entry);
           });
           g.onTick(() => ticks++);
@@ -243,12 +252,12 @@ describe('the norelec plugin', () => {
     );
     await core.start();
     expect(lines).toContain('norelec: replayed 1 bot messages');
-    expect(game().state.holder?.name).toBe('Juno');
+    expect(game().state.players.get('Juno')?.trip?.to).toBe('Alfa');
     // The line heard at the start waited for the replay, and is read right after it: a short
     // message of known lines needs no tick to complete.
     expect(heard).toEqual([
-      { replaying: true, holder: 'Juno' },
-      { replaying: false, holder: 'Juno' },
+      { replaying: true, juno: 'Alfa' },
+      { replaying: false, juno: 'Alfa' },
     ]);
     // The first tick a tick after every plugin is ready, the channel not up yet.
     expect(ticks).toBe(0);
@@ -299,7 +308,9 @@ describe('the norelec plugin', () => {
     await first.core.start();
     expect(first.lines).toContain('norelec: 1 Telegram accounts in 1 logged bot messages');
     expect(first.game().state.players.get('Gianpier')?.telegram).toBe(true);
-    first.say('Juno (🎈) hai bucato il palloncino di @Mirco777 (🎈)!');
+    first.say(
+      'Juno (🎈) hai bucato il palloncino di @Mirco777 (🎈) e rubato 5 palle! Torni in Juno tra 1 minuto.'
+    );
     await first.core.stop();
     const kept = path.join(dataDir, 'instances', 'norelec', `${ACCOUNTS}.json`);
     expect(JSON.parse(fs.readFileSync(kept, 'utf8'))).toEqual({ names: ['Gianpier', 'Mirco777'] });
@@ -375,10 +386,10 @@ describe("the bot's answers to the owner's commands (D93, D98)", () => {
     await expect(q).resolves.toMatchObject({
       answer: { status: 'refused', reason: 'travelling', retryAt: T0 + 120_000 },
     });
-    // Its cooldown holds the trips and the entry.
-    expect(out().held(channel, '!avventura')).toMatchObject({ until: T0 + 120_000 });
+    // Its cooldown holds the trips, in both forms.
+    expect(out().held(channel, '/throw')).toMatchObject({ until: T0 + 120_000 });
     expect(out().held(channel, '!buy')).toBeUndefined();
-    const r = out().enqueue(channel, '!give Juno 500');
+    const r = out().enqueue(channel, '!throw Juno 💣');
     await flush();
     expect(r.status()).not.toBe('sent');
     r.cancel();
@@ -425,16 +436,17 @@ describe('the norelec plugin, from its config', () => {
   it('replays only the last hours of the log', async () => {
     const old = {
       time: T0 - 3 * 3_600_000,
-      text: 'Juno hai cacciato Alfa da @TheConquister37.\nJuno sei in @TheConquister37!',
+      text: JUNO_LEAVES,
     };
     const recent = {
       time: T0 - 60_000,
-      text: 'Bravo hai cacciato Juno da @TheConquister37.\nBravo sei in @TheConquister37!',
+      text: 'Bravo parti per Alfa: arrivi tra 10 minuti. Casa tua resta scoperta.',
     };
     const { core, game, lines } = setup([old], [recent], true, { historyHours: 2 });
     await core.start();
     expect(lines).toContain('norelec: replayed 1 bot messages');
-    expect(game().state.holder?.name).toBe('Bravo');
+    expect(game().state.players.get('Bravo')?.trip?.to).toBe('Alfa');
+    expect(game().state.players.get('Juno')).toBeUndefined();
     await core.stop();
   });
 

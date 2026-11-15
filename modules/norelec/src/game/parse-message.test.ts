@@ -16,23 +16,34 @@ describe('parseMessage', () => {
   });
 
   it('gives a line the player of the action just before it', () => {
-    const fixture = BOT_MESSAGES.find((f) => f.name === 'an entry and a theft in one message');
+    const fixture = BOT_MESSAGES.find((f) => f.name === 'a theft with pity and a pirate flag');
     const pity = parseMessage(fixture?.text ?? '').find((e) => e.kind === 'pity');
-    expect(pity).toMatchObject({ player: { name: 'Charlie' } });
+    expect(pity).toMatchObject({ player: { name: 'Alfa' } });
   });
 
   it('leaves a line without a player alone when the message names none', () => {
     expect(parseMessage('Lungo la via trovi 210 palle!')[0]).not.toHaveProperty('player');
   });
 
-  it('skips the quote of an entry when the blank line before it is lost', () => {
+  it('skips the echo of a quote added', () => {
     const events = parseMessage(
-      'Alfa sei in @TheConquister37!\nUna citazione qualunque.\nAncora citazione.'
+      'Alfa hai aggiunto la citazione spendendo 1000 palle!\nUna citazione qualunque.\nAncora.'
     );
-    expect(events.map((e) => e.kind)).toEqual(['entered']);
+    expect(events.map((e) => e.kind)).toEqual(['quoteAdded']);
   });
 
-  it('keeps unknown lines outside entry messages', () => {
+  it('names the thief and the robbed holder on the ⚽ taken', () => {
+    const fixture = BOT_MESSAGES.find((f) => f.name === 'a theft that takes the ⚽');
+    const taken = parseMessage(fixture?.text ?? '').find((e) => e.kind === 'ballTaken');
+    expect(taken).toMatchObject({ player: { name: 'Alfa' }, from: { name: 'Bravo' } });
+    expect(
+      parseMessage(
+        "⚽ E gli porti via la palla! Ora ce l'hai tu: tienila il più a lungo possibile."
+      )[0]
+    ).not.toHaveProperty('player');
+  });
+
+  it('keeps unknown lines outside a quote added', () => {
     expect(parseMessage('Una riga nuova del bot.').map((e) => e.kind)).toEqual(['unknown']);
   });
 });
@@ -77,10 +88,10 @@ describe('parseHouse', () => {
         '8',
         '9',
         '10 ·',
-        'Alfa sei in @TheConquister37!',
+        'Alfa /burn è disattivato.',
       ].join('\n')
     );
-    expect(events.map((e) => e.kind)).toEqual(['profile', 'house', 'entered']);
+    expect(events.map((e) => e.kind)).toEqual(['profile', 'house', 'disabled']);
     expect(events[0]).toMatchObject({ player: { name: 'alice' }, balls: 3561, hens: 1 });
     expect(events[1]).toMatchObject({
       player: { name: 'Sigma_Nova' },

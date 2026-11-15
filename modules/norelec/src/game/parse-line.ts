@@ -1,6 +1,10 @@
 /**
  * One line of a NorelecBot message into one typed event (docs/bot-protocol.md §3). Stateless:
  * what a line needs from its neighbours is added by parse-message.ts.
+ *
+ * The templates follow the live game: since the ⚽ version (9 Nov 2026) @TheConquister37 is closed,
+ * /give and /burn are disabled and the emoji are free. The earlier rule-set's templates are in the
+ * repository's history (the tag `norelec-classic`).
  */
 import { parseDuration } from './duration.ts';
 import { CONQUISTER, type EventFields, type EventKind, type GameEvent } from './events.ts';
@@ -8,14 +12,13 @@ import { parseEmojiList, type PlayerRef, playerRef } from './player.ts';
 
 /** A title after a name (`lo smarrito`), but not the start of a template (`il palloncino di`). */
 const TITLE =
-  "(?: (?!il palloncino|il cane|il guardiano|la tua|la porta|lo hai)(?:lo|la|il|l'|i|gli|le) ?[^\\s()!:,.]+)?";
+  "(?: (?!il palloncino|il cane|la tua|la bomba|lo hai|la ☢)(?:lo|la|il|l'|i|gli|le) ?[^\\s()!:,.]+)?";
 
 /** The bot's ways of declining a command: they follow the player's name. */
 const REFUSALS = [
   'non hai \\S+(?: con te|, né con te né in casa)\\.',
   'la casa è piena: .*',
   'sei in viaggio: .*',
-  'hai solo \\d+ palle a disposizione\\.',
   'non conosco nessun giocatore di nome .*',
   "qui non c'è niente da raccogliere\\.",
   'non puoi razziare te stesso\\.',
@@ -25,13 +28,12 @@ const REFUSALS = [
   'ti servono \\d+ palle per aggiungere una citazione.*',
   'hai già \\d+ emoji con te \\([^)]*\\): .*',
   '\\S+ è già con te\\.',
-  'a @TheConquister37 non si porta(?:no)? .*',
   'la posizione si sceglie solo .*',
   '\\S+ non ha posti liberi per \\S+\\.',
   "nel posto \\d+ della casa non c'è nessuna emoji\\.",
-  'indica un numero di palle maggiore di zero\\.',
   '\\S+ non si lancia: per regalarla scrivi .*',
-  'non puoi regalare a te stesso\\.',
+  'non puoi portare palle a te stesso\\.',
+  'i posti della casa vanno da \\d+ a \\d+: nessun addebito\\.',
   "l'invito vale solo per chi è appena arrivato nel gioco\\.",
 ].join('|');
 
@@ -79,13 +81,12 @@ const TEMPLATES: Template[] = [
   // Travel
   t(
     'depart',
-    '(?<r>🚀 )?{P} parti per {V}(?: con (?<load>.+?) da (?<how>consegnare|regalare))?: arrivi tra {D}\\. (?:Casa tua resta scoperta|.+ resta scoperto)\\.',
+    '(?<r>🚀 )?{P} parti per {V}(?: con (?<load>.+?) da consegnare)?: arrivi tra {D}\\. (?:Casa tua resta scoperta|.+ resta scoperto)\\.',
     (g) => {
       const e: EventFields['depart'] = {
         player: who(g),
         to: who(g, 'v'),
         seconds: secs(g),
-        gift: g['how'] === 'regalare' || /\bpall[ae]$/u.test(g['load'] ?? ''),
         rocket: g['r'] !== undefined,
       };
       if (g['load'] !== undefined) e.load = g['load'];
@@ -107,9 +108,6 @@ const TEMPLATES: Template[] = [
     '{P},? eri così stanco che hai solo sognato di partire: non ti sei mai mosso da casa!',
     (g) => ({ player: who(g) })
   ),
-  t('dreamEntry', `{P},? eri così stanco che hai solo sognato di entrare in {C}: .*`, (g) => ({
-    player: who(g),
-  })),
   t('forkAsked', 'A metà strada la via si divide: .*', () => ({})),
   t(
     'lostAtFork',
@@ -135,6 +133,13 @@ const TEMPLATES: Template[] = [
     'theft',
     '{P} scivoli di nascosto oltre le difese di {V} e rubi (?<n>\\d+) palle(?<away>, che non era a casa)?! Torni in {T} tra {D}\\.',
     (g) => ({ ...theft(g), how: 'sneaked' })
+  ),
+  // The ⚽ goes with a theft from its holder: the line after the theft's (parse-message.ts names
+  // the thief and the victim).
+  t(
+    'ballTaken',
+    "⚽ E gli porti via la palla! Ora ce l'hai tu: tienila il più a lungo possibile\\.",
+    () => ({})
   ),
   t(
     'balloonHeld',
@@ -178,27 +183,10 @@ const TEMPLATES: Template[] = [
       return e;
     }
   ),
-  t(
-    'giftDelivered',
-    '{P} hai (?:consegnato (?<n>\\d+) palle|regalato (?<e>\\S+)) a {V}! Torni in {T} tra {D}\\.',
-    (g) => {
-      const e: EventFields['giftDelivered'] = { player: who(g), to: who(g, 'v'), seconds: secs(g) };
-      if (g['n'] !== undefined) e.balls = num(g, 'n');
-      if (g['e'] !== undefined) e.emoji = g['e'];
-      return e;
-    }
-  ),
   t('throwDelivered', '{P} la tua (?<e>\\S+) è arrivata a casa di {V}: .*', (g) => ({
     player: who(g),
     emoji: str(g, 'e'),
     to: who(g, 'v'),
-    atHolder: false,
-  })),
-  t('throwDelivered', `{P} la tua (?<e>\\S+) è arrivata addosso a {V} in {C}: .*`, (g) => ({
-    player: who(g),
-    emoji: str(g, 'e'),
-    to: who(g, 'v'),
-    atHolder: true,
   })),
   t(
     'bombAtHome',
@@ -214,18 +202,13 @@ const TEMPLATES: Template[] = [
     }
   ),
   t(
-    'bombAtHolder',
-    `{P} la tua bomba esplode addosso a {V} in {C} (?:e si porta via (?<e>\\S+): .*|ma non trova niente da portarsi via\\.)`,
+    'bombDefective',
+    '{P} la bomba era difettosa: ti esplode in mano(?: e si porta via (?<e>\\S+)!|, ma non avevi niente con te da perdere\\.) Torni in {T} tra {D}\\.',
     (g) => {
-      const e: EventFields['bombAtHolder'] = { player: who(g), holder: who(g, 'v') };
+      const e: EventFields['bombDefective'] = { player: who(g), seconds: secs(g) };
       if (g['e'] !== undefined) e.destroyed = g['e'];
       return e;
     }
-  ),
-  t(
-    'bombDefective',
-    '{P} la bomba era difettosa: ti esplode in mano e si porta via (?<e>\\S+)! Torni in {T} tra {D}\\.',
-    (g) => ({ player: who(g), destroyed: str(g, 'e'), seconds: secs(g) })
   ),
   t(
     'bounced',
@@ -245,19 +228,13 @@ const TEMPLATES: Template[] = [
     "{P} a casa di {V} non c'è nessuno: la (?<e>\\S+) te la riporti a casa\\. Torni in {T} tra {D}\\.",
     (g) => ({ player: who(g), to: who(g, 'v'), emoji: str(g, 'e'), seconds: secs(g) })
   ),
-  t('nuke', `{P} ha sganciato la bomba nucleare su (?:casa di {V}|{C}): .*`, (g) => {
-    const e: EventFields['nuke'] = { player: who(g) };
-    if (g['v'] !== undefined) e.target = who(g, 'v');
-    return e;
-  }),
   t(
     'freezeDelivered',
-    `{P} congeli {V}(?<h> in {C})?: per (?<m>\\d+) minuti non può (?:(?<old>entrare in {C} né partire)|partire e, se lo cacciano, non può rientrare).*`,
+    `{P} congeli {V}: per (?<m>\\d+) minuti non può (?:(?<old>entrare in {C} né partire)|partire e, se lo cacciano, non può rientrare).*`,
     (g) => ({
       player: who(g),
       target: who(g, 'v'),
       minutes: num(g, 'm'),
-      atHolder: g['h'] !== undefined,
       actual: g['old'] === undefined,
     })
   ),
@@ -273,84 +250,24 @@ const TEMPLATES: Template[] = [
     player: who(g),
     raids: num(g, 'n'),
   })),
-  // @TheConquister37
-  t('balloonPopped', '{P} hai bucato il palloncino di {V}!', (g) => ({
-    player: who(g),
-    holder: who(g, 'v'),
-  })),
-  t('sneakedPast', '{P} scivoli di nascosto oltre il palloncino di {V}!', (g) => ({
-    player: who(g),
-    holder: who(g, 'v'),
-  })),
-  t('ousted', `{P} hai cacciato {V} da {C}\\.`, (g) => ({ player: who(g), holder: who(g, 'v') })),
-  t('holderPaid', '{P} hai guadagnato (?<n>\\d+) pall[ae](?: col ⚡ x(?<x>[\\d.]+))?!', (g) => {
-    const e: EventFields['holderPaid'] = { player: who(g), balls: num(g, 'n') };
-    if (g['x'] !== undefined) e.multiplier = Number(g['x']);
-    return e;
-  }),
-  t('entered', `(?:🪐 )?{P} sei (?:entrato )?in {C}!`, (g) => ({ player: who(g) })),
+  // A 💦's baby, born in the house of the one it hit (9 hours after it), takes a slot and locks it
+  // (docs/game-rules.md §5.3); the line names the house's owner first, then the thrower.
   t(
-    'entryHeld',
-    '{P} il palloncino di {V} ha resistito e prendi (?:una penalità|{D} di penalità)\\. Ora il palloncino ha il (?<pct>\\d+)% di probabilità di essere bucato\\.',
+    'born',
+    "{V} è nat[oa] una? (?<sex>maschio|femmina) (?<e>\\S+): il padre è (?<p>@?[^\\s()]+?)(?:\\. Non c'era un posto libero: ha preso quello di (?<x>\\S+?))?\\.?",
     (g) => {
-      const e: EventFields['entryHeld'] = {
-        player: who(g),
-        holder: who(g, 'v'),
-        nextChance: num(g, 'pct'),
+      const e: EventFields['born'] = {
+        player: who(g, 'v'),
+        father: who(g),
+        emoji: str(g, 'e'),
+        female: g['sex'] === 'femmina',
       };
-      if (g['d'] !== undefined) e.penaltyS = secs(g);
+      if (g['x'] !== undefined) e.replaced = g['x'];
       return e;
     }
   ),
-  t(
-    'locked',
-    `{P} {C} è chiuso: qualcuno ha appena provato a entrare\\. Riprova tra poco\\.`,
-    (g) => ({
-      player: who(g),
-    })
-  ),
-  t(
-    'gatekeeperAsks',
-    `(?:{P} )?alla porta di {C} il guardiano ti ferma e chiede: (?<q>.+?) Rispondi con [!/]parola <nome> entro 3 minuti\\.`,
-    (g) => {
-      const e: EventFields['gatekeeperAsks'] = { question: str(g, 'q') };
-      if (g['p'] !== undefined) e.player = who(g);
-      return e;
-    }
-  ),
-  t('gatekeeperPasses', '{P} il guardiano ti fa passare\\.', (g) => ({ player: who(g) })),
-  t('doorClosed', '.*la porta.* resta chiusa per te per {D}\\.', (g) => ({ seconds: secs(g) })),
-  t(
-    'doorClosed',
-    `{P} il guardiano scuote la testa e ti chiude la porta di {C}: riprova tra {D}\\.`,
-    (g) => ({ player: who(g), seconds: secs(g) })
-  ),
-  t('alreadyAt', '{P} sei già in (?<at>@?\\S+?)!', (g) => ({
-    player: who(g),
-    place: str(g, 'at').replace(/^@/u, ''),
-  })),
-  t(
-    'onTheRoad',
-    `{P} sei per strada: non puoi entrare in {C} prima di tornare in {T}, tra {D}\\.`,
-    (g) => ({ player: who(g), home: home(g), seconds: secs(g) })
-  ),
-  t(
-    'leftConquister',
-    `(?:🪐 )?{P} torni da {C} in {T} con (?<n>\\d+) palle(?: col ⚡ x[\\d.]+)?\\.`,
-    (g) => ({
-      player: who(g),
-      home: home(g),
-      balls: num(g, 'n'),
-    })
-  ),
-  t('penaltyLeft', '{P} hai ancora {D} di penalità\\.', (g) => ({
-    player: who(g),
-    seconds: secs(g),
-  })),
-  t('raidFromConquister', `{P} razzie e consegne partono da casa tua: .*`, (g) => ({
-    player: who(g),
-  })),
-  t('lobster', 'Le tue aragoste diventano (?<e>.+) finché resti qui\\.', (g) => ({
+  t('babyGone', '{V} (?<e>\\S+) ha vissuto la sua vita.*', (g) => ({
+    player: who(g, 'v'),
     emoji: str(g, 'e'),
   })),
   // Return home, in its several wordings (docs/bot-protocol.md §3.1)
@@ -359,9 +276,11 @@ const TEMPLATES: Template[] = [
   t('returnHome', '{P} rientri in {T} (?:portando (?<n>\\d+) palle|a mani vuote)\\.', returned),
   t('returnHome', '{P} eccoti di nuovo in {T}(?:, con (?<n>\\d+) palle in più)?\\.', returned),
   t('returnHome', '{P} {T} ti riaccoglie(?:: hai con te (?<n>\\d+) palle)?\\.', returned),
-  // A gift turned back: the balls, which left the giver at departure, come home with them.
-  t('returnHome', '{P} torni in {T} con le tue (?<n>\\d+) palle ancora in tasca\\.', returned),
   t('returnHome', '{P} torni in {T} con (?<e>\\S+) ancora in tasca\\.', returned),
+  t('alreadyAt', '{P} sei già in (?<at>@?\\S+?)!', (g) => ({
+    player: who(g),
+    place: str(g, 'at').replace(/^@/u, ''),
+  })),
   // Buying and slots
   t(
     'moved',
@@ -376,10 +295,12 @@ const TEMPLATES: Template[] = [
       return e;
     }
   ),
-  t('burned', '{P} hai bruciato (?<w>.+?): (?:è uscita|sono uscite) dal gioco\\..*', (g) => ({
-    player: who(g),
-    what: str(g, 'w'),
-  })),
+  // /move: the line ends with the whole house, `[]` for an empty slot.
+  t(
+    'rearranged',
+    '{P} hai (?:spostato \\S+ dal posto \\d+ al posto \\d+|scambiato \\S+ e \\S+: ora .*)\\. Casa: (?<h>\\S+)',
+    (g) => ({ player: who(g), slots: parseEmojiList(str(g, 'h')) })
+  ),
   t(
     'saltPaid',
     'Ci torni troppo presto: il 🧂 di {V} ti costa (?<n>\\d+) palle, che vanno a lui\\.',
@@ -388,12 +309,27 @@ const TEMPLATES: Template[] = [
       balls: num(g, 'n'),
     })
   ),
-  t('refused', `{P} (?<r>${REFUSALS})`, (g) => {
-    const e: EventFields['refused'] = { player: who(g), reason: str(g, 'r') };
-    const have = /^hai solo (\d+) palle a disposizione/u.exec(e.reason);
-    if (have) e.have = Number(have[1]);
-    return e;
-  }),
+  // A slot a baby holds cannot be bought over.
+  t(
+    'slotLocked',
+    "{P} nel posto (?<slot>\\d+) c'è (?<e>\\S+), che non si tocca: se ne andrà da solo\\. Nessun addebito\\.",
+    (g) => ({ player: who(g), slot: num(g, 'slot'), emoji: str(g, 'e') })
+  ),
+  // A command the game no longer has: /give, /burn (long and short wording), the ☢️, and
+  // @TheConquister37 (closed since the ⚽ version; silent since 10 Nov 2026).
+  t('disabled', '{P} (?<w>[/!]\\w+) è disattivato(?:: .*|\\.)', (g) => ({
+    player: who(g),
+    what: str(g, 'w'),
+  })),
+  t('disabled', '{P} la (?<w>☢️?) è disattivata\\.', (g) => ({
+    player: who(g),
+    what: str(g, 'w'),
+  })),
+  t('disabled', `{P} (?<w>{C}) è chiuso: ora si gioca alla palla ⚽\\..*`, (g) => ({
+    player: who(g),
+    what: str(g, 'w'),
+  })),
+  t('refused', `{P} (?<r>${REFUSALS})`, (g) => ({ player: who(g), reason: str(g, 'r') })),
   t('bagDropped', '🧙 Un viandante lascia cadere un sacchetto di palle davanti a {V}! .*', (g) => ({
     near: who(g, 'v'),
   })),
@@ -405,22 +341,26 @@ const TEMPLATES: Template[] = [
     player: who(g),
     balls: num(g, 'n'),
   })),
+  // A purchase, at the price it states: `hai preso gratis` (0, every emoji since 10 Nov 2026) or
+  // `hai speso N palle`. Into the house it names the slot, and what it replaced, destroyed.
   t(
     'bought',
-    '{P} hai speso (?<n>\\d+) palle: (?<e>\\S+) (?:in casa nel posto (?<slot>\\d+)|ora è con te)(?<rest>.*)',
+    '{P} hai (?:speso (?<n>\\d+) palle|preso gratis \\S+): (?<e>\\S+) (?:in casa nel posto (?<slot>\\d+)(?:, al posto di (?<x>\\S+?))?|ora è con te)[.,]?(?<rest>.*)',
     (g) => {
       const e: EventFields['bought'] = {
         player: who(g),
-        balls: num(g, 'n'),
+        balls: g['n'] === undefined ? 0 : num(g, 'n'),
         emoji: str(g, 'e'),
         carried: g['slot'] === undefined,
       };
       if (g['slot'] !== undefined) e.slot = num(g, 'slot');
-      const copies = /ce n'er(?:a|ano) già (\d+) in giro/u.exec(str(g, 'rest'));
-      if (copies) e.copiesBefore = Number(copies[1]);
+      if (g['x'] !== undefined) e.replaced = g['x'];
+      const count = /Ora ne hai (\d+) (?:in casa|con te)/u.exec(str(g, 'rest'));
+      if (count) e.count = Number(count[1]);
       return e;
     }
   ),
+  // A purchase refused for its price: the price of the emoji, as the bot asks it.
   t(
     'tooPoor',
     '{P} ti servono (?<price>\\d+) palle per (?<e>\\S+)(?: \\((?<info>[^)]*)\\))?\\.?',
@@ -430,9 +370,7 @@ const TEMPLATES: Template[] = [
         price: num(g, 'price'),
         emoji: str(g, 'e'),
       };
-      const copies = /ce n[e']\s?(?:sono|è|era|erano) già (\d+)/u.exec(g['info'] ?? '');
       const have = /ne hai (\d+)/u.exec(g['info'] ?? '');
-      if (copies) e.copies = Number(copies[1]);
       if (have) e.have = Number(have[1]);
       return e;
     }
@@ -450,18 +388,21 @@ const TEMPLATES: Template[] = [
     player: who(g),
     replacement: str(g, 'c'),
   })),
-  // State queries
+  // A player the game banned: its one reply, to some of their commands (parse-message.ts cannot
+  // tell whose; the norelec plugin names the player from the command it answers).
+  t('banned', 'COGLIONE', () => ({})),
+  // State queries: /leaderboard, the ⚽'s, by the time each player held it.
+  t('ballRow', '(?<rank>\\d+)\\) {P} — {D}(?<h> ⚽)?', (g) => ({
+    rank: num(g, 'rank'),
+    player: who(g),
+    seconds: secs(g),
+    holding: g['h'] !== undefined,
+  })),
   t(
-    'leaderboardRow',
-    '(?<rank>\\d+)\\) {P} — (?<n>\\d+) pall[ae](?: — (?<q>\\d+) citazion[ei])?',
-    (g) => ({
-      rank: num(g, 'rank'),
-      player: who(g),
-      balls: num(g, 'n'),
-      quotes: g['q'] === undefined ? 0 : num(g, 'q'),
-    })
+    'ballHolder',
+    "La palla ce l'ha {P} da {D}: rubagliela con (?:/raid @?|!raid )\\S+?\\.",
+    (g) => ({ player: who(g), seconds: secs(g) })
   ),
-  t('holderIs', `In {C} ora: {P}`, (g) => ({ player: who(g) })),
 ];
 
 function theft(g: Groups): Omit<EventFields['theft'], 'how'> {
@@ -484,13 +425,11 @@ function returned(g: Groups): EventFields['returnHome'] {
 const INFO = [
   // An emoji's explanation (/emoji 🧂): rules, no state.
   /^\S+ (?:funziona (?:in casa|con te)|è decorativa)[,:] /u,
-  /^Classifica @TheConquister37$/u,
+  /^⚽ Classifica della palla: /u,
   /^🏆 È il tuo colpo più grosso di sempre!$/u,
   /^Entrambi gli account hanno già beni: /u,
   /^Imposta uno username Telegram /u,
   /^🐔 funziona in casa/u,
-  // Babies: no effect since 14 Oct (docs/game-rules.md §5.3).
-  /^\S+(?: \([^)]*\))? (?:è nat[oa] un[a]? (?:maschio|femmina)|\S+ ha vissuto la sua vita)/u,
   /^Ora ne hai \d+ /u,
   /^Oggi è giorno di /u,
   /^Uso: /u,
@@ -498,11 +437,6 @@ const INFO = [
   /^🌟 È l'ora d'oro: /u,
   /^🌟 Ora d'oro: bottino doppio!$/u,
   /^🌙 L'ora d'oro è finita/u,
-  // The house rearranged (/move): the count of each emoji stays.
-  /^.+? hai scambiato \S+ e \S+: ora .*Casa: /u,
-  /^.+? hai spostato \S+ dal posto \d+ al posto \d+\. Casa: /u,
-  // A gift's emoji in the hands of who received it; the gift's own line comes first.
-  /^.+? \S+ ora è con te, ora hai con te \S+: /u,
   // A road chosen at a fork (19 Oct only).
   /^.+? prendi \S+ \S+: arrivi tra /u,
   /^@?[^\s,]+, tiri una palla di cacca a /u,
@@ -511,6 +445,15 @@ const INFO = [
   // The lines of /emoji, when the bot sends them apart from the listing's first line.
   /^(?:(?:[\p{Extended_Pictographic}\p{Regional_Indicator}]|\u{200d}|\u{fe0f})+ )+(?:ognun[oa] |viaggi il \d+% |\+\d+% di palle |in @TheConquister37 diventa |il palloncino: |distrugge un'emoji |costa \d+ palle: |dopo \d+ ore nasce |chi la prende |si lancia: )/u,
   /^Si lanciano: /u,
+  // The ☢️, disabled, in the /emoji listing.
+  /^☢️? è disattivata: /u,
+  // The welcome of a new player, since the ⚽ version.
+  /^Per le prime 24 ore nessuno può derubarti\./u,
+  /^👋 Benvenuto /u,
+  /^• [/!]\w+/u,
+  // Parts of /emoji that came apart from the listing's first line (IRC paces long listings).
+  /^🧂 se la stessa persona /u,
+  /^Funzionano con te, /u,
   /^I bambini \(/u,
   /^Tutte le altre emoji sono decorative/u,
   /^Citazione (?:eliminata|già presente)/u,

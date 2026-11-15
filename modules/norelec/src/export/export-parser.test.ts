@@ -16,9 +16,9 @@ describe('exportBotMessage', () => {
     const m = exportBotMessage({
       date: DATE,
       sender: 'Regno',
-      text: '<NorelecBot_> \u200bAlfa sei in @TheConquister37! · \u200bBravo sei già in @Bravo!',
+      text: '<NorelecBot_> \u200bAlfa /burn è disattivato. · \u200bBravo sei già in @Bravo!',
     });
-    expect(m?.events.map((e) => e.kind)).toEqual(['entered', 'alreadyAt']);
+    expect(m?.events.map((e) => e.kind)).toEqual(['disabled', 'alreadyAt']);
   });
 
   it('ignores other senders, relayed or not, and undated messages', () => {

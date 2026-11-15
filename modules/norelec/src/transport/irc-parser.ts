@@ -15,7 +15,7 @@
  * (`standsAlone`): short (the relay splits only past about 390 bytes, so a part under
  * `SPLIT_RISK_BYTES` is the last unless the next line would be longer than any of the game's), of
  * known lines, and of no kind that runs over several lines (a listing, the leaderboard, a profile,
- * a house, an entry before its quote). So the bot's answers to commands, single short lines, are
+ * a house, a quote added before its echo). So the bot's answers to commands, single short lines, are
  * read as they arrive, not a join window later.
  *
  * Pure: each line comes with its `server-time` and the local time it was received; any other
@@ -53,8 +53,8 @@ export const SPLIT_RISK_BYTES = 200;
 const CONTINUED = new Set<EventKind>([
   'unknown',
   'info',
-  'leaderboardRow',
-  'holderIs',
+  'ballRow',
+  'ballHolder',
   'profile',
   'house',
 ]);
@@ -63,23 +63,24 @@ const UTF8 = new TextEncoder();
 
 /**
  * Whether a message, so far `irc` on the channel (its parts as they came), is complete as it is:
- * see the module's comment. An entry is, once its quote (a line no template knows, after it) came.
+ * see the module's comment. A quote added is, once its echo (a line no template knows, after it)
+ * came.
  */
 export function standsAlone(irc: string, m: BotMessage): boolean {
   if (UTF8.encode(irc).length >= SPLIT_RISK_BYTES) return false;
   if (m.events.length === 0 || m.events.some((e) => CONTINUED.has(e.kind))) return false;
-  return !m.events.some((e) => e.kind === 'entered') || quoteCame(m.text, m.events);
+  return !m.events.some((e) => e.kind === 'quoteAdded') || echoCame(m.text, m.events);
 }
 
-/** Whether a line no template knows, the random quote, follows the entry in `text`. */
-function quoteCame(text: string, events: readonly GameEvent[]): boolean {
+/** Whether a line no template knows, the quote echoed, follows the quote added in `text`. */
+function echoCame(text: string, events: readonly GameEvent[]): boolean {
   const lines = text
     .split('\n')
     .map((l) => l.trim())
     .filter((l) => l !== '');
-  const entry = events.find((e) => e.kind === 'entered')?.line;
+  const added = events.find((e) => e.kind === 'quoteAdded')?.line;
   return lines
-    .slice(lines.findIndex((l) => l === entry) + 1)
+    .slice(lines.findIndex((l) => l === added) + 1)
     .some((l) => parseLine(l).kind === 'unknown');
 }
 

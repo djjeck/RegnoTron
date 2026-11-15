@@ -45,11 +45,14 @@ describe('NorelecGame', () => {
     expect(printed).toEqual(['02:01:30  incomingRaid alice by Juno']);
     expect(run.health.lastBotMessage).toBe(T0);
 
-    run.line(bot('Bravo sei in @TheConquister37!', T0 + 200));
+    run.line(
+      bot('Bravo parti per Juno: arrivi tra 10 secondi. Casa tua resta scoperta.', T0 + 200)
+    );
     now = T0 + 5000;
     run.tick();
-    expect(printed.at(-1)).toBe('02:00:00  holderChanged Bravo');
-    expect(run.state.holder?.name).toBe('Bravo');
+    // Notices about others are logged, not printed.
+    expect(printed).toHaveLength(1);
+    expect(records.map((r) => r.type)).toEqual(['message', 'notice', 'message', 'notice']);
   });
 
   it("passes on players' commands, relayed or not, before the bot answers", () => {
@@ -123,20 +126,20 @@ describe('NorelecGame', () => {
     const n = run.replay([
       {
         time: T0,
-        text: 'Alfa hai cacciato Juno da @TheConquister37.\nAlfa sei in @TheConquister37!',
+        text: 'Alfa parti per Juno: arrivi tra 10 secondi. Casa tua resta scoperta.',
       },
       {
         time: T0 + 1000,
-        text: 'Juno hai cacciato Alfa da @TheConquister37.\nJuno sei in @TheConquister37!',
+        text: 'Juno parti per Alfa: arrivi tra 10 secondi. Casa tua resta scoperta.',
       },
       {
         time: T0 + 2000,
-        text: 'alice congeli Juno in @TheConquister37: per 24 minuti non può partire e, se lo cacciano, non può rientrare.',
+        text: 'alice congeli Juno: per 24 minuti non può partire e, se lo cacciano, non può rientrare.',
       },
     ]);
     expect(n).toBe(3);
     expect(seen).toEqual([T0, T0 + 1000, T0 + 2000]);
-    expect(run.state.holder?.name).toBe('Juno');
+    expect(run.state.player('Juno').location).toBe('travelling');
     expect(run.state.player('Juno').frozenUntil).toBe(T0 + 2000 + 24 * 60_000);
     expect([records, printed]).toEqual([[], []]);
   });
@@ -150,5 +153,20 @@ describe('NorelecGame', () => {
     );
     run.line({ nick: 'Regno', text: '<Alfa> ciao', time: T0 + 100, playback: false });
     expect(heard).toEqual(['incomingRaid true']);
+  });
+});
+
+describe('a banned player', () => {
+  it('is named from the command the bot answers, the latest just before it', () => {
+    const { run } = fakeRun();
+    const banned: unknown[] = [];
+    run.onMessage((m) => banned.push(...m.events.filter((e) => e.kind === 'banned')));
+    run.line({ nick: 'Regno_', text: '<B\u200bravo> /avventura', time: T0, playback: false });
+    run.line({ nick: 'NorelecBot', text: 'COGLIONE', time: T0 + 1000, playback: false });
+    run.line({ nick: 'NorelecBot', text: 'COGLIONE', time: T0 + 60_000, playback: false });
+    expect(banned).toEqual([
+      expect.objectContaining({ player: { name: 'Bravo' } }),
+      expect.not.objectContaining({ player: expect.anything() }),
+    ]);
   });
 });

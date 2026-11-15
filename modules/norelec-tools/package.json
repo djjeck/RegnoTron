@@ -1,6 +1,6 @@
 {
   "name": "@regnotron/norelec-tools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "RegnoTron's read-only tools for NorelecBot's group: the map of the homes and the nuclear clock",
   "license": "MIT",

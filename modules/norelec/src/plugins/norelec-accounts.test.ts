@@ -24,7 +24,10 @@ describe('TelegramAccounts', () => {
     const first = new TelegramAccounts(kept);
     expect(first.kept).toBe(false);
     first.backfill([
-      msg(0, 'Juno (🎈) hai bucato il palloncino di @Gianpier il lombardo (🎈)!'),
+      msg(
+        0,
+        'Juno (🎈) hai bucato il palloncino di @Gianpier il lombardo (🎈) e rubato 5 palle! Torni in Juno tra 1 minuto.'
+      ),
       msg(1, 'Mirco777 parti per Juno: arrivi tra 10 secondi. Casa tua resta scoperta.'),
     ]);
     expect(first.list()).toEqual(['Gianpier']);
@@ -43,7 +46,12 @@ describe('TelegramAccounts', () => {
     const g = new GameState();
     accounts.apply(g);
     g.players.delete('Gone');
-    g.apply(msg(0, 'Juno (🎈) hai bucato il palloncino di @Mirco777 (🎈)!'));
+    g.apply(
+      msg(
+        0,
+        'Juno (🎈) hai bucato il palloncino di @Mirco777 (🎈) e rubato 5 palle! Torni in Juno tra 1 minuto.'
+      )
+    );
     accounts.sync(g);
     expect(kept.d.value).toEqual({ names: ['Gianpier', 'Gone', 'Mirco777'] });
     g.apply(msg(1, 'alice non conosco nessun giocatore di nome @Mirco777.'));

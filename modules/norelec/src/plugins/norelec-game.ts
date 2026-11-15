@@ -1,7 +1,7 @@
 /**
  * NorelecBot's game as the `norelec` plugin reads it (modules/norelec/src/plugins/norelec.ts):
  * the channel's lines into the IRC parser, bot messages into the game state, the state's notices
- * logged (or published) and the ones that matter printed, and the connection's health. The
+ * logged (or published) and the ones about the owner printed, and the connection's health. The
  * channel's lines and the connection's steps are the `irc` plugin's to log and print. It
  * sends nothing: listeners (`onMessage`), such as a player's plugin, see each bot message after the state
  * has taken it, the replay's included (`replaying` tells them apart), `onCommand` listeners each
@@ -12,10 +12,14 @@
 import { type ChannelLine } from '@megabottron1999/connectors/transport/transport.ts';
 import { type BotMessage } from '#src/game/bot-message.ts';
 import { parseMessage } from '#src/game/parse-message.ts';
+import { playerRef } from '#src/game/player.ts';
 import { type PlayerCommand, playerCommand } from '#src/game/player-command.ts';
 import { GameState, type Notice } from '#src/state/game-state.ts';
 import { IrcParser } from '#src/transport/irc-parser.ts';
 import { RELAYS, unwrap } from '#src/transport/relay.ts';
+
+/** How soon after a banned player's command the game's `COGLIONE` answers it (seen within 2 s). */
+export const BAN_REPLY_MS = 5000;
 
 /** A record the game writes, under the type the event log maps to `norelec.*`. */
 export type GameRecord =
@@ -79,6 +83,8 @@ export class NorelecGame {
   private readonly commandListeners: ((c: PlayerCommand) => void)[] = [];
   private readonly noticeListeners: ((r: NoticeRecord) => void)[] = [];
   private readonly tickListeners: (() => void)[] = [];
+  /** The players' latest commands, for naming whom a `COGLIONE` answers. */
+  private commands: PlayerCommand[] = [];
 
   constructor(deps: GameDeps) {
     this.deps = deps;
@@ -138,8 +144,13 @@ export class NorelecGame {
     this.health.lastLine = line.time;
     for (const m of this.parser.push({ ...line, received: this.deps.now() })) this.message(m);
     const { author, text } = unwrap(line.nick, line.text, this.deps.relays ?? RELAYS);
-    const command = playerCommand(line.time, author, text);
-    if (command !== null) for (const listener of this.commandListeners) listener(command);
+    this.command(playerCommand(line.time, author, text));
+  }
+
+  private command(command: PlayerCommand | null): void {
+    if (command === null) return;
+    this.commands = [...this.commands.slice(-19), command];
+    for (const listener of this.commandListeners) listener(command);
   }
 
   /**
@@ -179,6 +190,7 @@ export class NorelecGame {
   }
 
   private message(m: BotMessage): void {
+    this.banned(m);
     this.health.lastBotMessage = m.time;
     // Applied before it is logged, so that whoever hears of it from the bus sees the state with
     // it; its notices are logged after it, as they always were.
@@ -193,6 +205,15 @@ export class NorelecGame {
     for (const listener of this.listeners) listener(m);
   }
 
+  /** A `COGLIONE` names the player whose command it answers: the latest, just before it. */
+  private banned(m: BotMessage): void {
+    for (const e of m.events) {
+      if (e.kind !== 'banned' || e.player !== undefined) continue;
+      const by = this.commands.findLast((c) => c.time <= m.time && m.time - c.time <= BAN_REPLY_MS);
+      if (by !== undefined) e.player = playerRef(by.player);
+    }
+  }
+
   private notices(notices: Notice[]): void {
     for (const n of notices) {
       const record = { type: 'notice' as const, t: n.at, notice: n };
@@ -200,8 +221,7 @@ export class NorelecGame {
       else this.publishNotice(record);
       for (const listener of this.noticeListeners) listener(record);
       const mine = n.player === this.deps.self || n.by === this.deps.self;
-      if (mine || n.kind === 'holderChanged' || n.kind === 'unknownLine')
-        this.deps.print(describe(n));
+      if (mine || n.kind === 'unknownLine') this.deps.print(describe(n));
     }
   }
 }

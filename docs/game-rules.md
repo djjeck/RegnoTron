@@ -1,11 +1,13 @@
 # NorelecBot "palle" game: rulebook
 
-Documented as of 5 Nov 2026. NorelecBot is a Telegram bot, written by Norelec, that runs a game in
-the game's group and, through a relay, in an IRC channel. This describes the rules in force at the
-end of the data (20 Oct 2026 23:59, UTC−4; Italian time is 6 hours later), with a few later
-observations, the mechanics the bot applies without announcing them (§2.7, §3.4, §3.6), and how the
-rules got there (§8). Norelec changes the rules almost daily: check anything important against the
-live `/help` and `/emoji` before relying on it.
+Documented as of 15 Nov 2026. **Since 9–10 Nov 2026 the game is the ⚽ version (§0.1), which
+replaces much of what follows**: read §0.1 first; the sections below describe the game before it,
+and stay true where §0.1 does not change them. NorelecBot is a Telegram bot, written by Norelec,
+that runs a game in the game's group and, through a relay, in an IRC channel. This describes the
+rules in force at the end of the data (20 Oct 2026 23:59, UTC−4; Italian time is 6 hours later),
+with a few later observations, the mechanics the bot applies without announcing them (§2.7, §3.4,
+§3.6), and how the rules got there (§8). Norelec changes the rules almost daily: check anything
+important against the live `/help` and `/emoji` before relying on it.
 
 **Marks.**
 
@@ -30,6 +32,32 @@ second, paid when they leave or are ousted. To take the place you must get past 
 **throw** emoji at them. Emoji are bought with balls and carry powers. Since 18–19 Oct the bot also
 applies unannounced random events (dreams, forks in the road, a gatekeeper, a short lock on
 Conquister).
+
+### 0.1 The ⚽ version (since 9 Nov 2026)
+
+- **A ☢️ razed @TheConquister37** on 8 Nov: every balance went to 0 and every house was emptied
+  (quote counts kept); the place is closed until at least 8 Dec 2026 [M]. No holder, no entry, no
+  penalty, no place income.
+- **One ball ⚽** [S][M]: in no slot, it is taken by a **successful raid on its holder** (a 🎈
+  popped, an unguarded house, a 🥷 past the defences; the holder home or away; 0 balls stolen
+  counts), and by nothing else (a 🎈 that holds, a 🐶, a bomb or a bounce take nothing). **Who holds
+  it longest wins**: `/leaderboard` ranks the time each player held it, top 10, and says who holds
+  it now. It was first awarded, silently, to the game's author at the restart of 9 Nov 22:53.
+- **Everything free** (10 Nov 21:42) [S]: every emoji costs 0 (`hai preso gratis`); a quote still
+  costs 1000 balls. Balls now buy only quotes and the /profile rank; they come from 🐔, thefts and
+  the golden hour. A purchase into a full house replaces the slot named, destroying what was there.
+- **Disabled** [S]: /give and /burn (`… è disattivato.`), the ☢️ (`la ☢️ è disattivata.`);
+  /avventura and throws at the place get no reply; the Sentinel (daily report, /sospetti, /unblock)
+  is gone.
+- **Babies** [M]: a 💦 delivered at a home gives a baby 9 hours later, which takes a house slot (the
+  first free one, or in a full house replacing an emoji, destroyed) and **locks** it: it cannot be
+  bought over (`… c'è 👶, che non si tocca: se ne andrà da solo.`). It grows (👶 → 👦/👧 → 👨/👩 →
+  👴/👵), about a stage a day; when it leaves is not known yet [?]. A house full of babies holds no
+  🎈, 🐶, 📮 or 🐔.
+- **Bans** [M]: a banned player gets `COGLIONE`, to some commands, and no reply to the others; they
+  stay raidable.
+- Trips, raids, freezes (🧊 still stops a departure, and the frozen player's 🎈 does not defend),
+  🚀, 📮, 🐶, 🏴‍☠️ and 🧂 work as before, as far as seen.
 
 ---
 
@@ -690,6 +718,9 @@ Dates are UTC−4. **[S]** unless marked.
 - 19 Oct 13:49: the gatekeeper's fruit riddle with `!parola`.
 - All of these except the fork were still running at the end of 20 Oct.
 - 23 Oct 21:00 (Italian time): the first golden hour, double loot for an hour, every day (§4.1).
+- 8 Nov: a ☢️ razes @TheConquister37 and resets the game; the place closes for 30 days.
+- 9 Nov 22:53: the ⚽ version (§0.1); 10 Nov 21:42: everything free, /give and /burn disabled,
+  /avventura silent, the Sentinel removed; 10 Nov 22:46: the ☢️ disabled; 13 Nov: the first ban.
 
 **What the chat says about the changes.** Players read the 19 Oct changes as measures against
 scripted players ("l'ultima contromisura del guardiano su conquister"). Norelec stated no such

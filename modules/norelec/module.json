@@ -1,8 +1,8 @@
 {
   "id": "norelec",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "api": "1",
   "provides": "@regnotron/norelec",
   "imports": {},
-  "plugins": ["src/plugins/norelec.ts"]
+  "plugins": ["src/plugins/norelec.ts", "src/plugins/norelec-state.ts"]
 }

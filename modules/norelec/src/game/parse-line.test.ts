@@ -18,17 +18,7 @@ const LINES: [string, EventKind, Record<string, unknown>?][] = [
   [
     'Alfa parti per Bravo con 🧊 da consegnare: arrivi tra 1 minuto e 51 secondi. Casa tua resta scoperta.',
     'depart',
-    { load: '🧊', gift: false },
-  ],
-  [
-    'Alfa parti per Bravo con 🏳️‍⚧️ da regalare: arrivi tra 50 secondi. Casa tua resta scoperta.',
-    'depart',
-    { load: '🏳️‍⚧️', gift: true },
-  ],
-  [
-    'Alfa parti per Bravo con 500 palle da consegnare: arrivi tra 2 minuti. Casa tua resta scoperta.',
-    'depart',
-    { load: '500 palle', gift: true },
+    { load: '🧊' },
   ],
   ['Alfa sei già in viaggio, torni tra 55 secondi.', 'alreadyTravelling', { seconds: 55 }],
   ['Alfa sei già in viaggio, torni tra poco.', 'alreadyTravelling', { seconds: 0 }],
@@ -42,10 +32,6 @@ const LINES: [string, EventKind, Record<string, unknown>?][] = [
     'Alfa (🎈) eri così stanco che hai solo sognato di partire: non ti sei mai mosso da casa!',
     'dreamDepart',
     { player: { name: 'Alfa', carried: ['🎈'] } },
-  ],
-  [
-    'Alfa eri così stanco che hai solo sognato di entrare in @TheConquister37: non ti sei mai mosso da casa!',
-    'dreamEntry',
   ],
   [
     'A metà strada la via si divide: ⛰️ collina o 🏞️ fiume? Scrivi !strada <nome> entro 3 minuti.',
@@ -69,7 +55,6 @@ const LINES: [string, EventKind, Record<string, unknown>?][] = [
   ['Alfa (🎈) rientri in Alfa a mani vuote.', 'returnHome'],
   ['Alfa (🎈) eccoti di nuovo in @Alfa, con 641 palle in più.', 'returnHome', { balls: 641 }],
   ['Alfa (🎈) Alfa ti riaccoglie: hai con te 12 palle.', 'returnHome', { balls: 12 }],
-  ['Alfa (🎈) torni in @Alfa con le tue 740 palle ancora in tasca.', 'returnHome', { balls: 740 }],
   ['Alfa torni in @Alfa con 🧊 ancora in tasca.', 'returnHome'],
   // Arrival at a home
   [
@@ -121,33 +106,9 @@ const LINES: [string, EventKind, Record<string, unknown>?][] = [
   ],
   ['Arrembaggio: ti porti via anche 📮 da casa sua.', 'pirate', { emoji: '📮' }],
   [
-    'Alfa (🎈) hai consegnato 500 palle a @Bravo (🎈)! Torni in @Alfa tra 2 minuti e 30 secondi.',
-    'giftDelivered',
-    { balls: 500 },
-  ],
-  [
-    'Alfa (🎈) hai regalato 🏳️‍⚧️ a Bravo (🎈)! Torni in @Alfa tra 49 secondi.',
-    'giftDelivered',
-    { emoji: '🏳️‍⚧️' },
-  ],
-  [
     'Alfa (🎈) la tua 💦 è arrivata a casa di @Bravo: tra 9 ore si vedrà. Torni in @Alfa tra 2 minuti.',
     'throwDelivered',
-    { emoji: '💦', atHolder: false },
-  ],
-  [
-    'Alfa la tua 💦 è arrivata addosso a Bravo in @TheConquister37: tra 9 ore si vedrà.',
-    'throwDelivered',
-    { atHolder: true },
-  ],
-  [
-    'Alfa la tua bomba esplode addosso a @Bravo (🎈🥷) in @TheConquister37 e si porta via 🥷: ora @Bravo ha con sé 🎈.',
-    'bombAtHolder',
-    { destroyed: '🥷' },
-  ],
-  [
-    'Alfa la tua bomba esplode addosso a @Bravo (🎈) in @TheConquister37 ma non trova niente da portarsi via.',
-    'bombAtHolder',
+    { emoji: '💦' },
   ],
   [
     'Alfa (🎈) la tua bomba esplode in casa di @Bravo (🎈) e si porta via 🐔! Torni in Alfa tra 1 minuto e 46 secondi.',
@@ -174,12 +135,6 @@ const LINES: [string, EventKind, Record<string, unknown>?][] = [
     'throwUndelivered',
   ],
   [
-    'Alfa ha sganciato la bomba nucleare su casa di @Bravo: riparte da zero.',
-    'nuke',
-    { target: { name: 'Bravo' } },
-  ],
-  ['Alfa ha sganciato la bomba nucleare su @TheConquister37: il gioco riparte da zero.', 'nuke'],
-  [
     'Alfa (🥷🎈) congeli Bravo: per 30 minuti non può entrare in @TheConquister37 né partire, e il suo 🎈 non difende. Torni in Alfa tra 1 minuto e 25 secondi.',
     'freezeDelivered',
     { minutes: 30 },
@@ -190,89 +145,12 @@ const LINES: [string, EventKind, Record<string, unknown>?][] = [
     { seconds: 1655 },
   ],
   ['🎉 Alfa 100 raid riusciti!', 'milestone', { raids: 100 }],
-  // @TheConquister37
-  [
-    'Alfa (🎈) hai bucato il palloncino di @Bravo (🎈)!',
-    'balloonPopped',
-    { holder: { name: 'Bravo' } },
-  ],
-  ['Alfa (🥷) scivoli di nascosto oltre il palloncino di Bravo (🎈)!', 'sneakedPast'],
-  [
-    'Alfa hai cacciato @Bravo lo smarrito da @TheConquister37.',
-    'ousted',
-    { holder: { name: 'Bravo', title: 'lo smarrito' } },
-  ],
-  ['Bravo hai guadagnato 59 palle col ⚡ x1.1!', 'holderPaid', { balls: 59, multiplier: 1.1 }],
-  ['Bravo hai guadagnato 1 palla!', 'holderPaid', { balls: 1 }],
-  ['Alfa sei in @TheConquister37!', 'entered'],
-  ['🪐 Alfa sei entrato in @TheConquister37!', 'entered'],
-  [
-    'Alfa (🎈) il palloncino di Bravo (🎈) ha resistito e prendi una penalità. Ora il palloncino ha il 50% di probabilità di essere bucato.',
-    'entryHeld',
-    { nextChance: 50 },
-  ],
-  [
-    'Alfa (🎈) il palloncino di Bravo (🎈) ha resistito e prendi 5 minuti di penalità. Ora il palloncino ha il 75% di probabilità di essere bucato.',
-    'entryHeld',
-    { penaltyS: 300 },
-  ],
   // Each ⏳ carried takes 10% off.
-  [
-    'Alfa (🎈⏳) il palloncino di Bravo (🎈) ha resistito e prendi 4 minuti e 30 secondi di penalità. Ora il palloncino ha il 100% di probabilità di essere bucato.',
-    'entryHeld',
-    { penaltyS: 270, nextChance: 100, player: { name: 'Alfa' }, holder: { name: 'Bravo' } },
-  ],
-  [
-    'Alfa @TheConquister37 è chiuso: qualcuno ha appena provato a entrare. Riprova tra poco.',
-    'locked',
-  ],
-  [
-    'Alfa alla porta di @TheConquister37 il guardiano ti ferma e chiede: come si chiama questo frutto? 🍎 Rispondi con !parola <nome> entro 3 minuti.',
-    'gatekeeperAsks',
-    { player: { name: 'Alfa' }, question: 'come si chiama questo frutto? 🍎' },
-  ],
-  [
-    'alla porta di @TheConquister37 il guardiano ti ferma e chiede: come si chiama questo frutto? 🍌 Rispondi con /parola <nome> entro 3 minuti.',
-    'gatekeeperAsks',
-  ],
-  ['Alfa il guardiano ti fa passare.', 'gatekeeperPasses'],
-  [
-    'Alfa la porta di @TheConquister37 resta chiusa per te per 3 minuti e 22 secondi.',
-    'doorClosed',
-    { seconds: 202 },
-  ],
-  ['Alfa sei già in @TheConquister37!', 'alreadyAt', { place: 'TheConquister37' }],
-  [
-    'Alfa sei per strada: non puoi entrare in @TheConquister37 prima di tornare in @Alfa, tra 25 secondi.',
-    'onTheRoad',
-    { home: 'Alfa', seconds: 25 },
-  ],
-  [
-    'Alfa torni da @TheConquister37 in @Alfa con 31 palle col ⚡ x1.1.',
-    'leftConquister',
-    { balls: 31 },
-  ],
-  ['Alfa hai ancora 2 minuti e 10 secondi di penalità.', 'penaltyLeft', { seconds: 130 }],
-  [
-    'Alfa razzie e consegne partono da casa tua: esci prima da @TheConquister37 con /back.',
-    'raidFromConquister',
-  ],
-  ['Le tue aragoste diventano 🎈 finché resti qui.', 'lobster', { emoji: '🎈' }],
-  // Buying, slots, burning
+  // Buying and slots
   [
     'Alfa (🎈) hai speso 1000 palle: 💣 in casa nel posto 3 (). Non dà nessun bonus: aspetta in casa finché non la lanci.',
     'bought',
     { emoji: '💣', carried: false, slot: 3 },
-  ],
-  [
-    "Alfa (🎈🎈) hai speso 1000 palle: 🎈 ora è con te (ce n'erano già 45 in giro, prezzo x1).",
-    'bought',
-    { carried: true, copiesBefore: 45 },
-  ],
-  [
-    'Alfa ti servono 1500 palle per 🧊 (ce ne sono già 1 in giro, ne hai 641).',
-    'tooPoor',
-    { price: 1500, emoji: '🧊', copies: 1, have: 641 },
   ],
   ['Alfa ti servono 1000 palle per 💣.', 'tooPoor', { price: 1000 }],
   ['Alfa hai già tutti i 10 posti della casa pieni: scegli quale sostituire.', 'houseFull'],
@@ -301,12 +179,6 @@ const LINES: [string, EventKind, Record<string, unknown>?][] = [
     'moved',
     { emoji: '💣', carried: true, swapped: '🎈' },
   ],
-  ['Alfa hai bruciato 🏴‍☠️: è uscita dal gioco.', 'burned', { what: '🏴‍☠️' }],
-  [
-    'Alfa hai bruciato 159 palle: sono uscite dal gioco. Te ne restano 0.',
-    'burned',
-    { what: '159 palle' },
-  ],
   [
     'Ci torni troppo presto: il 🧂 di @Bravo ti costa 86 palle, che vanno a lui.',
     'saltPaid',
@@ -327,44 +199,17 @@ const LINES: [string, EventKind, Record<string, unknown>?][] = [
   ['Alfa non hai 💣 con te.', 'refused', { reason: 'non hai 💣 con te.' }],
   ['Alfa la casa è piena: per fare posto brucia qualcosa con /burn <emoji>.', 'refused'],
   ['Alfa non puoi razziare te stesso.', 'refused'],
-  [
-    'Alfa hai solo 373 palle a disposizione.',
-    'refused',
-    { reason: 'hai solo 373 palle a disposizione.', have: 373 },
-  ],
   // State queries and info
-  [
-    '2) Bravo lo smarrito (🥷🎈) — 34140 palle — 42 citazioni',
-    'leaderboardRow',
-    { rank: 2, balls: 34140, quotes: 42 },
-  ],
-  [
-    'In @TheConquister37 ora: Alfa (🎈🚀)',
-    'holderIs',
-    { player: { name: 'Alfa', carried: ['🎈', '🚀'] } },
-  ],
-  ['Classifica @TheConquister37', 'info'],
   ["🌟 È l'ora d'oro: fino alle 22 ogni raid riuscito ruba il doppio delle palle!", 'info'],
   ["🌟 Ora d'oro: bottino doppio!", 'info'],
   ["🌙 L'ora d'oro è finita: torna domani alle 21.", 'info'],
   ['Ora ne hai 2 con te: il gelo di una 🧊 dura il 20% in meno', 'info'],
   ['🧂 funziona in casa, anche quando sei fuori: chi torna a razziarti paga.', 'info'],
-  ['@Bravo (🎈) è nato un maschio 👶: il padre è Alfa.', 'info'],
   // Refusals
   ["Alfa nel posto 9 della casa non c'è nessuna emoji.", 'refused'],
-  ['Alfa indica un numero di palle maggiore di zero.', 'refused'],
   ['Alfa ™️ non si lancia: per regalarla scrivi /give @Bravo ™️.', 'refused'],
-  ['Alfa non puoi regalare a te stesso.', 'refused'],
   ["Alfa l'invito vale solo per chi è appena arrivato nel gioco.", 'refused'],
-  [
-    'Alfa il guardiano scuote la testa e ti chiude la porta di @TheConquister37: riprova tra 4 minuti e 58 secondi.',
-    'doorClosed',
-    { player: { name: 'Alfa' }, seconds: 298 },
-  ],
   // Known lines that change no state
-  ['Alfa hai scambiato 🧊 e 🐶: ora 🧊 è nel posto 5 e 🐶 nel posto 1. Casa: 🐶🐶💣🧊🎈', 'info'],
-  ['Alfa hai spostato 📮 dal posto 10 al posto 9. Casa: 🐶🐶🎈📮', 'info'],
-  ['Bravo 🎈 ora è con te, ora hai con te 🎈🎈: con te difende te dove sei.', 'info'],
   ['Alfa prendi 🏚️ rovine: arrivi tra 36 secondi.', 'info'],
   [
     "@Alfa, tiri una palla di cacca a Bravo, bravo hai fatto centro, l'hai completamente smarrito!",
@@ -373,7 +218,6 @@ const LINES: [string, EventKind, Record<string, unknown>?][] = [
   ['🎯 bersaglio preferito: Alfa (166 colpi)', 'info'],
   ['⏱️ record in @TheConquister37: 58 secondi', 'info'],
   ['🚀 viaggi il 10% più veloce per ognuno', 'info'],
-  ['⏳ ognuna accorcia del 10% la penalità dopo un tentativo fallito di entrare', 'info'],
   ['💩 🇷🇺 🇮🇱 chi la prende è "lo smarrito" per 1 giorno', 'info'],
   ['☢️ costa 1000000 palle: azzera un giocatore', 'info'],
   ['Si lanciano: /throw nome emoji su casa sua.', 'info'],
@@ -384,6 +228,98 @@ const LINES: [string, EventKind, Record<string, unknown>?][] = [
   ['Una riga che nessun modello conosce.', 'unknown'],
   // A player's words that only look like the listing's are not taken for it.
   ['Alfa ognuno ha il 10%', 'unknown'],
+  // The ⚽ version (9 Nov 2026)
+  ["⚽ E gli porti via la palla! Ora ce l'hai tu: tienila il più a lungo possibile.", 'ballTaken'],
+  [
+    '1) Alfa (🥷🏾) — 1 giorno, 22 ore, 30 minuti e 42 secondi',
+    'ballRow',
+    { rank: 1, player: { name: 'Alfa' }, seconds: 167_442, holding: false },
+  ],
+  [
+    '2) Bravo lo smarrito — 3 ore e 41 secondi ⚽',
+    'ballRow',
+    { player: { name: 'Bravo', title: 'lo smarrito' }, seconds: 10_841, holding: true },
+  ],
+  ['3) Charlie (🎈) — 2 giorni e 1 minuto', 'ballRow', { seconds: 172_860 }],
+  [
+    "La palla ce l'ha Alfa (🎈🚀) da 1 minuto e 5 secondi: rubagliela con /raid @Alfa.",
+    'ballHolder',
+    { player: { name: 'Alfa', carried: ['🎈', '🚀'] }, seconds: 65 },
+  ],
+  ["La palla ce l'ha Bravo da 2 ore: rubagliela con !raid Bravo.", 'ballHolder', { seconds: 7200 }],
+  ["⚽ Classifica della palla: chi l'ha tenuta più a lungo", 'info'],
+  ['Alfa /burn è disattivato.', 'disabled', { what: '/burn' }],
+  ['Alfa !give è disattivato.', 'disabled', { what: '!give' }],
+  [
+    "Alfa /give è disattivato: ora si gioca alla palla ⚽. Chi va a segno con /raid su chi ce l'ha gliela porta via.",
+    'disabled',
+    { what: '/give' },
+  ],
+  ['Alfa la ☢️ è disattivata.', 'disabled', { what: '☢️' }],
+  [
+    "Alfa @TheConquister37 è chiuso: ora si gioca alla palla ⚽. Chi va a segno con /raid su chi ce l'ha gliela porta via; vince chi la tiene più a lungo, guarda /leaderboard.",
+    'disabled',
+    { what: '@TheConquister37' },
+  ],
+  ['☢️ è disattivata: non si compra, non si lancia e non si regala', 'info'],
+  ['COGLIONE', 'banned'],
+  [
+    "Alfa nel posto 1 c'è 👶, che non si tocca: se ne andrà da solo. Nessun addebito.",
+    'slotLocked',
+    { slot: 1, emoji: '👶' },
+  ],
+  [
+    "@Bravo ([]🥷🥷) è nata una femmina 👶: il padre è @Alfa. Non c'era un posto libero: ha preso quello di 📮.",
+    'born',
+    { player: { name: 'Bravo' }, father: { name: 'Alfa' }, female: true, replaced: '📮' },
+  ],
+  [
+    '@Bravo (🎈) è nato un maschio 👶: il padre è Alfa.',
+    'born',
+    { player: { name: 'Bravo' }, father: { name: 'Alfa' }, emoji: '👶', female: false },
+  ],
+  ['@Bravo 👴 ha vissuto la sua vita.', 'babyGone', { emoji: '👴' }],
+  [
+    'Alfa (🎈) la bomba era difettosa: ti esplode in mano, ma non avevi niente con te da perdere. Torni in @Alfa tra 1 minuto e 11 secondi.',
+    'bombDefective',
+    { seconds: 71 },
+  ],
+  [
+    'Alfa (🚀) hai preso gratis 📮: 📮 in casa nel posto 9, al posto di 🐔. Ora ne hai 3 in casa: 30% di rispedire al mittente quello che ti lanciano a casa.',
+    'bought',
+    { balls: 0, emoji: '📮', slot: 9, replaced: '🐔', count: 3, carried: false },
+  ],
+  [
+    'Alfa (🎈🥷) hai preso gratis 🥷: 🥷 ora è con te. Ora ne hai 1 con te: 10% di passare oltre 🎈 e 🐶 senza toccarli.',
+    'bought',
+    { carried: true, count: 1 },
+  ],
+  ['Alfa (🎈) hai preso gratis 🅽: 🅽 in casa nel posto 1.', 'bought', { emoji: '🅽', slot: 1 }],
+  [
+    'Alfa (🎈) hai speso 1000 palle: 💣 in casa nel posto 3. Non dà nessun bonus: aspetta in casa finché non la lanci.',
+    'bought',
+    { balls: 1000, emoji: '💣', slot: 3 },
+  ],
+  [
+    'Alfa ti servono 1000 palle per 🧊 (ne hai 641).',
+    'tooPoor',
+    { price: 1000, emoji: '🧊', have: 641 },
+  ],
+  [
+    'Alfa hai scambiato 🧊 e 🐶: ora 🧊 è nel posto 5 e 🐶 nel posto 1. Casa: 🐶🐶💣[]🧊',
+    'rearranged',
+    { slots: ['🐶', '🐶', '💣', null, '🧊'] },
+  ],
+  [
+    'Alfa hai spostato 📮 dal posto 10 al posto 9. Casa: 🐶🐶🎈📮',
+    'rearranged',
+    { player: { name: 'Alfa' } },
+  ],
+  ['Alfa non puoi portare palle a te stesso.', 'refused'],
+  ['Alfa i posti della casa vanno da 1 a 10: nessun addebito.', 'refused'],
+  ['Alfa sei già in @Alfa!', 'alreadyAt', { place: 'Alfa' }],
+  ["Per le prime 24 ore nessuno può derubarti. C'è una palla sola ⚽: rubala.", 'info'],
+  ['• /raid <nome>: vai a rubare palle a qualcuno', 'info'],
 ];
 
 describe('parseLine', () => {
@@ -395,9 +331,7 @@ describe('parseLine', () => {
   });
 
   it('trims the line', () => {
-    expect(parseLine('  Alfa sei in @TheConquister37!  ').line).toBe(
-      'Alfa sei in @TheConquister37!'
-    );
+    expect(parseLine('  Alfa /burn è disattivato.  ').line).toBe('Alfa /burn è disattivato.');
   });
 
   it('does not take a template word for a title', () => {
@@ -418,8 +352,11 @@ describe('parseLine', () => {
         'Alfa (🎈) hai bucato il palloncino di @Bravo (🥷) e rubato 40 palle! Torni in @Alfa tra 9 secondi.'
       ).telegram
     ).toEqual(['Bravo', 'Alfa']);
-    expect(parseLine('Alfa hai cacciato @Bravo da @TheConquister37.').telegram).toEqual(['Bravo']);
-    expect(parseLine('Alfa sei in @TheConquister37!')).not.toHaveProperty('telegram');
+    expect(
+      parseLine(
+        'Alfa una 🧊 ti ha congelato: non puoi entrare in @TheConquister37 né partire per altri 5 secondi.'
+      )
+    ).not.toHaveProperty('telegram');
     expect(
       parseLine('Alfa parti per Bravo: arrivi tra 5 secondi. Casa tua resta scoperta.')
     ).not.toHaveProperty('telegram');

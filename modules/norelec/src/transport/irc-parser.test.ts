@@ -64,10 +64,10 @@ describe('ircBotMessage', () => {
     expect(
       ircBotMessage({
         nick: 'Regno',
-        text: '<N\u200borelecBot_> Alfa sei in @TheConquister37!',
+        text: '<N\u200borelecBot_> Alfa /burn è disattivato.',
         time: 0,
       })?.events.map((e) => e.kind)
-    ).toEqual(['entered']);
+    ).toEqual(['disabled']);
     expect(ircBotMessage({ nick: 'Regno', text: '<alice> /raid Juno', time: 0 })).toBeNull();
     expect(ircBotMessage({ nick: 'Bravo', text: '!raid Alfa', time: 0 })).toBeNull();
   });
@@ -107,9 +107,13 @@ describe('IrcParser', () => {
   it('joins the parts of a long message, as the relay splits it, and reads it after the window', () => {
     const rows = Array.from(
       { length: 10 },
-      (_, i) => `${i + 1}) Giocatore${i} (🥷🎈🔥) — ${50_000 - i * 1000} palle — ${i} citazioni`
+      (_, i) => `${i + 1}) Giocatore${i} (🎈) — ${20 - i} ore`
     );
-    const text = ['Classifica @TheConquister37', ...rows, 'In @TheConquister37 ora: Alfa'];
+    const text = [
+      "⚽ Classifica della palla: chi l'ha tenuta più a lungo",
+      ...rows,
+      "La palla ce l'ha Giocatore0 (🎈) da 1 minuto e 5 secondi: rubagliela con !raid Giocatore0.",
+    ];
     const parts = relaySplit(text);
     expect(parts).toHaveLength(2);
     const parser = new IrcParser();
@@ -119,22 +123,21 @@ describe('IrcParser', () => {
     const [m] = parser.flush(1500);
     expect(m?.events.map((e) => e.kind)).toEqual([
       'info',
-      ...rows.map(() => 'leaderboardRow'),
-      'holderIs',
+      ...rows.map(() => 'ballRow'),
+      'ballHolder',
     ]);
   });
 
-  it('waits for the quote after an entry, which completes it', () => {
+  it('waits for the echo after a quote added, which completes it', () => {
+    const added = 'Alfa hai aggiunto la citazione spendendo 1000 palle!';
     const parser = new IrcParser();
-    expect(parser.push(bot('\u200bAlfa sei in @TheConquister37!', 1000))).toEqual([]);
+    expect(parser.push(bot(`\u200b${added}`, 1000))).toEqual([]);
     const [m] = parser.push(bot('\u200bUna citazione qualunque.', 1100));
-    expect(m?.text).toBe('Alfa sei in @TheConquister37!\nUna citazione qualunque.');
-    expect(m?.events.map((e) => e.kind)).toEqual(['entered']);
-    // An entry and its quote on one line are complete at once.
-    const [whole] = new IrcParser().push(
-      bot('\u200bBravo sei in @TheConquister37! · Una citazione qualunque.', 2000)
-    );
-    expect(whole?.events.map((e) => e.kind)).toEqual(['entered']);
+    expect(m?.text).toBe(`${added}\nUna citazione qualunque.`);
+    expect(m?.events.map((e) => e.kind)).toEqual(['quoteAdded']);
+    // A quote added and its echo on one line are complete at once.
+    const [whole] = new IrcParser().push(bot(`\u200b${added} · Una citazione qualunque.`, 2000));
+    expect(whole?.events.map((e) => e.kind)).toEqual(['quoteAdded']);
   });
 
   it('waits for the join window on a line no template knows, or a long one', () => {
@@ -149,9 +152,9 @@ describe('IrcParser', () => {
 
   it('keeps messages apart when they are more than the join window apart', () => {
     const parser = new IrcParser(400);
-    parser.push(bot('\u200bAlfa sei in @TheConquister37!', 0));
+    parser.push(bot('\u200bAlfa hai aggiunto la citazione spendendo 1000 palle!', 0));
     const [first, second] = parser.push(bot('\u200bBravo sei già in @Bravo!', 600));
-    expect(first?.events.map((e) => e.kind)).toEqual(['entered']);
+    expect(first?.events.map((e) => e.kind)).toEqual(['quoteAdded']);
     // The second is complete with its line.
     expect(second?.events.map((e) => e.kind)).toEqual(['alreadyAt']);
     expect(parser.push({ nick: 'Regno', text: '<Alfa> ciao', time: 700, received: 700 })).toEqual(
@@ -164,7 +167,7 @@ describe('IrcParser', () => {
     const parser = new IrcParser(400);
     // The server clock is a minute ahead of the local one: the message still closes 400 ms after
     // it was received.
-    parser.push(bot('\u200bAlfa sei in @TheConquister37!', 60_000, 0));
+    parser.push(bot('\u200bAlfa hai aggiunto la citazione spendendo 1000 palle!', 60_000, 0));
     expect(parser.flush(399)).toEqual([]);
     expect(parser.flush(400)).toHaveLength(1);
   });

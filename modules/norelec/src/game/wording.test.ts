@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseDuration } from './duration.ts';
 import { parseLine } from './parse-line.ts';
 import { playerRef } from './player.ts';
-import { balls, duration, multiplier, named } from './wording.ts';
+import { balls, duration, heldFor, named } from './wording.ts';
 
 describe('wording', () => {
   it('writes durations, names and multipliers as the bot does', () => {
@@ -15,11 +15,10 @@ describe('wording', () => {
     expect(duration(3_725_000)).toBe('1 ora e 2 minuti');
     expect(named('Alfa', ['🏴‍☠️', null, '🎈', null])).toBe('Alfa (🏴‍☠️[]🎈)');
     expect(named('Alfa', [null, null])).toBe('Alfa');
-    expect([multiplier(1), multiplier(2), multiplier(3), multiplier(4)]).toEqual([
-      'x1.5',
-      'x2.25',
-      'x3.37',
-      'x5.06',
+    expect([heldFor(0), heldFor(61_000), heldFor(167_442_000)]).toEqual([
+      '0 secondi',
+      '1 minuto e 1 secondo',
+      '1 giorno, 22 ore, 30 minuti e 42 secondi',
     ]);
     expect([balls(1), balls(2)]).toEqual(['1 palla', '2 palle']);
   });
@@ -34,13 +33,14 @@ describe('wording', () => {
     const [name, emoji] = /^(\S+) \((.*)\)$/u.exec(named('Alfa', carried))?.slice(1) ?? [];
     expect(playerRef(String(name), emoji)).toEqual({ name: 'Alfa', carried });
     // Whole lines of the templates, built from the pieces.
-    expect(parseLine(`${named('Alfa', ['⚡'])} hai guadagnato ${balls(1)} col ⚡ x1.5!`)).toEqual(
+    expect(parseLine(`3) ${named('Alfa', ['⚡'])} — ${heldFor(90_061_000)} ⚽`)).toEqual(
       expect.objectContaining({
-        kind: 'holderPaid',
+        kind: 'ballRow',
         player: { name: 'Alfa', carried: ['⚡'] },
-        balls: 1,
-        multiplier: 1.5,
+        seconds: 90_061,
+        holding: true,
       })
     );
+    expect(parseLine(`Alfa rubi ${balls(1)}`).kind).toBe('unknown');
   });
 });

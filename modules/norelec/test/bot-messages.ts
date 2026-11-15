@@ -25,30 +25,19 @@ export const BOT_MESSAGES: BotMessageFixture[] = [
     kinds: ['depart', 'foundBalls'],
   },
   {
-    name: 'an entry by ousting, with the payment, a revealed dream and a quote',
+    name: 'a theft that takes the ⚽',
     text: [
-      'Alfa (🥷🎈) hai bucato il palloncino di @Bravo (🎈)!',
-      'Alfa hai cacciato @Bravo da @TheConquister37.',
-      'Bravo hai guadagnato 512 palle col ⚡ x1.1!',
-      'Alfa sei in @TheConquister37!',
-      'Charlie eri così stanco che hai solo sognato di entrare in @TheConquister37: non ti sei mai mosso da casa!',
-      '',
-      'Una citazione qualunque, che non è testo del gioco.',
+      'Alfa (🎈) hai bucato il palloncino di @Bravo (🎈) e rubato 0 palle! Torni in @Alfa tra 1 minuto e 49 secondi.',
+      "⚽ E gli porti via la palla! Ora ce l'hai tu: tienila il più a lungo possibile.",
     ].join('\n'),
-    kinds: ['balloonPopped', 'ousted', 'holderPaid', 'entered', 'dreamEntry'],
+    kinds: ['theft', 'ballTaken'],
   },
   {
-    name: 'an entry and a theft in one message',
-    text: [
-      'Alfa (🎈) hai bucato il palloncino di @Bravo (🎈)!',
-      'Alfa hai cacciato @Bravo da @TheConquister37.',
-      'Bravo hai guadagnato 408 palle!',
-      'Alfa sei in @TheConquister37!',
-      '',
-      '💰 Charlie hai rubato 1321 palle a Bravo (🏄‍♂️), che non era a casa! Torni in @Charlie tra 2 minuti.',
-      'Bravo ti ha impietosito: gli rubi 900 palle invece di 1321 palle (30% in meno).',
-    ].join('\n'),
-    kinds: ['balloonPopped', 'ousted', 'holderPaid', 'entered', 'theft', 'pity'],
+    name: 'a quote added, and its echo',
+    text: ['Alfa hai aggiunto la citazione spendendo 1000 palle!', 'Una citazione qualunque.'].join(
+      '\n'
+    ),
+    kinds: ['quoteAdded'],
   },
   {
     name: 'a theft with pity and a pirate flag',
@@ -60,17 +49,15 @@ export const BOT_MESSAGES: BotMessageFixture[] = [
     kinds: ['theft', 'pity', 'pirate'],
   },
   {
-    name: 'a leaderboard',
+    name: "the ⚽'s leaderboard",
     text: [
-      'Classifica @TheConquister37',
-      '',
-      '1) Alfa (🎈🚀) — 59119 palle',
-      '2) Bravo lo smarrito (🥷🎈) — 34140 palle — 42 citazioni',
-      '3) Charlie — 1 palla — 1 citazione',
-      '',
-      'In @TheConquister37 ora: Alfa (🎈🚀)',
+      "⚽ Classifica della palla: chi l'ha tenuta più a lungo",
+      '1) Alfa (🎈🚀) — 1 giorno, 2 ore, 3 minuti e 4 secondi',
+      '2) Bravo lo smarrito (🥷🎈) — 3 ore, 30 minuti e 41 secondi ⚽',
+      '3) Charlie — 12 secondi',
+      "La palla ce l'ha Bravo lo smarrito (🥷🎈) da 1 minuto e 5 secondi: rubagliela con /raid @Bravo.",
     ].join('\n'),
-    kinds: ['info', 'leaderboardRow', 'leaderboardRow', 'leaderboardRow', 'holderIs'],
+    kinds: ['info', 'ballRow', 'ballRow', 'ballRow', 'ballHolder'],
   },
   {
     name: 'a profile',
@@ -100,9 +87,14 @@ export const BOT_MESSAGES: BotMessageFixture[] = [
     kinds: ['info'],
   },
   {
-    name: 'a freeze at the holder, in the wording of 23 Oct',
-    text: 'Alfa congeli Bravo in @TheConquister37: per 24 minuti non può partire e, se lo cacciano, non può rientrare.',
-    kinds: ['freezeDelivered'],
+    name: 'a birth that takes a full house’s slot',
+    text: "@Bravo ([]🥷) è nata una femmina 👶: il padre è @Alfa. Non c'era un posto libero: ha preso quello di 📮.",
+    kinds: ['born'],
+  },
+  {
+    name: 'a free purchase',
+    text: 'Alfa (🚀) hai preso gratis 📮: 📮 in casa nel posto 9, al posto di 🐔. Ora ne hai 1 in casa: 10% di rispedire al mittente quello che ti lanciano a casa.',
+    kinds: ['bought'],
   },
   {
     name: 'a freeze, then the frozen player tries to leave',

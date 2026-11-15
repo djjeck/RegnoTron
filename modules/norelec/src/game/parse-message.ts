@@ -4,10 +4,10 @@
  *
  * - Lines that name no player (found balls, pity, the pirate flag, …) get the last player named
  *   before them: the one whose action they belong to.
- * - In an entry message the random quote is not game text: after the entry, lines no template
- *   knows are dropped. Blank lines are ignored (IRC loses them), and the bot may put another
- *   event after the quote's blank line (an entry followed by a theft), so a known line is kept
- *   wherever it is.
+ * - After `/addquote`'s answer the bot echoes the new quote, which is not game text: after it,
+ *   lines no template knows are dropped. Blank lines are ignored (IRC loses them).
+ * - The ⚽ taken (`⚽ E gli porti via la palla!`) names nobody: it is the thief's, from the victim
+ *   of the theft before it.
  * - Listings and announcements (the /emoji printout, /help, "📣 Novità") are one `info` event:
  *   they describe rules, they change no state.
  * - A /profile reply is one `profile` event, and a /house reply one `house` event. A profile starts
@@ -26,19 +26,11 @@ const LISTINGS = [
   /^📣 /u,
   /^Novità /u,
   /^Hai due posti per le emoji/u,
+  /^👋 Benvenuto /u,
 ];
 
 /** Kinds whose `player` is filled in from the message when the line names none. */
-const NEEDS_PLAYER = new Set([
-  'foundBalls',
-  'pity',
-  'alarm',
-  'dinosaur',
-  'pirate',
-  'lobster',
-  'doorClosed',
-  'saltPaid',
-]);
+const NEEDS_PLAYER = new Set(['foundBalls', 'pity', 'alarm', 'dinosaur', 'pirate', 'saltPaid']);
 
 const PROFILE_BALANCE = /^(\d+) pall[ae], (\d+)° su \d+ in classifica$/u;
 
@@ -78,8 +70,6 @@ export function parseProfile(text: string): GameEvent | null {
     if (hens) e.hens = Number(hens[1]);
     const home = /^a casa, in (@?\S+)$/u.exec(line);
     if (home) e.at = { kind: 'home', home: written(String(home[1])) };
-    // "in @TheConquister37 da 42 minuti e 23 secondi": the player holds the place.
-    if (/^in @TheConquister37\b/u.test(line)) e.at = { kind: 'conquister' };
     const away =
       /^(in viaggio verso|sulla via del ritorno da) (@?[^\s:]+)[^:]*: rientra tra (.+)$/u.exec(
         line
@@ -152,14 +142,20 @@ export function parseMessage(text: string): GameEvent[] {
 function parseLines(lines: readonly string[]): GameEvent[] {
   const events: GameEvent[] = [];
   let subject: PlayerRef | undefined;
-  let entry = false;
+  let quote = false;
+  let theft: EventFields['theft'] | undefined;
   for (const raw of lines) {
     const line = raw.trim();
     if (line === '') continue;
     const event = parseLine(line);
-    // After an entry, a line no template knows is the random quote.
-    if (event.kind === 'unknown' && entry) continue;
-    if (event.kind === 'entered') entry = true;
+    // After a quote added, a line no template knows is the quote, echoed.
+    if (event.kind === 'unknown' && quote) continue;
+    if (event.kind === 'quoteAdded') quote = true;
+    if (event.kind === 'theft') theft = event;
+    if (event.kind === 'ballTaken' && theft !== undefined) {
+      event.player = theft.player;
+      event.from = theft.victim;
+    }
     if ('player' in event && event.player !== undefined) subject = event.player;
     else if (NEEDS_PLAYER.has(event.kind) && subject !== undefined) {
       (event as { player?: PlayerRef }).player = subject;

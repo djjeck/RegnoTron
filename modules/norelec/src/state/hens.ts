@@ -15,10 +15,9 @@ const hens = (slots: readonly (string | null)[] | undefined): number =>
 /**
  * The 🐔 in each player's house, as the log shows them: a `/house` or `/profile` sets the count, and
  * the lines between move it. A house never read starts from 0. What the log cannot tell apart is
- * settled by the player's carried slots as last listed: a 🐔 given leaves them first if one is there
- * (as the bot takes it, docs/game-rules.md §6), and so does one burnt or bombed. A purchase into a
- * named slot replaces what was there unseen: a 🐔 bought over another one counts twice until the
- * house is read again.
+ * settled by the player's carried slots as last listed: a 🐔 bombed leaves them first if one is
+ * there. A purchase states what it replaced, and the 🐔 then in the house (`Ora ne hai N in
+ * casa`); a /move the whole house; a baby born in a full house what it replaced.
  */
 export class HenCount {
   private readonly count = new Map<string, number>();
@@ -46,7 +45,16 @@ export class HenCount {
           if (e.hens !== undefined) this.count.set(e.player.name, e.hens);
           break;
         case 'bought':
-          if (!e.carried && isHen(e.emoji)) this.add(e.player.name, 1);
+          if (e.carried) break;
+          if (isHen(e.emoji) && e.count !== undefined) this.count.set(e.player.name, e.count);
+          else if (isHen(e.emoji)) this.add(e.player.name, 1);
+          if (isHen(e.replaced)) this.add(e.player.name, -1);
+          break;
+        case 'rearranged':
+          this.count.set(e.player.name, hens(e.slots));
+          break;
+        case 'born':
+          if (isHen(e.replaced)) this.add(e.player.name, -1);
           break;
         case 'moved':
           // `/take` sends home the 🐔 it swaps; `/store` puts one in, `/take` one out.
@@ -56,17 +64,8 @@ export class HenCount {
         case 'pirate':
           if (isHen(e.emoji) && victim !== undefined) this.add(victim, -1);
           break;
-        case 'giftDelivered':
-          if (isHen(e.emoji)) this.add(e.to.name, 1);
-          break;
-        case 'depart':
-          if (e.gift && isHen(e.load)) this.leave(e.player.name);
-          break;
         case 'bombAtHome':
           if (isHen(e.destroyed)) this.leave(e.victim.name);
-          break;
-        case 'burned':
-          if (isHen(e.what)) this.leave(e.player.name);
           break;
         default:
           break;

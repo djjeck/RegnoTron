@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type BotMessage } from '#src/game/bot-message.ts';
 import { parseMessage } from '#src/game/parse-message.ts';
-import { address, GameState, icePrice, recent, richest } from './game-state.ts';
+import { address, GameState, recent, richest } from './game-state.ts';
 
 const S = 1000;
 const msg = (time: number, ...lines: string[]): BotMessage => {
@@ -13,7 +13,8 @@ const kinds = (notices: { kind: string }[]): string[] => notices.map((n) => n.ki
 describe('trips', () => {
   it('follows a raid from departure to return, and the rest after it', () => {
     const g = new GameState({ restS: 60 });
-    g.apply(msg(0, '1) Bravo (🎈) — 1000 palle', '2) Alfa — 10 palle'));
+    g.apply(msg(0, 'Bravo', 'Con te: 🎈', '1000 palle, 1° su 2 in classifica'));
+    g.apply(msg(0, 'Alfa', '10 palle, 2° su 2 in classifica'));
     const out = g.apply(
       msg(0, 'Alfa parti per Bravo: arrivi tra 1 minuto e 30 secondi. Casa tua resta scoperta.')
     );
@@ -126,7 +127,7 @@ describe('trips', () => {
     ).toEqual([]);
   });
 
-  it('tells throws and gifts from raids', () => {
+  it('tells throws from raids', () => {
     const g = new GameState();
     expect(
       kinds(
@@ -138,16 +139,6 @@ describe('trips', () => {
         )
       )
     ).toEqual(['incomingThrow']);
-    expect(
-      kinds(
-        g.apply(
-          msg(
-            0,
-            'Charlie parti per Bravo con 500 palle da consegnare: arrivi tra 30 secondi. Casa tua resta scoperta.'
-          )
-        )
-      )
-    ).toEqual(['incomingGift']);
   });
 
   it('reads the other arrivals and the ways home', () => {
@@ -188,68 +179,10 @@ describe('trips', () => {
   });
 });
 
-describe('@TheConquister37', () => {
-  it('follows the holder, and spots an entry that ousts nobody', () => {
-    const g = new GameState();
-    expect(kinds(g.apply(msg(0, 'Alfa sei in @TheConquister37!')))).toEqual(['holderChanged']);
-    expect(g.holder).toEqual({ name: 'Alfa', since: 0 });
-    expect(g.player('Alfa').location).toBe('conquister');
-
-    const real = g.apply(
-      msg(
-        10 * S,
-        'Bravo (🎈) hai bucato il palloncino di Alfa (🎈)!',
-        'Bravo hai cacciato Alfa da @TheConquister37.',
-        'Alfa hai guadagnato 10 palle!',
-        'Bravo sei in @TheConquister37!'
-      )
-    );
-    expect(kinds(real)).toEqual(['holderChanged']);
-    expect(g.player('Alfa').location).toBe('home');
-
-    const fake = g.apply(
-      msg(
-        20 * S,
-        'Charlie (🎈) hai bucato il palloncino di Bravo (🎈)!',
-        'Charlie sei in @TheConquister37!'
-      )
-    );
-    expect(fake).toEqual([{ kind: 'fakeEntry', at: 20 * S, player: 'Charlie', detail: 'Bravo' }]);
-    expect(g.holder?.name).toBe('Bravo');
-
-    expect(kinds(g.apply(msg(30 * S, 'In @TheConquister37 ora: Bravo (🎈)')))).toEqual([]);
-    g.apply(msg(40 * S, 'Bravo torni da @TheConquister37 in @Bravo con 30 palle.'));
-    expect(g.holder).toBeUndefined();
-    expect(kinds(g.apply(msg(50 * S, 'In @TheConquister37 ora: Charlie (🎈)')))).toEqual([
-      'holderChanged',
-    ]);
-  });
-
-  it('times the penalty after a failed entry', () => {
-    const g = new GameState({ penaltyS: 300 });
-    g.apply(
-      msg(
-        0,
-        'Alfa (🎈) il palloncino di Bravo (🎈) ha resistito e prendi una penalità. Ora il palloncino ha il 50% di probabilità di essere bucato.'
-      )
-    );
-    expect(g.player('Alfa').penaltyUntil).toBe(300 * S);
-    expect(g.tick(300 * S)).toEqual([{ kind: 'penaltyOver', at: 300 * S, player: 'Alfa' }]);
-    g.apply(
-      msg(
-        0,
-        'Alfa (🎈) il palloncino di Bravo (🎈) ha resistito e prendi 2 minuti di penalità. Ora il palloncino ha il 75% di probabilità di essere bucato.'
-      )
-    );
-    expect(g.player('Alfa').penaltyUntil).toBe(120 * S);
-  });
-});
-
 describe('freezes and 🧊', () => {
   it('freezes a target for 30 minutes, less 10% per 🔥 it carries', () => {
     const g = new GameState();
-    g.apply(msg(0, 'In @TheConquister37 ora: Bravo (🎈🔥🔥)'));
-    g.iceCopies = { n: 2, at: 0 };
+    g.apply(msg(0, 'Bravo (🎈🔥🔥) sei già in viaggio, torni tra 5 secondi.'));
     const out = g.apply(
       msg(
         0,
@@ -258,7 +191,6 @@ describe('freezes and 🧊', () => {
     );
     expect(out).toEqual([{ kind: 'frozen', at: 0, player: 'Bravo', by: 'Alfa' }]);
     expect(g.player('Bravo').frozenUntil).toBe(24 * 60 * S);
-    expect(g.iceCopies).toEqual({ n: 1, at: 0 });
 
     g.apply(
       msg(
@@ -270,113 +202,6 @@ describe('freezes and 🧊', () => {
     expect(g.tick(21 * 60 * S)).toEqual([
       { kind: 'freezeEnded', at: 21 * 60 * S, player: 'Bravo' },
     ]);
-  });
-
-  it('counts the 🧊 in the game from purchases and refusals, and prices the next one', () => {
-    const g = new GameState();
-    expect(g.icePrice()).toBeUndefined();
-    g.apply(msg(0, 'Alfa (🎈) hai speso 1000 palle: 🧊 in casa nel posto 2.'));
-    expect(g.iceCopies).toEqual({ n: 1, at: 0 });
-    g.apply(msg(0, 'Alfa ti servono 2250 palle per 🧊 (ce ne sono già 2 in giro, ne hai 641).'));
-    expect(g.icePrice()).toBe(2250);
-    g.apply(msg(0, 'Bravo (🎈) hai speso 2250 palle: 🧊 in casa nel posto 3.'));
-    expect(g.iceCopies?.n).toBe(3);
-    g.apply(
-      msg(
-        0,
-        "Charlie (🎈) hai speso 3375 palle: 🧊 ora è con te (ce n'erano già 3 in giro, prezzo x3.37)."
-      )
-    );
-    expect(g.iceCopies?.n).toBe(4);
-    g.apply(msg(0, 'Charlie ti servono 1000 palle per 💣 (ce ne sono già 0 in giro, ne hai 5).'));
-    expect(g.iceCopies?.n).toBe(4);
-    expect(icePrice(0)).toBe(1000);
-    expect(icePrice(4)).toBe(5062);
-  });
-
-  it('takes a profile in @TheConquister37 for the holder', () => {
-    const g = new GameState();
-    const out = g.apply(
-      msg(
-        0,
-        'Juno\nCon te: 🥷🎈🔥\n152505 palle, 1° su 37 in classifica\nin @TheConquister37 da 42 minuti e 23 secondi'
-      )
-    );
-    expect(kinds(out)).toEqual(['holderChanged']);
-    expect([g.holder?.name, g.player('Juno').carried]).toEqual(['Juno', ['🥷', '🎈', '🔥']]);
-  });
-
-  it('takes the stated minutes of the wording of 23 Oct, 🔥 already counted', () => {
-    const g = new GameState();
-    g.apply(msg(0, 'In @TheConquister37 ora: Bravo (🎈🔥🔥)'));
-    g.apply(
-      msg(
-        0,
-        'Alfa congeli Bravo in @TheConquister37: per 24 minuti non può partire e, se lo cacciano, non può rientrare.'
-      )
-    );
-    expect(g.player('Bravo').frozenUntil).toBe(24 * 60 * S);
-    expect(g.player('Alfa').trip).toBeUndefined();
-  });
-
-  it("keeps each player's 🧊: bought, carried off with 🏴‍☠️, thrown", () => {
-    const g = new GameState();
-    g.player('Bravo').ice = 1;
-    g.apply(msg(0, 'Alfa (🎈) hai speso 1000 palle: 🧊 in casa nel posto 2.'));
-    expect(g.player('Alfa').ice).toBe(1);
-    g.apply(
-      msg(
-        0,
-        'Alfa (🏴‍☠️🎈) hai rubato 411 palle a Bravo (🎈), che non era a casa! Torni in Alfa tra 58 secondi.',
-        'Arrembaggio: ti porti via anche 🧊 da casa sua: ora hai con te 🏴‍☠️🧊🎈.'
-      )
-    );
-    expect([g.player('Alfa').ice, g.player('Bravo').ice]).toEqual([2, 0]);
-    g.apply(
-      msg(
-        0,
-        'Alfa (🎈) congeli Bravo in @TheConquister37: per 30 minuti non può entrare in @TheConquister37 né partire, e il suo 🎈 non difende.'
-      )
-    );
-    expect(g.player('Alfa').ice).toBe(1);
-    // A throw at the holder is instant: it starts no trip for the thrower.
-    const fresh = new GameState();
-    fresh.apply(
-      msg(
-        0,
-        'Charlie congeli Bravo in @TheConquister37: per 30 minuti non può entrare in @TheConquister37 né partire, e il suo 🎈 non difende.'
-      )
-    );
-    expect(fresh.player('Charlie').trip).toBeUndefined();
-    g.apply(msg(0, 'Alfa (🏴‍☠️🎈) hai rubato 411 palle a Bravo (🎈)! Torni in Alfa tra 58 secondi.'));
-    g.apply(msg(0, 'Arrembaggio: ti porti via anche 💣 da casa sua'));
-    expect([g.player('Alfa').ice, g.player('Bravo').ice]).toEqual([1, 0]);
-  });
-
-  it('prices every emoji from purchases and refusals, less the copies used up', () => {
-    const g = new GameState();
-    expect([g.price('🎈'), g.price('☢️'), g.price('🐔')]).toEqual([1000, 1_000_000, undefined]);
-    g.apply(msg(0, 'Alfa (🎈) hai speso 2250 palle: 💣 in casa nel posto 2.'));
-    g.apply(msg(0, 'Alfa ti servono 1500 palle per ⚡️ (ne hai 10).'));
-    g.apply(msg(0, 'Alfa (🎈) hai speso 1000 palle: 🎈 in casa nel posto 3.'));
-    expect([g.price('💣'), g.price('⚡️'), g.price('⚡'), g.copies.has('🎈')]).toEqual([
-      3375,
-      1500,
-      undefined,
-      false,
-    ]);
-    g.apply(
-      msg(
-        0,
-        'Alfa la tua bomba esplode addosso a @Bravo (🎈⚡️) in @TheConquister37 e si porta via ⚡️: ora @Bravo ha con sé 🎈.'
-      )
-    );
-    expect([g.price('💣'), g.price('⚡️')]).toEqual([2250, 1000]);
-    g.apply(msg(0, 'Alfa (🎈) hai speso 1000 palle: 💦 ora è con te.'));
-    g.apply(
-      msg(0, 'Alfa la tua 💦 è arrivata addosso a Bravo in @TheConquister37: tra 9 ore si vedrà.')
-    );
-    expect(g.price('💦')).toBe(1000);
   });
 
   it('reports a bounce, a salt payment and an unknown line', () => {
@@ -424,7 +249,7 @@ describe('a house balloon', () => {
     expect(g.player('Bravo').houseBalloon).toBe(true);
     away(
       100 * S,
-      'Charlie congeli Bravo in @TheConquister37: per 24 minuti non può partire e, se lo cacciano, non può rientrare.'
+      'Charlie congeli Bravo: per 24 minuti non può partire e, se lo cacciano, non può rientrare.'
     );
     away(
       200 * S,
@@ -500,16 +325,16 @@ describe('recent', () => {
 });
 
 describe('balances and emoji', () => {
-  it("keeps when the balance was stated whole, a refused gift's included, and the 🐔", () => {
+  it("keeps when the balance was stated whole, a refused purchase's included, and the 🐔", () => {
     const g = new GameState();
-    g.apply(msg(0, '1) Alfa (🎈) — 5000 palle — 1 citazioni'));
+    g.apply(msg(0, 'Alfa', 'Con te: 🎈', '5000 palle, 1° su 3 in classifica'));
     g.apply(
       msg(10 * S, 'Alfa (🎈) hai rubato 300 palle a Bravo (🎈)! Torni in Alfa tra 1 minuto.')
     );
     // A theft moves the balance, but the bot did not state it.
     expect(g.player('Bravo').balanceReadAt).toBeUndefined();
     expect(g.player('Alfa').balanceReadAt).toBe(0);
-    g.apply(msg(20 * S, 'Alfa hai solo 4900 palle a disposizione.'));
+    g.apply(msg(20 * S, 'Alfa ti servono 9000 palle per 💣 (ne hai 4900).'));
     expect(g.player('Alfa').balance).toEqual({ balls: 4900, at: 20 * S });
     expect(g.player('Alfa').balanceReadAt).toBe(20 * S);
     g.apply(msg(30 * S, 'Casa di Alfa (2/10):\n1 🐔  2 🐔  3  4  5  6  7  8  9  10'));
@@ -523,41 +348,9 @@ describe('balances and emoji', () => {
     expect(g.player('Bravo').balance).toEqual({ balls: 0, at: 10 * S });
   });
 
-  it("moves a gift's balls: from the giver at departure, to the recipient on delivery", () => {
+  it("carries a theft's loot home", () => {
     const g = new GameState();
-    g.apply(
-      msg(0, '1) Alfa (🎈) — 5000 palle — 1 citazioni', '2) Bravo (🎈) — 300 palle — 0 citazioni')
-    );
-    g.apply(
-      msg(
-        1 * S,
-        'Alfa parti per Bravo con 4000 palle da consegnare: arrivi tra 1 minuto. Casa tua resta scoperta.'
-      )
-    );
-    expect(g.player('Alfa').balance?.balls).toBe(1000);
-    expect(g.player('Alfa').trip?.carrying).toBe(4000);
-    expect(g.player('Bravo').balance?.balls).toBe(300);
-    g.apply(
-      msg(
-        61 * S,
-        'Alfa (🎈) hai consegnato 4000 palle a @Bravo (🎈)! Torni in @Alfa tra 57 secondi.'
-      )
-    );
-    expect(g.player('Bravo').balance?.balls).toBe(4300);
-    expect(g.player('Alfa').trip?.carrying).toBeUndefined();
-    // An emoji given moves no balls.
-    g.apply(
-      msg(
-        200 * S,
-        'Alfa parti per Bravo con 🍕 da regalare: arrivi tra 1 minuto. Casa tua resta scoperta.'
-      )
-    );
-    expect(g.player('Alfa').balance?.balls).toBe(1000);
-  });
-
-  it("carries a theft's loot, and a gift turned back, home", () => {
-    const g = new GameState();
-    g.apply(msg(0, '1) Alfa (🎈) — 5000 palle', '2) Bravo (🎈) — 300 palle'));
+    g.apply(msg(0, 'Alfa', 'Con te: 🎈', '5000 palle, 1° su 3 in classifica'));
     g.apply(
       msg(10 * S, 'Alfa (🎈) hai rubato 200 palle a Bravo (🎈)! Torni in Alfa tra 1 minuto.')
     );
@@ -565,214 +358,15 @@ describe('balances and emoji', () => {
     g.apply(msg(70 * S, 'Alfa (🎈) torni in Alfa con 200 palle.'));
     expect(g.player('Alfa').trip).toBeUndefined();
     expect(g.player('Alfa').balance?.balls).toBe(5200);
-    g.apply(
-      msg(
-        100 * S,
-        'Alfa parti per Bravo con 5200 palle da consegnare: arrivi tra 1 minuto. Casa tua resta scoperta.'
-      )
-    );
-    g.apply(msg(110 * S, 'Alfa lasci perdere e torni in Alfa: arrivi tra 10 secondi.'));
-    expect(g.player('Alfa').trip?.carrying).toBe(5200);
-    g.apply(msg(120 * S, 'Alfa (🎈) torni in Alfa con le tue 5200 palle ancora in tasca.'));
-    expect(g.player('Alfa').trip).toBeUndefined();
-    expect(g.player('Alfa').balance?.balls).toBe(5200);
-  });
-
-  it('counts the balls found, collected, paid for salt, spent on quotes and burnt', () => {
-    const g = new GameState();
-    g.apply(msg(0, '1) Alfa (🎈) — 5000 palle', '2) Bravo (🎈) — 300 palle'));
-    g.apply(
-      msg(
-        1 * S,
-        'Alfa parti per Bravo: arrivi tra 58 secondi. Casa tua resta scoperta.',
-        'Lungo la via trovi 210 palle!'
-      )
-    );
-    expect(g.player('Alfa').balance?.balls).toBe(5210);
-    g.apply(
-      msg(
-        59 * S,
-        'Alfa (🎈) hai rubato 0 palle a Bravo (🎈)! Torni in Alfa tra 1 minuto.',
-        'Ci torni troppo presto: il 🧂 di @Bravo ti costa 210 palle, che vanno a lui.'
-      )
-    );
-    expect(g.player('Alfa').balance).toEqual({ balls: 5000, at: 59 * S });
-    expect(g.player('Bravo').balance).toEqual({ balls: 210, at: 59 * S });
-    g.apply(msg(60 * S, '🎒 Bravo raccoglie il sacchetto del viandante: 1762 palle!'));
-    expect(g.player('Bravo').balance?.balls).toBe(1972);
-    g.apply(msg(61 * S, 'Alfa hai aggiunto la citazione spendendo 1000 palle!'));
-    expect(g.player('Alfa').balance?.balls).toBe(4000);
-    g.apply(msg(62 * S, 'Alfa hai bruciato 159 palle: sono uscite dal gioco. Te ne restano 3841.'));
-    g.apply(msg(63 * S, 'Alfa hai bruciato 🏴‍☠️: è uscita dal gioco.'));
-    expect(g.player('Alfa').balance).toEqual({ balls: 3841, at: 62 * S });
-  });
-
-  it('empties a home a ☢️ hits, and every balance when it hits the place', () => {
-    const g = new GameState();
-    g.apply(
-      msg(0, '1) Alfa (🎈) — 5000 palle', '2) Bravo (🎈) — 300 palle', '3) Charlie — 9 palle')
-    );
-    g.apply(msg(1 * S, 'Alfa ha sganciato la bomba nucleare su casa di @Bravo: riparte da zero.'));
-    expect(g.player('Bravo').balance).toEqual({ balls: 0, at: 1 * S });
-    expect(g.player('Alfa').balance?.balls).toBe(5000);
-    g.apply(
-      msg(
-        2 * S,
-        'Alfa ha sganciato la bomba nucleare su @TheConquister37: il gioco riparte da zero.'
-      )
-    );
-    expect([...g.players.values()].map((p) => p.balance)).toEqual([
-      { balls: 0, at: 2 * S },
-      { balls: 0, at: 2 * S },
-      { balls: 0, at: 2 * S },
-    ]);
-  });
-
-  it('brings a balance known above the last row of a leaderboard down to it', () => {
-    const g = new GameState();
-    g.player('Delta').balance = { balls: 9000, at: 0 };
-    g.player('Echo').balance = { balls: 50, at: 0 };
-    g.player('Alfa').balance = { balls: 1, at: 0 };
-    g.apply(
-      msg(
-        10 * S,
-        'Classifica @TheConquister37',
-        '1) Alfa (🎈) — 5000 palle — 3 citazioni',
-        '2) Bravo (🎈) — 300 palle',
-        '3) Charlie — 100 palle'
-      )
-    );
-    expect(g.player('Alfa').balance).toEqual({ balls: 5000, at: 10 * S });
-    expect(g.player('Delta').balance).toEqual({ balls: 100, at: 10 * S });
-    expect(g.player('Echo').balance).toEqual({ balls: 50, at: 0 });
-    // Rows missing in the middle, or none, cap nobody.
-    g.player('Delta').balance = { balls: 9000, at: 0 };
-    g.apply(msg(20 * S, '1) Alfa (🎈) — 5000 palle', '3) Charlie — 100 palle'));
-    g.apply(msg(20 * S, 'Classifica @TheConquister37'));
-    expect(g.player('Delta').balance?.balls).toBe(9000);
   });
 
   it('takes the balance a refused purchase states', () => {
     const g = new GameState();
     g.player('Alfa').balance = { balls: 5000, at: 0 };
-    g.apply(
-      msg(10 * S, 'Alfa ti servono 2250 palle per 🧊 (ce ne sono già 2 in giro, ne hai 1485).')
-    );
+    g.apply(msg(10 * S, 'Alfa ti servono 2250 palle per 🧊 (ne hai 1485).'));
     expect(g.player('Alfa').balance).toEqual({ balls: 1485, at: 10 * S });
-    expect(g.icePrice()).toBe(2250);
-  });
-
-  it("counts a player's 🧊 from the house and the carried emoji", () => {
-    const g = new GameState();
-    g.apply(msg(0, 'Casa di Alfa (3/10):', '1 🧊  2 💣  3 🧊', '4', '5', '6', '7', '8', '9', '10'));
-    expect(g.player('Alfa')).toMatchObject({ ice: 2, house: { 0: '🧊', 1: '💣', 3: null } });
-    g.apply(msg(0, 'Alfa', 'Con te: 🎈🧊', '740 palle, 5° su 37 in classifica', 'a casa, in Alfa'));
-    g.apply(msg(0, 'Casa di Alfa (2/10):', '1 🧊  2 💣  3', '4', '5', '6', '7', '8', '9', '10'));
-    expect(g.player('Alfa').ice).toBe(2);
-    // Never fewer than those carried, the house unread (after a restart, say).
-    const restarted = new GameState();
-    restarted.apply(msg(0, 'Alfa (🏴‍☠️🚀🎈🧊) sei tornato in @Alfa.'));
-    expect(restarted.player('Alfa').ice).toBe(1);
-  });
-
-  it('keeps the house as purchases fill it, and forgets it when it turns out full', () => {
-    const g = new GameState();
-    g.apply(msg(0, 'Casa di Alfa (1/10):', '1 🎈  2', '3', '4', '5', '6', '7', '8', '9', '10'));
-    g.apply(
-      msg(0, 'Alfa (🎈) hai speso 1000 palle: 💣 in casa nel posto 2 (). Non dà nessun bonus.')
-    );
-    expect(g.player('Alfa').house?.slice(0, 3)).toEqual(['🎈', '💣', null]);
-    // Carried, the house is as it was.
-    g.apply(
-      msg(0, "Alfa (🎈🎈) hai speso 1000 palle: 🎈 ora è con te (ce n'erano già 45 in giro).")
-    );
-    expect(g.player('Alfa').house?.[2]).toBeNull();
-    g.apply(msg(0, 'Alfa hai già tutti i 10 posti della casa pieni: scegli quale sostituire.'));
-    expect(g.player('Alfa').house).toBeUndefined();
-    // A purchase into a house never read, or a slot not named, leaves it unknown.
-    g.apply(
-      msg(0, 'Alfa (🎈) hai speso 1000 palle: 💣 in casa nel posto 3 (). Non dà nessun bonus.')
-    );
-    expect(g.player('Alfa').house).toBeUndefined();
-  });
-
-  it("keeps a target's house as a 🏴‍☠️ empties it, and the raider's slots after the plunder", () => {
-    const g = new GameState();
-    const house = (n: string, first: string): BotMessage =>
-      msg(5 * S, `Casa di Bravo (${n}/10):`, first, '4', '5', '6', '7', '8', '9', '10');
-    g.apply(house('2', '1 🧊  2 🏳️‍⚧️  3'));
-    expect(g.player('Bravo').houseAt).toBe(5 * S);
-    const plunder = (t: number, emoji: string): void => {
-      g.apply(
-        msg(
-          t,
-          'Alfa (🏴‍☠️[]🎈) hai rubato 0 palle a Bravo, che non era a casa! Torni in Alfa tra 58 secondi.',
-          `Arrembaggio: ti porti via anche ${emoji} da casa sua: ora hai con te 🏴‍☠️${emoji}🎈.`
-        )
-      );
-    };
-    plunder(10 * S, '🧊');
-    expect(g.player('Bravo').house?.slice(0, 2)).toEqual([null, '🏳️‍⚧️']);
-    expect(g.player('Alfa').carried).toEqual(['🏴‍☠️', '🧊', '🎈']);
-    expect([g.player('Alfa').ice, g.player('Bravo').ice]).toEqual([1, 0]);
-    // An emoji the house as read does not hold: the house is out of date, and to be read again.
-    plunder(20 * S, '🐔');
-    expect(g.player('Bravo').house).toBeUndefined();
-  });
-
-  it('forgets a house that a 💣 or a gift changed, which the log does not detail', () => {
-    const g = new GameState();
-    const read = (): void => {
-      g.apply(msg(0, 'Casa di Bravo (1/10):', '1 🐔  2  3', '4', '5', '6', '7', '8', '9', '10'));
-    };
-    read();
-    g.apply(
-      msg(
-        0,
-        'Alfa (🎈) la tua bomba esplode in casa di @Bravo (🎈) e si porta via 🐔! Torni in Alfa tra 1 minuto e 46 secondi.'
-      )
-    );
-    expect(g.player('Bravo').house).toBeUndefined();
-    read();
-    g.apply(
-      msg(
-        0,
-        'Alfa (🎈) la tua bomba esplode in casa di @Bravo (🎈) ma non trova niente da portarsi via. Torni in Alfa tra 44 secondi.'
-      )
-    );
-    expect(g.player('Bravo').house).toBeDefined();
-    g.apply(msg(0, 'Alfa (🎈) hai regalato 🏳️‍⚧️ a Bravo (🎈)! Torni in @Alfa tra 49 secondi.'));
-    expect(g.player('Bravo').house).toBeUndefined();
-  });
-
-  it('moves emoji between the house and the carried slots on /store and /take', () => {
-    const g = new GameState();
-    g.apply(msg(0, 'Casa di Alfa (1/10):', '1 🧊  2  3', '4', '5', '6', '7', '8', '9', '10'));
-    g.apply(msg(0, 'Alfa (🧊🎈) 🧊 ora è con te: non dà nessun bonus.'));
-    expect(g.player('Alfa').house?.[0]).toBeNull();
-    g.apply(msg(0, 'Alfa ([]🎈) 🧊 ora è in casa: non dà nessun bonus.'));
-    expect(g.player('Alfa').house?.[0]).toBe('🧊');
-    g.apply(
-      msg(0, 'Alfa (🧊) 🧊 ora è con te al posto di 🎈, che torna in casa: non dà nessun bonus.')
-    );
-    expect(g.player('Alfa').house?.[0]).toBe('🎈');
-    // Into a full house the slot is not known: read it again.
-    g.apply(
-      msg(
-        0,
-        'Casa di Alfa (10/10):',
-        '1 🎈  2 🐔  3 🐔',
-        '4 🐔',
-        '5 🐔',
-        '6 🐔',
-        '7 🐔',
-        '8 🐔',
-        '9 🐔',
-        '10 🐔'
-      )
-    );
-    g.apply(msg(0, 'Alfa ([]) 🧊 ora è in casa: non dà nessun bonus.'));
-    expect(g.player('Alfa').house).toBeUndefined();
+    g.apply(msg(20 * S, 'Alfa (🎈) hai speso 1000 palle: 🧊 in casa nel posto 2.'));
+    expect(g.player('Alfa').balance).toEqual({ balls: 485, at: 20 * S });
   });
 
   it('reads profiles and keeps the carried emoji current', () => {

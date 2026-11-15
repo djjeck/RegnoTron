@@ -3,7 +3,8 @@
  * the game (modules/norelec/src/plugins/norelec-game.ts: the IRC parser and the game state) and
  * reads the game's channel into it through its handle on `irc`; it publishes each bot message on
  * the bus as `norelec.message` once the state has applied it, which writes the message to the event
- * log too, and reports each as read or unread (drift, P5). A message complete with its line is
+ * log too, then each of its events as `norelec.<kind>` (the `norelec-state` plugin's input), and
+ * reports each as read or unread (drift, P5). A message complete with its line is
  * published inside the handler the shell calls with that line, the moment the shell counts as the
  * channel heard (bot-os.md D93) and pairs answers (D98); its events about the owner's account that
  * answer a command follow it as `norelec.answer`. It keeps the players known to be
@@ -29,7 +30,7 @@ import { z } from 'zod';
 import { exportBotMessage, type ExportMessage } from '#src/export/export-parser.ts';
 import { ANSWER_RULES, answerDeclarations, answerOf } from '#src/game/answers.ts';
 import { type BotMessage } from '#src/game/bot-message.ts';
-import { type GameEvent } from '#src/game/events.ts';
+import { EVENT_KINDS, type GameEvent } from '#src/game/events.ts';
 import { parseMessage } from '#src/game/parse-message.ts';
 import { RELAYS, stripZeroWidth } from '#src/transport/relay.ts';
 import { type StoredAccounts, TelegramAccounts } from './norelec-accounts.ts';
@@ -42,6 +43,20 @@ export const MESSAGE_EVENT = 'norelec.message';
 export const messageSchema = z.object({
   text: z.string(),
   events: z.array(z.looseObject({ kind: z.string() })),
+});
+
+/**
+ * Each event of a bot message, on its own: `norelec.<kind>` (`norelec.theft`, `norelec.ballTaken`),
+ * the event's fields, with the owner's account (`self`). Not for
+ * `info` and `unknown`, which say nothing of the game's state.
+ */
+export const KIND_EVENTS: readonly string[] = EVENT_KINDS.filter(
+  (k) => k !== 'info' && k !== 'unknown'
+);
+export const kindSchema = z.looseObject({
+  kind: z.string(),
+  line: z.string(),
+  self: z.string().optional(),
 });
 
 /** A notice of the game state on the bus (modules/norelec/src/state/game-state.ts `Notice`). */
@@ -188,6 +203,7 @@ export const norelecPlugin: Plugin = definePlugin({
       [MESSAGE_EVENT]: messageSchema,
       [NOTICE_EVENT]: noticeSchema,
       [ANSWER_EVENT]: answerSchema,
+      ...Object.fromEntries(KIND_EVENTS.map((k) => [`${NORELEC}.${k}`, kindSchema])),
     },
     // The bot's answers to the owner's commands on the channel (D98).
     answers: answerDeclarations(ANSWER_EVENT),
@@ -256,10 +272,18 @@ export const norelecPlugin: Plugin = definePlugin({
       interface: { state: { ...offered.state, status: () => ({ health: { ...game.health } }) } },
       start: () => {
         game.publish = (m) => {
+          const self = deps.self;
           ctx.bus.publish(MESSAGE_EVENT, { text: m.text, events: m.events }, m.time);
+          // Each event on its own, for the state, after the message.
+          for (const e of m.events)
+            if (KIND_EVENTS.includes(e.kind))
+              ctx.bus.publish(
+                `${NORELEC}.${e.kind}`,
+                { ...e, ...(self === '' ? {} : { self }) },
+                m.time
+              );
           // Its answers to the owner's commands, after it: whoever hears one finds the state with
           // the message applied.
-          const self = deps.self;
           for (const event of self === '' ? [] : m.events) {
             const a = answerOf(event, self, m.time);
             if (a === undefined) continue;

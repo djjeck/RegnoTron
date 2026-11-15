@@ -1,8 +1,8 @@
 /**
  * NorelecBot's wording, written: the pieces its lines are built from, in the forms of
  * docs/bot-protocol.md. The writing half of the game's grammar, beside the reading half (the
- * templates of parse-line.ts, duration.ts, player.ts): library code that the parser and the arena's
- * engine share (P15), kept in step by wording.test.ts, which reads back what this writes.
+ * templates of parse-line.ts, duration.ts, player.ts), for whoever writes the bot's lines (a
+ * simulator, the tests), kept in step by wording.test.ts, which reads back what this writes.
  */
 
 /** A duration as the bot writes it, rounded down to the second: "1 minuto e 30 secondi". */
@@ -32,5 +32,22 @@ export function named(name: string, carried: readonly (string | null)[]): string
     .join('')})`;
 }
 
-/** The price multiplier the bot shows, ×1.5 per copy: "x1.5", "x2.25", "x3.37". */
-export const multiplier = (copies: number): string => `x${Math.floor(1.5 ** copies * 100) / 100}`;
+/**
+ * A time held, as the ⚽'s leaderboard writes it: every unit, days first, "1 giorno, 22 ore, 30
+ * minuti e 42 secondi".
+ */
+export function heldFor(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const units: [number, string, string][] = [
+    [Math.floor(total / 86_400), 'giorno', 'giorni'],
+    [Math.floor((total % 86_400) / 3600), 'ora', 'ore'],
+    [Math.floor((total % 3600) / 60), 'minuto', 'minuti'],
+    [total % 60, 'secondo', 'secondi'],
+  ];
+  const parts = units
+    .filter(([n]) => n > 0)
+    .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+  if (parts.length === 0) return '0 secondi';
+  const last = parts.pop();
+  return parts.length === 0 ? String(last) : `${parts.join(', ')} e ${last}`;
+}

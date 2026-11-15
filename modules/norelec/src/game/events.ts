@@ -6,7 +6,10 @@
  */
 import { type PlayerRef } from './player.ts';
 
-/** Where a trip goes, or where a player is: a home (named after its owner) or the place. */
+/**
+ * The place, closed since the ⚽ version (9 Nov 2026): the bot still names it in a few lines (a
+ * freeze's, the refusal of /avventura while it answered that).
+ */
 export const CONQUISTER = 'TheConquister37';
 
 /** The fields of each event kind. */
@@ -16,10 +19,8 @@ export interface EventFields {
     player: PlayerRef;
     to: PlayerRef;
     seconds: number;
-    /** What the trip carries: an emoji to throw or give, or `500 palle`. */
+    /** What the trip carries: an emoji to throw. */
     load?: string;
-    /** The load is a gift (balls, or an emoji "da regalare"), not a throw. */
-    gift: boolean;
     rocket: boolean;
   };
   alreadyTravelling: { player: PlayerRef; seconds: number };
@@ -52,83 +53,83 @@ export interface EventFields {
   dinosaur: { victim: PlayerRef; eaten: string; player?: PlayerRef };
   /** The raider takes `emoji` from the victim's house; `carried`: their slots after it, if listed. */
   pirate: { emoji: string; carried?: (string | null)[]; player?: PlayerRef };
-  giftDelivered: {
-    player: PlayerRef;
-    to: PlayerRef;
-    balls?: number;
-    emoji?: string;
-    seconds: number;
-  };
-  throwDelivered: { player: PlayerRef; emoji: string; to: PlayerRef; atHolder: boolean };
-  bombAtHolder: { player: PlayerRef; holder: PlayerRef; destroyed?: string };
-  bombDefective: { player: PlayerRef; destroyed: string; seconds: number };
+  /**
+   * The ⚽ taken from its holder by a theft (the line after the theft's): `player` the thief,
+   * `from` the holder robbed, both from the theft (parse-message.ts).
+   */
+  ballTaken: { player?: PlayerRef; from?: PlayerRef };
+  throwDelivered: { player: PlayerRef; emoji: string; to: PlayerRef };
+  /** A bomb that went off in the thrower's hand: what it took, if they carried anything. */
+  bombDefective: { player: PlayerRef; destroyed?: string; seconds: number };
   /** A 📮 sent a throw back to the thrower's home (docs/game-rules.md §5.3). */
   bounced: { victim: PlayerRef; emoji: string; thrower: PlayerRef; seconds?: number };
   throwUndelivered: { player: PlayerRef; to: PlayerRef; emoji: string; seconds: number };
-  nuke: { player: PlayerRef; target?: PlayerRef };
   /**
-   * A 🧊 that froze its target: at their home (after a trip) or at @TheConquister37 (instant).
-   * Since 23 Oct the line states the freeze's real length, 🔥 included (`actual`); before, it
-   * stated the base 30 minutes.
+   * A 🧊 that froze its target at their home. One wording states the freeze's real length, 🔥
+   * included (`actual`); the other (`non può entrare in @TheConquister37 né partire`, the live one)
+   * the base 30 minutes.
    */
   freezeDelivered: {
     player: PlayerRef;
     target: PlayerRef;
     minutes: number;
-    atHolder: boolean;
     actual: boolean;
   };
   frozen: { player: PlayerRef; seconds: number };
   milestone: { player: PlayerRef; raids: number };
-  // @TheConquister37
-  balloonPopped: { player: PlayerRef; holder: PlayerRef };
-  sneakedPast: { player: PlayerRef; holder: PlayerRef };
-  ousted: { player: PlayerRef; holder: PlayerRef };
-  holderPaid: { player: PlayerRef; balls: number; multiplier?: number };
-  entered: { player: PlayerRef };
-  entryHeld: { player: PlayerRef; holder: PlayerRef; nextChance: number; penaltyS?: number };
-  dreamEntry: { player: PlayerRef };
-  locked: { player: PlayerRef };
-  gatekeeperAsks: { player?: PlayerRef; question: string };
-  gatekeeperPasses: { player: PlayerRef };
-  doorClosed: { seconds: number; player?: PlayerRef };
+  /**
+   * A 💦's baby born in `player`'s house (the father, the thrower): it takes a slot, the emoji
+   * there (`replaced`) gone when the house was full, and locks it (docs/game-rules.md §5.3).
+   */
+  born: { player: PlayerRef; father: PlayerRef; emoji: string; female: boolean; replaced?: string };
+  /** A baby (or what it grew into) left `player`'s house: its slot is free again. */
+  babyGone: { player: PlayerRef; emoji: string };
+  /** `/back` (or a trip) to where the player is already. */
   alreadyAt: { player: PlayerRef; place: string };
-  onTheRoad: { player: PlayerRef; home: string; seconds: number };
-  leftConquister: { player: PlayerRef; home: string; balls: number };
-  penaltyLeft: { player: PlayerRef; seconds: number };
-  raidFromConquister: { player: PlayerRef };
-  lobster: { emoji: string; player?: PlayerRef };
   // Buying and slots
+  /**
+   * A purchase, at the price it states (`balls`: 0 for `hai preso gratis`): into the house's
+   * `slot`, where `replaced` was (destroyed), or carried; `count`: the copies of it the player then
+   * holds there, when the bot says (`Ora ne hai N in casa`).
+   */
   bought: {
     player: PlayerRef;
     balls: number;
     emoji: string;
     carried: boolean;
     slot?: number;
-    /** Copies of the emoji in the game before this one, when the bot says ("ce n'erano già N"). */
-    copiesBefore?: number;
+    replaced?: string;
+    count?: number;
   };
-  tooPoor: { player: PlayerRef; price: number; emoji: string; copies?: number; have?: number };
+  /** A purchase refused for its price: the price asked, and the balance, when stated. */
+  tooPoor: { player: PlayerRef; price: number; emoji: string; have?: number };
+  /** A purchase refused: the slot holds a baby (`emoji`), which cannot be replaced. */
+  slotLocked: { player: PlayerRef; slot: number; emoji: string };
+  /** A command the game no longer has (`/give`, `/burn`, `☢️`, `@TheConquister37`): refused. */
+  disabled: { player: PlayerRef; what: string };
+  /**
+   * The game's one reply to a banned player (`COGLIONE`): `player`, the banned one, is named by
+   * the norelec plugin from the command it answers, when it saw it.
+   */
+  banned: { player?: PlayerRef };
   houseFull: { player: PlayerRef };
   carriedFull: { player: PlayerRef; emoji: string };
   retiredCommand: { player: PlayerRef; replacement: string };
   // State queries
-  leaderboardRow: { rank: number; player: PlayerRef; balls: number; quotes: number };
-  holderIs: { player: PlayerRef };
+  /** A row of /leaderboard, the ⚽'s: the total time held; `holding`, the holder's (`⚽`). */
+  ballRow: { rank: number; player: PlayerRef; seconds: number; holding: boolean };
+  /** /leaderboard's last line: who holds the ⚽, and for how long so far. */
+  ballHolder: { player: PlayerRef; seconds: number };
   /** A `/take` (`carried`) or `/store`; `swapped`: the carried emoji a `/take` sent home in its place. */
   moved: { player: PlayerRef; emoji: string; carried: boolean; swapped?: string };
-  burned: { player: PlayerRef; what: string };
+  /** A `/move`: the whole house after it, empty slots null. */
+  rearranged: { player: PlayerRef; slots: (string | null)[] };
   saltPaid: { victim: PlayerRef; balls: number; player?: PlayerRef };
   /** A wanderer drops a bag of balls: the first to answer `/raccogli` (`!raccogli`) takes it. */
   bagDropped: { near: PlayerRef };
   bagCollected: { player: PlayerRef; balls: number };
   /** The bot declined a command (wrong place, too poor, no such player, …): nothing happened. */
-  refused: {
-    player: PlayerRef;
-    reason: string;
-    /** The balance a refused gift states (`hai solo N palle a disposizione`). */
-    have?: number;
-  };
+  refused: { player: PlayerRef; reason: string };
   quoteAdded: { player: PlayerRef; balls: number };
   bombAtHome: { player: PlayerRef; victim: PlayerRef; destroyed?: string; seconds: number };
   /** A /profile reply, read whole (parse-message.ts). */
@@ -138,7 +139,6 @@ export interface EventFields {
     rank: number;
     at?:
       | { kind: 'home'; home: string }
-      | { kind: 'conquister' }
       | { kind: 'travelling' | 'returning'; to: string; seconds: number };
     carried?: (string | null)[];
     /** The 🐔 in the house, from the income line (`2 🐔: 120 palle all'ora`), when there is one. */
@@ -153,6 +153,64 @@ export interface EventFields {
 }
 
 export type EventKind = keyof EventFields;
+
+/** Every kind, for whoever needs them at runtime (the norelec plugin's per-kind events). */
+export const EVENT_KINDS = [
+  'depart',
+  'alreadyTravelling',
+  'turnBack',
+  'foundBalls',
+  'dreamDepart',
+  'forkAsked',
+  'lostAtFork',
+  'returnHome',
+  'buyingAway',
+  'theft',
+  'ballTaken',
+  'balloonHeld',
+  'dog',
+  'pity',
+  'alarm',
+  'dinosaur',
+  'pirate',
+  'throwDelivered',
+  'bombDefective',
+  'bounced',
+  'throwUndelivered',
+  'freezeDelivered',
+  'frozen',
+  'milestone',
+  'born',
+  'babyGone',
+  'alreadyAt',
+  'bought',
+  'tooPoor',
+  'slotLocked',
+  'disabled',
+  'banned',
+  'houseFull',
+  'carriedFull',
+  'retiredCommand',
+  'ballRow',
+  'ballHolder',
+  'moved',
+  'rearranged',
+  'saltPaid',
+  'bagDropped',
+  'bagCollected',
+  'refused',
+  'quoteAdded',
+  'bombAtHome',
+  'profile',
+  'house',
+  'info',
+  'unknown',
+] as const satisfies readonly EventKind[];
+
+/** A compile-time check that `EVENT_KINDS` lists every kind. */
+export const ALL_KINDS: Exclude<EventKind, (typeof EVENT_KINDS)[number]> extends never
+  ? true
+  : false = true;
 
 /**
  * One event, with the line it was read from, and the players the line writes with `@`, if any:
