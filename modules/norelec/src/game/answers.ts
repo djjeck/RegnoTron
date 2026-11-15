@@ -23,10 +23,15 @@ const both = (...verbs: string[]): string[] => verbs.flatMap((v) => [`!${v}`, `/
 
 /** The commands a trip starts (game-rules.md §1.1), as their first word. */
 export const TRAVEL = both('raid', 'throw');
-/** The house's commands. */
+/** The house's commands: all refused on the way back (`shopAway`), which holds them all. */
 export const SHOP = both('buy', 'take', 'store', 'move');
 
-/** One kind of answer: the commands it answers, and how. */
+/**
+ * One kind of answer: the commands it answers, and how. A rule names only the commands that can
+ * draw it: the core pairs an answer with the oldest waiting send of any of them, so a command the
+ * bot never answers (/buy in the private chat, which the game ignores) would otherwise take an
+ * answer meant for a newer command, and the retry-loop guard would hold it back.
+ */
 export interface AnswerRule {
   commands: readonly string[];
   status: 'ok' | 'refused';
@@ -47,7 +52,10 @@ export const ANSWER_RULES = {
   travelling: { commands: TRAVEL, status: 'refused', reason: 'travelling', holds: TRAVEL },
   frozen: { commands: TRAVEL, status: 'refused', reason: 'frozen', holds: TRAVEL },
   travelInvalid: { commands: TRAVEL, status: 'refused', reason: 'invalid' },
-  carryMissing: { commands: both('throw', 'store'), status: 'refused', reason: 'missing' },
+  raidInvalid: { commands: both('raid'), status: 'refused', reason: 'invalid' },
+  throwInvalid: { commands: both('throw'), status: 'refused', reason: 'invalid' },
+  throwMissing: { commands: both('throw'), status: 'refused', reason: 'missing' },
+  carryMissing: { commands: both('take', 'store'), status: 'refused', reason: 'missing' },
   disabled: { commands: both('give', 'burn'), status: 'refused', reason: 'disabled' },
   nukeDisabled: { commands: both('buy', 'throw'), status: 'refused', reason: 'disabled' },
   back: { commands: both('back'), status: 'ok' },
@@ -55,10 +63,15 @@ export const ANSWER_RULES = {
   bought: { commands: both('buy'), status: 'ok' },
   moved: { commands: both('take', 'store', 'move'), status: 'ok' },
   buyMissing: { commands: both('buy'), status: 'refused', reason: 'missing' },
+  buyInvalid: { commands: both('buy'), status: 'refused', reason: 'invalid' },
   slotLocked: { commands: both('buy'), status: 'refused', reason: 'locked' },
+  slotRange: { commands: both('buy', 'move'), status: 'refused', reason: 'invalid' },
+  takeMissing: { commands: both('take'), status: 'refused', reason: 'missing' },
+  takeInvalid: { commands: both('take'), status: 'refused', reason: 'invalid' },
+  carriedFull: { commands: both('take', 'throw'), status: 'refused', reason: 'invalid' },
+  storeInvalid: { commands: both('store'), status: 'refused', reason: 'invalid' },
+  moveMissing: { commands: both('move'), status: 'refused', reason: 'missing' },
   shopAway: { commands: SHOP, status: 'refused', reason: 'travelling', holds: SHOP },
-  shopInvalid: { commands: SHOP, status: 'refused', reason: 'invalid' },
-  shopMissing: { commands: SHOP, status: 'refused', reason: 'missing' },
   quoted: { commands: both('addquote'), status: 'ok' },
   quoteMissing: { commands: both('addquote'), status: 'refused', reason: 'missing' },
   collected: { commands: both('raccogli'), status: 'ok' },
@@ -71,19 +84,20 @@ export type AnswerRuleName = keyof typeof ANSWER_RULES;
 const REFUSAL_RULES: [RegExp, AnswerRuleName][] = [
   [/^sei in viaggio:/u, 'travelling'],
   [/^non conosco nessun giocatore/u, 'travelInvalid'],
-  [/^non puoi razziare te stesso/u, 'travelInvalid'],
   [/^una emoji per volta/u, 'travelInvalid'],
-  [/^\S+ non si lancia:/u, 'travelInvalid'],
-  [/^non hai \S+(?: con te|, né con te né in casa)\./u, 'carryMissing'],
-  [/^non hai \S+ in casa/u, 'shopMissing'],
-  [/^nel posto \d+ della casa non c'è/u, 'shopMissing'],
-  [/^la casa è piena/u, 'shopInvalid'],
-  [/^nel posto \d+ c'è già/u, 'shopInvalid'],
-  [/^i posti della casa vanno da/u, 'shopInvalid'],
-  [/^hai già \d+ emoji con te/u, 'shopInvalid'],
-  [/^\S+ è già con te/u, 'shopInvalid'],
-  [/^la posizione si sceglie solo/u, 'shopInvalid'],
-  [/^\S+ non ha posti liberi/u, 'shopInvalid'],
+  [/^non puoi razziare te stesso/u, 'raidInvalid'],
+  [/^\S+ non si lancia:/u, 'throwInvalid'],
+  [/^\S+ non ha posti liberi/u, 'throwInvalid'],
+  [/^non hai \S+, né con te né in casa\./u, 'throwMissing'],
+  [/^non hai \S+ con te\./u, 'carryMissing'],
+  [/^non hai \S+ in casa/u, 'takeMissing'],
+  [/^\S+ è già con te/u, 'takeInvalid'],
+  [/^hai già \d+ emoji con te/u, 'carriedFull'],
+  [/^la casa è piena/u, 'storeInvalid'],
+  [/^nel posto \d+ della casa non c'è/u, 'moveMissing'],
+  [/^nel posto \d+ c'è già/u, 'buyInvalid'],
+  [/^la posizione si sceglie solo/u, 'buyInvalid'],
+  [/^i posti della casa vanno da/u, 'slotRange'],
   [/^ti servono \d+ palle per aggiungere/u, 'quoteMissing'],
   [/^qui non c'è niente da raccogliere/u, 'nothingToCollect'],
 ];
@@ -127,8 +141,9 @@ export function answerOf(e: GameEvent, self: string, t: number): ReadAnswer | un
           ? { rule: 'nukeDisabled' }
           : undefined;
     case 'houseFull':
+      return { rule: 'buyInvalid' };
     case 'carriedFull':
-      return { rule: 'shopInvalid' };
+      return { rule: 'carriedFull' };
     case 'buyingAway':
       return { rule: 'shopAway', retryAt: later(t, e.seconds) };
     case 'quoteAdded':

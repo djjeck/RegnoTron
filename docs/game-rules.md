@@ -116,6 +116,8 @@ shows in the bot's own messages ([bot-protocol.md](bot-protocol.md) §2).
 - **Old commands:** since 14 Oct, `We @player …` lines do nothing except point you to the new
   command ("questo comando non c'è più: scrivi /raid @X") [S] [M]. `/home` and `/buyballoon` were
   removed on 8 Oct.
+- **`/buy` only in the group:** sent in the private chat with the bot it gets no reply at all (15
+  Nov 2026) [M], while `/take`, `/store` and the queries are answered there.
 
 ---
 

@@ -37,7 +37,7 @@ types, with a `module.json` (MegaBotTron1999's docs/bot-os.md D49):
   "version": "0.1.0",
   "api": "1",
   "provides": "@regnotron/norelec-tools",
-  "imports": { "@regnotron/norelec": "^0.3.0" },
+  "imports": { "@regnotron/norelec": "^0.4.0" },
   "plugins": ["src/plugins/norelec-map.ts", "src/plugins/nuclear-clock.ts"]
 }
 ```

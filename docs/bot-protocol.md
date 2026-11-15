@@ -273,10 +273,16 @@ a wording fix serves the Telegram exports, the live IRC side and the live Telegr
   (`!raid` on IRC, `/raid` on Telegram), so that it pairs with a command sent to either chat: `ok`
   (a departure, a purchase, a move, a turn back, …) or `refused` (`travelling`, `frozen`, `locked`
   for a baby's slot, `disabled` for /give, /burn and the ☢️, `invalid`, `missing`, …), with
-  `retryAt` where the bot states a time (already travelling, frozen, buying on the way back).
-  Commands the game no longer answers (/avventura) have no answer; a banned player's `COGLIONE`
-  answers nothing. Dreams and arrivals come later and answer nothing; another player's events answer
-  nobody's command.
+  `retryAt` where the bot states a time (already travelling, frozen, buying on the way back). Each
+  rule names only the commands that can draw it (`non hai X in casa.` answers /take,
+  `nel posto # della casa non c'è nessuna emoji.` /move, `nel posto # c'è già X` /buy,
+  `la casa è piena` /store, `non hai X, né con te né in casa.` /throw, …; only the way back,
+  `shopAway`, answers all the house's commands): the core pairs an answer with the oldest send of
+  its commands still waiting, so a rule wider than its commands lets a command the game ignores take
+  another's answer. /buy in the private chat with the bot gets no reply at all (buying works only in
+  the group): it waits its window and is `unanswered`. Commands the game no longer answers
+  (/avventura) have no answer; a banned player's `COGLIONE` answers nothing. Dreams and arrivals
+  come later and answer nothing; another player's events answer nobody's command.
 - **Each event on its own:** after a message, the plugin publishes each of its events (but `info`
   and `unknown`) as `norelec.<kind>` (`norelec.theft`, `norelec.ballTaken`, …), with the owner's
   account (`self`) and, for a message said while the instance was down, `playback`: the input of the

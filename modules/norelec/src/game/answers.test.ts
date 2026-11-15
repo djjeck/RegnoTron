@@ -18,8 +18,8 @@ describe('answerOf', () => {
     ['Alfa hai speso 100 palle: 🍕 in casa nel posto 3.', 'bought'],
     ['Alfa 🎈 ora è con te: difende la casa.', 'moved'],
     ['Alfa ti servono 500 palle per 🎈.', 'buyMissing'],
-    ['Alfa hai già tutti i 10 posti della casa pieni. Nessun addebito.', 'shopInvalid'],
-    ['Alfa hai già 2 emoji con te: per portare 🎈 serve un posto libero.', 'shopInvalid'],
+    ['Alfa hai già tutti i 10 posti della casa pieni. Nessun addebito.', 'buyInvalid'],
+    ['Alfa hai già 2 emoji con te: per portare 🎈 serve un posto libero.', 'carriedFull'],
     ['Alfa hai aggiunto la citazione spendendo 1000 palle!', 'quoted'],
     ['Alfa (🎈) hai preso gratis 🍕: 🍕 in casa nel posto 3.', 'bought'],
     ['Alfa hai spostato 🍕 dal posto 3 al posto 4. Casa: 🎈[]🍕', 'moved'],
@@ -54,19 +54,20 @@ describe('answerOf', () => {
   it.each([
     ['Alfa sei in viaggio: torni tra poco.', 'travelling'],
     ['Alfa non conosco nessun giocatore di nome Zulu.', 'travelInvalid'],
-    ['Alfa non puoi razziare te stesso.', 'travelInvalid'],
+    ['Alfa non puoi razziare te stesso.', 'raidInvalid'],
     ['Alfa una emoji per volta.', 'travelInvalid'],
-    ['Alfa 🍕 non si lancia: per regalarla scrivi /give.', 'travelInvalid'],
+    ['Alfa 🍕 non si lancia: per regalarla scrivi /give.', 'throwInvalid'],
     ['Alfa non hai 🧊 con te.', 'carryMissing'],
-    ['Alfa non hai 🧊, né con te né in casa.', 'carryMissing'],
-    ['Alfa non hai 🍕 in casa.', 'shopMissing'],
-    ["Alfa nel posto 4 della casa non c'è nessuna emoji.", 'shopMissing'],
-    ['Alfa la casa è piena: libera un posto.', 'shopInvalid'],
-    ["Alfa nel posto 3 c'è già 🍕: nessun addebito.", 'shopInvalid'],
-    ['Alfa hai già 2 emoji con te (🎈🚀): riponine una.', 'shopInvalid'],
-    ['Alfa 🎈 è già con te.', 'shopInvalid'],
-    ['Alfa la posizione si sceglie solo per le emoji in casa.', 'shopInvalid'],
-    ['Alfa 🍕 non ha posti liberi per 🎈.', 'shopInvalid'],
+    ['Alfa non hai 🧊, né con te né in casa.', 'throwMissing'],
+    ['Alfa non hai 🍕 in casa.', 'takeMissing'],
+    ["Alfa nel posto 4 della casa non c'è nessuna emoji.", 'moveMissing'],
+    ['Alfa la casa è piena: libera un posto.', 'storeInvalid'],
+    ["Alfa nel posto 3 c'è già 🍕: nessun addebito.", 'buyInvalid'],
+    ['Alfa hai già 2 emoji con te (🎈🚀): riponine una.', 'carriedFull'],
+    ['Alfa 🎈 è già con te.', 'takeInvalid'],
+    ['Alfa la posizione si sceglie solo per le emoji in casa.', 'buyInvalid'],
+    ['Alfa i posti della casa vanno da 1 a 10: nessun addebito.', 'slotRange'],
+    ['Alfa Bravo non ha posti liberi per 💦.', 'throwInvalid'],
     ['Alfa ti servono 1000 palle per aggiungere una citazione.', 'quoteMissing'],
     ["Alfa qui non c'è niente da raccogliere.", 'nothingToCollect'],
   ])('the refusal %s: %s', (line, rule) => {
@@ -92,6 +93,39 @@ describe('answerOf', () => {
     ).toBeUndefined();
     expect(read("Alfa l'invito vale solo per chi è appena arrivato nel gioco.")).toBeUndefined();
     expect(read('Lungo la via trovi 210 palle!')).toBeUndefined();
+  });
+});
+
+describe('ANSWER_RULES', () => {
+  const answering = (command: string): string[] =>
+    Object.entries(ANSWER_RULES)
+      .filter(([, r]) => (r.commands as readonly string[]).includes(command))
+      .map(([name]) => name);
+
+  it('answers /buy only with what a purchase can draw', () => {
+    // The refusals of /take: a /buy the game ignores (in the private chat) never takes them.
+    for (const rule of ['takeMissing', 'takeInvalid', 'carryMissing', 'moveMissing', 'moved'])
+      expect(answering('/buy')).not.toContain(rule);
+    expect(answering('/buy')).toEqual([
+      'nukeDisabled',
+      'bought',
+      'buyMissing',
+      'buyInvalid',
+      'slotLocked',
+      'slotRange',
+      'shopAway',
+    ]);
+  });
+
+  it("answers /take with its own refusals, and the house's on the way back", () => {
+    expect(answering('/take')).toEqual([
+      'carryMissing',
+      'moved',
+      'takeMissing',
+      'takeInvalid',
+      'carriedFull',
+      'shopAway',
+    ]);
   });
 });
 
