@@ -342,10 +342,11 @@ const TEMPLATES: Template[] = [
     balls: num(g, 'n'),
   })),
   // A purchase, at the price it states: `hai preso gratis` (0, every emoji since 10 Nov 2026) or
-  // `hai speso N palle`. Into the house it names the slot, and what it replaced, destroyed.
+  // `hai speso N palle`. Into the house it names the slot, and what it replaced, destroyed (an
+  // emoji of several code points whole: 🥷🏾, a flag).
   t(
     'bought',
-    '{P} hai (?:speso (?<n>\\d+) palle|preso gratis \\S+): (?<e>\\S+) (?:in casa nel posto (?<slot>\\d+)(?:, al posto di (?<x>\\S+?))?|ora è con te)[.,]?(?<rest>.*)',
+    '{P} hai (?:speso (?<n>\\d+) palle|preso gratis \\S+): (?<e>\\S+) (?:in casa nel posto (?<slot>\\d+)(?:, al posto di (?<x>[^\\s.,]+))?|ora è con te)[.,]?(?<rest>.*)',
     (g) => {
       const e: EventFields['bought'] = {
         player: who(g),

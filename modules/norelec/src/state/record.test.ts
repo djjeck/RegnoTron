@@ -122,6 +122,33 @@ describe('houses and babies', () => {
     expect(houseOf(m, 'Bravo')?.slots).toEqual([null, '🐔', ...Array(8).fill(null)]);
   });
 
+  it('puts a purchase over the slot it names, and moves an emoji between house and carried', () => {
+    const s = after(
+      [0, FULL_HOUSE],
+      [
+        S,
+        'Bravo (🎈) hai preso gratis 🚀: 🚀 in casa nel posto 2, al posto di 📮. In casa non fa niente: per averlo con te scrivi /take 🚀 <emoji da rimettere in casa>.',
+      ],
+      [
+        2 * S,
+        'Bravo (🚀) 🚀 ora è con te al posto di 🎈, che torna in casa: viaggi il 10% più veloce.',
+      ],
+      [
+        3 * S,
+        'Bravo hai preso gratis 🧊: 🧊 in casa nel posto 4, al posto di 🐔. Non dà nessun bonus.',
+      ]
+    );
+    expect(houseOf(s, 'Bravo')?.slots).toEqual([
+      '🎈',
+      '🎈',
+      '📮',
+      '🧊',
+      ...Array<string>(6).fill('🐔'),
+    ]);
+    expect(s.players['Bravo']?.carried).toEqual(['🚀']);
+    expect(houseOf(s, 'Bravo')?.at).toBe(3 * S);
+  });
+
   it('records each baby: its birth, its slot, the stages it is seen in, and when it went', () => {
     const s = after(
       [0, FULL_HOUSE],

@@ -296,6 +296,26 @@ const LINES: [string, EventKind, Record<string, unknown>?][] = [
   ],
   ['Alfa (🎈) hai preso gratis 🅽: 🅽 in casa nel posto 1.', 'bought', { emoji: '🅽', slot: 1 }],
   [
+    'Alfa (🚀🥷🏾) hai preso gratis 🚀: 🚀 in casa nel posto 2, al posto di 🥷🏾. In casa non fa niente: per averlo con te scrivi /take 🚀 <emoji da rimettere in casa>.',
+    'bought',
+    { emoji: '🚀', slot: 2, replaced: '🥷🏾', carried: false, balls: 0 },
+  ],
+  [
+    "Alfa (🦞) hai preso gratis 🐔: 🐔 in casa nel posto 4, al posto di 🇻🇦. Ora ne hai 3 in casa: fanno 180 palle all'ora.",
+    'bought',
+    { emoji: '🐔', slot: 4, replaced: '🇻🇦', count: 3 },
+  ],
+  [
+    'Alfa (🦞) hai preso gratis 🧊: 🧊 in casa nel posto 5, al posto di 🐔. Non dà nessun bonus: aspetta in casa finché non la lanci.',
+    'bought',
+    { emoji: '🧊', slot: 5, replaced: '🐔' },
+  ],
+  [
+    'Alfa (🦞) hai preso gratis ⓕ: ⓕ in casa nel posto 6, al posto di 🐔.',
+    'bought',
+    { replaced: '🐔' },
+  ],
+  [
     'Alfa (🎈) hai speso 1000 palle: 💣 in casa nel posto 3. Non dà nessun bonus: aspetta in casa finché non la lanci.',
     'bought',
     { balls: 1000, emoji: '💣', slot: 3 },
