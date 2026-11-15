@@ -330,7 +330,12 @@ export const norelecPlugin: Plugin = definePlugin({
             const a = answerOf(event, self, m.time);
             if (a === undefined) continue;
             const { status } = ANSWER_RULES[a.rule];
-            ctx.bus.publish(ANSWER_EVENT, { ...a, status, player: self, event }, m.time);
+            // Read in the private chat, it answers none of the commands the game ignores there.
+            ctx.bus.publish(
+              ANSWER_EVENT,
+              { ...a, status, player: self, event, ...(read.private ? { private: true } : {}) },
+              m.time
+            );
           }
           if (read.duplicate) return;
           // Drift (P5): a message with a line no template knows is claimed but unread.

@@ -1,8 +1,10 @@
+import { answerSchema, readAnswer } from '@megabottron1999/core';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bootTelegram, DM, OWNER, T0 } from '#test/telegram-run.ts';
+import { norelecPlugin } from './norelec.ts';
 
 let dir: string;
 beforeEach(() => {
@@ -57,6 +59,26 @@ describe('the norelec parser on Telegram alone', () => {
     );
     expect(run.of('norelec.balloonHeld')).toEqual([expect.objectContaining({ playback: true })]);
     expect(run.told()).toEqual([]);
+    await run.core.stop();
+  });
+
+  it("never answers a command the game ignores in the private chat with the bot's reply there", async () => {
+    const run = await bootTelegram(dir);
+    const way =
+      'alice sei sulla via del ritorno: le emoji si comprano da casa tua. Rientri tra 30 secondi.';
+    await run.bot(way, { chat: DM, private: true });
+    await run.bot(way);
+    const [inPrivate, inGroup] = run.of('norelec.answer');
+    expect(inPrivate).toMatchObject({ rule: 'shopAway', private: true });
+    expect(inGroup).not.toHaveProperty('private');
+    // As the core reads them by the manifest: from the private chat, /take and not /buy.
+    const declared = (norelecPlugin.manifest.answers ?? []).map((d) => answerSchema.parse(d));
+    const read = (e: typeof inPrivate) => {
+      const { type, t, ...payload } = e as { type: string; t: number };
+      return readAnswer(declared, type, payload, t)?.commands;
+    };
+    expect(read(inPrivate)).toEqual(['!take', '/take', '!store', '/store', '!move', '/move']);
+    expect(read(inGroup)).toContain('/buy');
     await run.core.stop();
   });
 });

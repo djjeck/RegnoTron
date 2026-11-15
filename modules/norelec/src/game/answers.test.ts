@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ANSWER_RULES, answerDeclarations, answerOf, type ReadAnswer } from './answers.ts';
+import {
+  ANSWER_RULES,
+  answerDeclarations,
+  answerOf,
+  GROUP_ONLY,
+  type ReadAnswer,
+} from './answers.ts';
 import { parseLine } from './parse-line.ts';
 
 const T = 1_000_000;
@@ -132,22 +138,50 @@ describe('ANSWER_RULES', () => {
 describe('answerDeclarations', () => {
   it('declares every rule over the event, matched by its name', () => {
     const declared = answerDeclarations('norelec.answer');
-    expect(declared).toHaveLength(Object.keys(ANSWER_RULES).length);
+    expect(new Set(declared.map((d) => d.when.rule))).toEqual(new Set(Object.keys(ANSWER_RULES)));
     expect(declared).toContainEqual({
       event: 'norelec.answer',
-      commands: ['!raid', '/raid', '!throw', '/throw'],
-      when: { rule: 'travelling' },
+      commands: ['!throw', '/throw'],
+      when: { rule: 'throwMissing' },
       status: 'refused',
-      reason: 'travelling',
-      retryAtFrom: 'retryAt',
-      holds: ['!raid', '/raid', '!throw', '/throw'],
-    });
-    expect(declared).toContainEqual({
-      event: 'norelec.answer',
-      commands: ['!raid', '/raid'],
-      when: { rule: 'raid' },
-      status: 'ok',
+      reason: 'missing',
       retryAtFrom: 'retryAt',
     });
+  });
+
+  it("answers the group's own commands only from the group", () => {
+    const declared = answerDeclarations('norelec.answer');
+    // The trips: /raid only in the group, /throw anywhere.
+    expect(declared.filter((d) => d.when.rule === 'travelling')).toEqual([
+      {
+        event: 'norelec.answer',
+        commands: ['!raid', '/raid', '!throw', '/throw'],
+        when: { rule: 'travelling' },
+        unless: { private: true },
+        status: 'refused',
+        reason: 'travelling',
+        retryAtFrom: 'retryAt',
+        holds: ['!raid', '/raid', '!throw', '/throw'],
+      },
+      {
+        event: 'norelec.answer',
+        commands: ['!throw', '/throw'],
+        when: { rule: 'travelling', private: true },
+        status: 'refused',
+        reason: 'travelling',
+        retryAtFrom: 'retryAt',
+        holds: ['!raid', '/raid', '!throw', '/throw'],
+      },
+    ]);
+    // A purchase's answers: from the group alone.
+    expect(declared.filter((d) => d.when.rule === 'bought')).toEqual([
+      expect.objectContaining({ commands: ['!buy', '/buy'], unless: { private: true } }),
+    ]);
+    // What no group-only command draws: anywhere, as one declaration.
+    expect(declared.filter((d) => d.when.rule === 'takeMissing')).toEqual([
+      expect.not.objectContaining({ unless: expect.anything() }),
+    ]);
+    for (const d of declared.filter((x) => 'private' in x.when))
+      for (const c of GROUP_ONLY) expect(d.commands).not.toContain(c);
   });
 });

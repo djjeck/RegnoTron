@@ -27,6 +27,13 @@ export const TRAVEL = both('raid', 'throw');
 export const SHOP = both('buy', 'take', 'store', 'move');
 
 /**
+ * The commands the game answers only in its group: sent in the owner's private chat with the bot,
+ * they get no reply at all (when enabled), so an answer read there answers none of them, and a send
+ * of one there waits its window and is `unanswered`.
+ */
+export const GROUP_ONLY = both('buy', 'raid', 'give', 'burn', 'avventura');
+
+/**
  * One kind of answer: the commands it answers, and how. A rule names only the commands that can
  * draw it: the core pairs an answer with the oldest waiting send of any of them, so a command the
  * bot never answers (/buy in the private chat, which the game ignores) would otherwise take an
@@ -161,16 +168,26 @@ export function answerOf(e: GameEvent, self: string, t: number): ReadAnswer | un
 
 /**
  * The manifest's `answers` (bot-os-api.md §2): one declaration per rule, over the event `event`,
- * whose payload names the rule (`rule`) and may hold `retryAt`.
+ * whose payload names the rule (`rule`) and may hold `retryAt`. An answer read in the private chat
+ * (`private: true`) answers none of the group's own commands (`GROUP_ONLY`): a rule that names one
+ * is declared for the group (`unless` private) and, for its other commands, for the private chat.
  */
 export function answerDeclarations(event: string) {
-  return Object.entries(ANSWER_RULES).map(([name, r]: [string, AnswerRule]) => ({
-    event,
-    commands: [...r.commands],
-    when: { rule: name },
-    status: r.status,
-    ...(r.reason === undefined ? {} : { reason: r.reason }),
-    retryAtFrom: 'retryAt',
-    ...(r.holds === undefined ? {} : { holds: [...r.holds] }),
-  }));
+  return Object.entries(ANSWER_RULES).flatMap(([name, r]: [string, AnswerRule]) => {
+    const how = {
+      status: r.status,
+      ...(r.reason === undefined ? {} : { reason: r.reason }),
+      retryAtFrom: 'retryAt',
+      ...(r.holds === undefined ? {} : { holds: [...r.holds] }),
+    };
+    const anywhere = r.commands.filter((c) => !GROUP_ONLY.includes(c));
+    if (anywhere.length === r.commands.length)
+      return [{ event, commands: [...r.commands], when: { rule: name }, ...how }];
+    return [
+      { event, commands: [...r.commands], when: { rule: name }, unless: { private: true }, ...how },
+      ...(anywhere.length === 0
+        ? []
+        : [{ event, commands: anywhere, when: { rule: name, private: true }, ...how }]),
+    ];
+  });
 }

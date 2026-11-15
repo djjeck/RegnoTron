@@ -56,6 +56,8 @@ export interface Read {
   duplicate: boolean;
   /** History: read and applied, never acted on (MegaBotTron1999's D83). */
   playback: boolean;
+  /** Read in the owner's private chat with the bot, where it answers only some commands. */
+  private: boolean;
 }
 
 /** A message's text for comparing copies: no spacing, no IRC separators. */
@@ -216,7 +218,7 @@ export class NorelecGame {
       const text = stripZeroWidth(m.text);
       const events = parseMessage(text);
       if (m.private && this.deps.self !== '') own(events, this.deps.self);
-      this.message({ time: m.time, text, events }, 'telegram', m.playback);
+      this.message({ time: m.time, text, events }, 'telegram', m.playback, m.private);
       return;
     }
     if (m.playback) return;
@@ -267,9 +269,14 @@ export class NorelecGame {
     if (status === 'closed' || status === 'connecting') this.health.connected = false;
   }
 
-  private message(m: BotMessage, source: Source, playback = false): void {
+  private message(m: BotMessage, source: Source, playback = false, inPrivate = false): void {
     this.banned(m);
-    const read: Read = { source, duplicate: this.duplicate(m, source), playback };
+    const read: Read = {
+      source,
+      duplicate: this.duplicate(m, source),
+      playback,
+      private: inPrivate,
+    };
     if (read.duplicate) {
       this.publish?.(m, read);
       return;

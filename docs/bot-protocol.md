@@ -279,10 +279,17 @@ a wording fix serves the Telegram exports, the live IRC side and the live Telegr
   `la casa è piena` /store, `non hai X, né con te né in casa.` /throw, …; only the way back,
   `shopAway`, answers all the house's commands): the core pairs an answer with the oldest send of
   its commands still waiting, so a rule wider than its commands lets a command the game ignores take
-  another's answer. /buy in the private chat with the bot gets no reply at all (buying works only in
-  the group): it waits its window and is `unanswered`. Commands the game no longer answers
-  (/avventura) have no answer; a banned player's `COGLIONE` answers nothing. Dreams and arrivals
-  come later and answer nothing; another player's events answer nobody's command.
+  another's answer. **The group's own commands** (`GROUP_ONLY`: /buy, /raid, /give, /burn,
+  /avventura, in both forms) get no reply at all in the private chat with the bot, when enabled:
+  they work only in the group. An answer read in the private chat is published with `private: true`,
+  and a rule that names one of them is declared twice, for the group (`unless: { private: true }`)
+  and, with its other commands only, for the private chat; so no answer read there pairs with one of
+  them sent there, which waits its window and is `unanswered` (a MegaBotTron1999 that tells
+  unanswered sends, its D107, then tells the owner). The answers contract cannot say "answered only
+  in a group" to the core, which does not know a chat's kind, so such a send is not refused when it
+  goes. Commands the game no longer answers (/avventura) have no answer; a banned player's
+  `COGLIONE` answers nothing. Dreams and arrivals come later and answer nothing; another player's
+  events answer nobody's command.
 - **Each event on its own:** after a message, the plugin publishes each of its events (but `info`
   and `unknown`) as `norelec.<kind>` (`norelec.theft`, `norelec.ballTaken`, …), with the owner's
   account (`self`) and, for a message said while the instance was down, `playback`: the input of the

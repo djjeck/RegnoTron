@@ -48,11 +48,13 @@ MegaBotTron1999's send watchdog hears the channel (bot-os.md D93) and its comman
 a command sent to the channel with the bot's reply: `norelec.answer`, for the events about the
 account `self` names, which the manifest declares as the answers of the game's commands in both
 forms, `!` and `/`, so that they pair on either network (`ok` or `refused`, and when the command may
-go again where the bot says; [docs/bot-protocol.md](../../docs/bot-protocol.md) §5). An `irc` node
-whose sends the bot answers needs no `unansweredAt: 0`. It needs MegaBotTron1999 0.1.21 or later,
-whose manifests declare answers. Its store is at version 1: its one migration, for a layout no store
-holds any more, is a no-op, kept because the shell refuses a store at a version above its plugin's
-count of migrations.
+go again where the bot says; [docs/bot-protocol.md](../../docs/bot-protocol.md) §5). An answer read
+in the private chat with the bot carries `private: true` and answers none of the commands the game
+takes only in its group (`GROUP_ONLY`: /buy, /raid, /give, /burn, /avventura). An `irc` node whose
+sends the bot answers needs no `unansweredAt: 0`. It needs MegaBotTron1999 0.1.21 or later, whose
+manifests declare answers. Its store is at version 1: its one migration, for a layout no store holds
+any more, is a no-op, kept because the shell refuses a store at a version above its plugin's count
+of migrations.
 
 **Plugin:** `norelec-state` (`src/plugins/norelec-state.ts`), the game's record
 (`src/state/record.ts`), kept by MegaBotTron1999's `statePlugin` from the `norelec` node's
