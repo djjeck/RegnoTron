@@ -10,8 +10,9 @@
  * at `ready`, once the game has replayed its history, so that the balances it kept are put back
  * into the state the replay left. A first start takes the total of every bot message of the event
  * log (`ctx.events`), and posts nothing. Its posts leave through the outbox of the Telegram bot
- * account its `group` input is bound to, to the group its config names, which that edge must send
- * to, for real unless that edge is a dry run (MegaBotTron1999's bot-os.md D64). Its one migration,
+ * account its `group` output (a chat-out) is bound to, to the group its config names, which that
+ * edge must send to, for real unless that edge is a dry run (MegaBotTron1999's bot-os.md D60,
+ * D64); its `group` input (a chat-in, reading no chat) gives it the bot's name and status. Its one migration,
  * for a layout no store holds any more, is a no-op, kept because its stores are at version 1, and
  * the shell refuses a store at a version above its plugin's count of migrations.
  */
@@ -100,16 +101,25 @@ export const nuclearClockPlugin: Plugin = definePlugin({
         members: ['state.game'],
         help: "NorelecBot's game: the balances the clock counts",
       },
+      // The bot's name and status only: its edge reads no chat.
       group: {
-        type: 'chat',
+        type: 'chat-in',
         network: 'telegram-bot',
-        help: "The bot in the game's group: the clock's posts; the edge sends to the config's group",
-        bind: { node: TELEGRAM_BOT, reads: [], sends: [] },
+        help: "The bot in the game's group: its name and status, for the posts' footer",
+        bind: { node: TELEGRAM_BOT, reads: [] },
       },
       messages: {
         type: 'events',
         namespace: NORELEC,
         help: "the bot messages: the clock's total",
+      },
+    },
+    outputs: {
+      group: {
+        type: 'chat-out',
+        network: 'telegram-bot',
+        help: "The bot in the game's group: the clock's posts; the edge sends to the config's group",
+        bind: { node: TELEGRAM_BOT, sends: [] },
       },
     },
     config: clockConfig,
