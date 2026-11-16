@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { parseMessage } from '#src/game/parse-message.ts';
 import {
+  babiesOf,
+  BABY_LIFE_MS,
   ballTotals,
+  BIRTH_AFTER_MS,
   type GameRecord,
   heldSeconds,
   houseOf,
@@ -11,6 +14,7 @@ import {
   legKey,
   legSeconds,
   reduceRecord,
+  settleDue,
   tripOf,
 } from './record.ts';
 
@@ -112,6 +116,7 @@ describe('houses and babies', () => {
     expect(houseOf(s, 'Bravo')).toEqual({
       slots: ['🚀', null, null, null, null, null, null, null, null, null],
       locked: [],
+      locks: [],
       at: 5 * S,
     });
     expect(s.prices['🐔']).toEqual({ balls: 0, at: S });
@@ -175,6 +180,7 @@ describe('houses and babies', () => {
           { emoji: '👧🏽', at: 86_400 * S },
         ],
         lastSeen: 86_400 * S,
+        leaves: 10 * S + BABY_LIFE_MS,
       },
     ]);
     const gone = after(
@@ -206,6 +212,175 @@ describe('houses and babies', () => {
     expect(isPerson('👵🏻')).toBe(true);
     expect(isPerson('🐔')).toBe(false);
     expect(isPerson(null)).toBe(false);
+  });
+});
+
+describe('baby lifetimes', () => {
+  const H = 3600 * S;
+  const SPLASH =
+    'Alfa la tua 💦 è arrivata a casa di @Bravo: tra 9 ore si vedrà. Torni in Alfa tra 1 minuto.';
+  const BORN = '@Bravo (🎈) è nato un maschio 👶: il padre è @Alfa.';
+  /** A line about someone else, that only moves the record's time on. */
+  const LATER = 'Casa di Charlie (0/10):\n1 ·  2 ·  3 ·  4 ·  5 ·  6 ·  7 ·  8 ·  9 ·  10 ·';
+
+  it('expects a birth 9 h after a 💦, and the baby’s departure 96 h after its birth', () => {
+    const s = after([0, EMPTY_HOUSE], [S, SPLASH]);
+    expect(s.players['Bravo']?.expecting).toEqual([{ father: 'Alfa', at: S }]);
+    const b = after([0, EMPTY_HOUSE], [S, SPLASH], [S + BIRTH_AFTER_MS, BORN]);
+    expect(b.players['Bravo']?.expecting).toBeUndefined();
+    const born = S + BIRTH_AFTER_MS;
+    expect(houseOf(b, 'Bravo')?.locks).toEqual([
+      { slot: 1, emoji: '👶', until: born + BABY_LIFE_MS, exact: true },
+    ]);
+    expect(babiesOf(b, 'Bravo')).toEqual([
+      expect.objectContaining({ born, leaves: born + BABY_LIFE_MS, exact: true }),
+    ]);
+    expect(babiesOf(b, 'Nobody')).toEqual([]);
+    // Its line, a few seconds late, frees the slot; nothing was missed.
+    const gone = after(
+      [0, EMPTY_HOUSE],
+      [S, SPLASH],
+      [born, BORN],
+      [
+        born + BABY_LIFE_MS + 3 * S,
+        '@Bravo (🎈) 👴 ha vissuto la sua vita e se n’è andato: il posto è di nuovo libero.',
+      ],
+      [born + BABY_LIFE_MS + 20 * 60 * S, LATER]
+    );
+    expect(gone.babies[0]).toMatchObject({ gone: born + BABY_LIFE_MS + 3 * S });
+    expect(gone.babies[0]?.unseen).toBeUndefined();
+    expect(houseOf(gone, 'Bravo')?.locked).toEqual([]);
+  });
+
+  it('applies a departure whose line never came, once overdue, and a late line changes nothing', () => {
+    const born = S + BIRTH_AFTER_MS;
+    const base: [number, string][] = [
+      [0, EMPTY_HOUSE],
+      [S, SPLASH],
+      [born, BORN],
+    ];
+    // Within the margin: still there.
+    expect(
+      after(...base, [born + BABY_LIFE_MS + 9 * 60 * S, LATER]).babies[0]?.gone
+    ).toBeUndefined();
+    const before = after(...base);
+    const missed = structuredClone(before);
+    expect(settleDue(missed, born + BABY_LIFE_MS + 11 * 60 * S)).toEqual([
+      {
+        what: 'babyGone',
+        player: 'Bravo',
+        due: born + BABY_LIFE_MS,
+        emoji: '👶',
+        slot: 1,
+        exact: true,
+      },
+    ]);
+    const s = after(...base, [born + BABY_LIFE_MS + 11 * 60 * S, LATER]);
+    expect(s.babies[0]).toMatchObject({ gone: born + BABY_LIFE_MS, unseen: ['gone'] });
+    expect(houseOf(s, 'Bravo')?.slots[0]).toBeNull();
+    const late = after(
+      ...base,
+      [born + BABY_LIFE_MS + 11 * 60 * S, LATER],
+      [born + BABY_LIFE_MS + 12 * 60 * S, '@Bravo 👴 ha vissuto la sua vita.']
+    );
+    expect(late.babies).toEqual(s.babies);
+    // A margin of the caller's.
+    const quick = reduceRecord(
+      before,
+      { type: 'norelec.info', t: born + BABY_LIFE_MS + 2 * S },
+      {
+        missedAfterMs: S,
+      }
+    );
+    expect(quick.babies[0]?.gone).toBe(born + BABY_LIFE_MS);
+  });
+
+  it('applies a birth whose line never came, and takes its late line in its place', () => {
+    const due = S + BIRTH_AFTER_MS;
+    const s = after([0, EMPTY_HOUSE], [S, SPLASH], [due + 11 * 60 * S, LATER]);
+    expect(s.players['Bravo']?.expecting).toBeUndefined();
+    expect(s.babies).toEqual([
+      {
+        player: 'Bravo',
+        born: due,
+        father: 'Alfa',
+        stages: [{ emoji: '👶', at: due }],
+        lastSeen: due,
+        leaves: due + BABY_LIFE_MS,
+        unseen: ['born'],
+        slot: 1,
+      },
+    ]);
+    expect(houseOf(s, 'Bravo')?.slots[0]).toBe('👶');
+    const late = after(
+      [0, EMPTY_HOUSE],
+      [S, SPLASH],
+      [due + 11 * 60 * S, LATER],
+      [due + 12 * 60 * S, BORN]
+    );
+    expect(late.babies).toHaveLength(1);
+    expect(late.babies[0]).toMatchObject({ born: due + 12 * 60 * S, slot: 1 });
+    expect(late.babies[0]?.unseen).toBeUndefined();
+    // A house not known, or full: the baby's slot is left to the next /house.
+    const unknown = settleDue(after([S, SPLASH]), due + 11 * 60 * S);
+    expect(unknown).toEqual([{ what: 'born', player: 'Bravo', due, father: 'Alfa' }]);
+    const full = after([0, FULL_HOUSE], [S, SPLASH], [due + 11 * 60 * S, LATER]);
+    expect(full.babies[0]?.slot).toBeUndefined();
+    // Another father's 💦 is still due.
+    const two = after(
+      [0, EMPTY_HOUSE],
+      [S, SPLASH],
+      [2 * S, SPLASH.replaceAll('Alfa', 'Delta')],
+      [due + S, BORN]
+    );
+    expect(two.players['Bravo']?.expecting).toEqual([{ father: 'Delta', at: 2 * S }]);
+  });
+
+  it('bounds the departure of a baby whose birth it did not see, by its stage', () => {
+    const s = after([
+      10 * S,
+      'Casa di Bravo (2/10):\n1 👶  2 👴  3 ·  4 ·  5 ·  6 ·  7 ·  8 ·  9 ·  10 ·',
+    ]);
+    expect(houseOf(s, 'Bravo')?.locks).toEqual([
+      { slot: 1, emoji: '👶', until: 10 * S + BABY_LIFE_MS, exact: false },
+      { slot: 2, emoji: '👴', until: 10 * S + BABY_LIFE_MS - 3 * 24 * H, exact: false },
+    ]);
+    // Seen older the next day: the bound tightens.
+    const older = after(
+      [10 * S, 'Casa di Bravo (1/10):\n1 👶  2 ·  3 ·  4 ·  5 ·  6 ·  7 ·  8 ·  9 ·  10 ·'],
+      [12 * H, 'Casa di Bravo (1/10):\n1 👦  2 ·  3 ·  4 ·  5 ·  6 ·  7 ·  8 ·  9 ·  10 ·']
+    );
+    expect(older.babies[0]?.leaves).toBe(12 * H - 24 * H + BABY_LIFE_MS);
+    // A departure line in another stage than the last seen: the baby due nearest.
+    const gone = after(
+      [0, EMPTY_HOUSE],
+      [S, BORN],
+      [S + BABY_LIFE_MS, '@Bravo 👴 ha vissuto la sua vita.']
+    );
+    expect(gone.babies[0]?.gone).toBe(S + BABY_LIFE_MS);
+    // A baby recorded before its lifetime was: its departure from its birth or its stages.
+    const old = structuredClone(gone.babies[0]);
+    if (old === undefined) throw new Error('no baby');
+    delete old.leaves;
+    expect(babiesOf({ ...gone, babies: [old] })[0]?.leaves).toBe(S + BABY_LIFE_MS);
+    delete old.born;
+    expect(babiesOf({ ...gone, babies: [old] })[0]?.leaves).toBe(S + BABY_LIFE_MS);
+    expect(babiesOf({ ...gone, babies: [{ ...old, stages: [] }] })[0]?.leaves).toBeUndefined();
+  });
+
+  it('takes a trip home once its return is overdue', () => {
+    const trip: [number, string][] = [
+      [0, 'Alfa parti per Bravo: arrivi tra 1 minuto. Casa tua resta scoperta.'],
+      [
+        60 * S,
+        'Alfa (🎈) il cane di Bravo ti ha intercettato: niente bottino. Torni in Alfa tra 1 minuto.',
+      ],
+    ];
+    expect(settleDue(after(...trip), 125 * S)).toEqual([]);
+    expect(settleDue(after(...trip), 120 * S + 11 * 60 * S)).toEqual([
+      { what: 'returnHome', player: 'Alfa', due: 120 * S, to: 'Bravo', arrived: true },
+    ]);
+    expect(after(...trip, [120 * S + 11 * 60 * S, LATER]).players['Alfa']?.trip).toBeUndefined();
   });
 });
 

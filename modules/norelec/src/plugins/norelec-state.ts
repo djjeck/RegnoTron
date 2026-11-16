@@ -7,25 +7,32 @@
  * - **Its input:** `events`, bound to the `norelec` parser's events output (the namespace
  *   `norelec`). It resumes from its cursor in the event log, so nothing is applied twice.
  * - **Its interface:** the state plugin's `state.get` and `state.freshness`, and its queries:
- *   `player({ name })`, `house({ name })` (the slots and those babies lock), `trip({ name })`
- *   (from, to, start, expected arrival and return), `ball({ at? })` (the holder and every
- *   player's time held, as /leaderboard counts it), `held({ name, at? })`, `babies({ name? })`
- *   (each birth, the stages seen and when, and when it went), `banned()`, `price({ emoji })`.
+ *   `player({ name })`, `house({ name })` (the slots, those babies lock and until when),
+ *   `trip({ name })` (from, to, start, expected arrival and return), `ball({ at? })` (the holder
+ *   and every player's time held, as /leaderboard counts it), `held({ name, at? })`,
+ *   `babies({ name? })` (each birth, the stages seen and when, when it is due to leave, and when
+ *   it went), `banned()`, `price({ emoji })`.
+ * - **What the game does on its own** (record.ts `settleDue`): a baby 9 h after a 💦 delivered, its
+ *   departure 96 h after its birth, a trip's return; overdue by 10 minutes with no line, applied
+ *   at the next event, as the game applied it.
+ * - **Its store** is at version 1: the one migration gives each baby kept its departure time.
  * - **What happened** (D83), new facts only, never a correction (a leaderboard that shows another
  *   holder than the record had settles it silently), and nothing for an event played back or read
  *   at the catch-up: `ballMoved` (the ⚽ changed hands, for anyone), and about the owner's account
  *   (`self`): `raided`, `thrownAt`, `ballTaken` (the ⚽ taken from them) and `slotLocked` (a baby
  *   born in their house took a slot).
  */
-import { type BusEvent, type Plugin } from '@megabottron1999/core';
-import { type Announcement, statePlugin } from '@megabottron1999/turns/state-plugin.ts';
+import { type BusEvent, type MigrationStore, type Plugin } from '@megabottron1999/core';
+import { type Announcement, STATE_DOC, statePlugin } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
 import {
+  babiesOf,
   ballTotals,
   type GameRecord,
   heldSeconds,
   houseOf,
   initialRecord,
+  leavesOf,
   recordSchema,
   reduceRecord,
   tripOf,
@@ -158,6 +165,22 @@ export function announce(before: GameRecord, after: GameRecord, event: BusEvent)
   return out;
 }
 
+/**
+ * The store's migrations (MegaBotTron1999's docs/bot-os-api.md §4.2): 0 → 1 gives each baby kept
+ * the time it is due to leave (`leaves`), from its birth or its stages.
+ */
+export const MIGRATIONS = [
+  (store: MigrationStore): void => {
+    const kept = store.read<{ state?: GameRecord }>(STATE_DOC);
+    if (kept?.state === undefined) return;
+    kept.state.babies = kept.state.babies.map((b) => {
+      const leaves = leavesOf(b);
+      return leaves === undefined ? b : { ...b, leaves };
+    });
+    store.write(STATE_DOC, kept);
+  },
+];
+
 const at = z.number().optional().describe('The time to count to (ms); the last event’s if unset');
 
 /** The time of the record's last event, for the queries that count time held. */
@@ -174,6 +197,7 @@ export const norelecStatePlugin: Plugin = statePlugin<GameRecord & Record<string
   reduce: (state, event) => reduceRecord(state, event) as GameRecord & Record<string, unknown>,
   events: STATE_EVENTS,
   announce,
+  migrations: MIGRATIONS,
   queries: {
     player: {
       help: 'A player as last seen: house, carried emoji, trip, balls from /profile, banned',
@@ -182,7 +206,7 @@ export const norelecStatePlugin: Plugin = statePlugin<GameRecord & Record<string
       run: (s, input: { name: string }) => s.players[input.name] ?? null,
     },
     house: {
-      help: "A player's house: its slots (empty ones null), the slots babies lock, when read",
+      help: "A player's house: its slots (empty ones null), the slots babies lock and until when (`locks`), when read",
       input: name,
       output: z.unknown(),
       run: (s, input: { name: string }) => houseOf(s, input.name) ?? null,
@@ -210,11 +234,10 @@ export const norelecStatePlugin: Plugin = statePlugin<GameRecord & Record<string
         heldSeconds(s, input.name, input.at ?? lastT(s)),
     },
     babies: {
-      help: 'The babies seen (of one house, or all): birth, slot, stages seen and when, gone',
+      help: 'The babies seen (of one house, or all): birth, slot, stages seen and when, when due to leave, gone',
       input: z.object({ name: z.string().optional() }),
       output: z.unknown(),
-      run: (s, input: { name?: string }) =>
-        s.babies.filter((b) => input.name === undefined || b.player === input.name),
+      run: (s, input: { name?: string }) => babiesOf(s, input.name),
     },
     banned: {
       help: 'The players the game bans, with since when',

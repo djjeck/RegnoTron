@@ -8,6 +8,12 @@
  * plugin keeps it, resumes it from the event log and announces what changed (MegaBotTron1999's
  * bot-os.md D72, D83).
  *
+ * It also times what the game does on its own (`settleDue`): a 💦 delivered gives a baby 9 hours
+ * later (`BIRTH_AFTER_MS`), a baby leaves 96 hours after its birth (`BABY_LIFE_MS`), a trip ends at
+ * its return. A line the bot says for each of them may be lost (Telegram, IRC) while the game
+ * applies the change all the same: once one is overdue by a margin (`missedAfterMs`), at the first
+ * event after it, the record applies it anyway, as the game did, and says so (`Missed`).
+ *
  * The rules behind it are in docs/game-rules.md: the ⚽ §3, babies and locks §5.3, trips §2.
  */
 import { z } from 'zod';
@@ -20,6 +26,38 @@ export const PEOPLE = ['👶', '👦', '👧', '👨', '👩', '👴', '👵'];
 /** Whether an emoji is a baby, at any stage of its life (skin tones aside). */
 export const isPerson = (emoji: string | null | undefined): boolean =>
   emoji != null && PEOPLE.includes(emojiKind(emoji));
+
+/** A person's stage of life, by its emoji: 👶 0, 👦 👧 1, 👨 👩 2, 👴 👵 3 (one stage a day). */
+const STAGE: Record<string, number> = {
+  '👶': 0,
+  '👦': 1,
+  '👧': 1,
+  '👨': 2,
+  '👩': 2,
+  '👴': 3,
+  '👵': 3,
+};
+
+const SECOND = 1000;
+const HOUR = 3600 * SECOND;
+const DAY = 24 * HOUR;
+
+/**
+ * A baby's life: it leaves its slot 96 hours after its birth line. Measured on 13 babies (Nov
+ * 2026), each `ha vissuto la sua vita` line 96 h and 1 to 5 seconds after its birth's.
+ */
+export const BABY_LIFE_MS = 96 * HOUR;
+
+/** A 💦 delivered at a home gives its baby 9 hours later (`tra 9 ore si vedrà`), measured exact. */
+export const BIRTH_AFTER_MS = 9 * HOUR;
+
+/** How long past its time a change the record expects waits for its line, by default. */
+export const MISSED_AFTER_MS = 10 * 60 * SECOND;
+
+/** The record's options: how long an expected change waits for its line before it is applied. */
+export interface RecordOptions {
+  missedAfterMs?: number;
+}
 
 /** A slot list: an emoji, or null when empty. */
 const slots = z.array(z.string().nullable());
@@ -48,6 +86,10 @@ const playerSchema = z.object({
     .optional()
     .describe('The balls and rank /profile last gave'),
   banned: z.number().optional().describe('Since when the game bans them (a COGLIONE)'),
+  expecting: z
+    .array(z.object({ father: z.string(), at: z.number() }))
+    .optional()
+    .describe('Each 💦 delivered to the house (`at`), its baby due 9 hours after'),
 });
 export type PlayerRecord = z.infer<typeof playerSchema>;
 
@@ -62,6 +104,14 @@ const babySchema = z.object({
     .describe('Each stage it was seen in, with when first seen'),
   lastSeen: z.number().describe('When last seen in its slot'),
   gone: z.number().optional().describe('When it was first seen gone'),
+  leaves: z
+    .number()
+    .optional()
+    .describe('When it is due to leave: 96 h after its birth, or at the latest, from its stages'),
+  unseen: z
+    .array(z.enum(['born', 'gone']))
+    .optional()
+    .describe('Its lines never read, birth or departure, applied when they were overdue'),
 });
 export type Baby = z.infer<typeof babySchema>;
 
@@ -114,8 +164,6 @@ export interface KindEvent {
   [field: string]: unknown;
 }
 
-const SECOND = 1000;
-
 /** The key of the leg between two homes, the same both ways (map times are symmetric). */
 export const legKey = (a: string, b: string): string => [a, b].sort().join('|');
 
@@ -130,10 +178,18 @@ export const legSeconds = (base: number, rockets: number): number =>
 /** The bus event of one of the parser's events: its fields, as `norelec` publishes them. */
 const asGameEvent = (event: KindEvent): GameEvent => event as unknown as GameEvent;
 
-/** The next record, from a record and one of the parser's events. */
-export function reduceRecord(state: GameRecord, event: KindEvent): GameRecord {
+/**
+ * The next record, from a record and one of the parser's events: what fell due before it, and
+ * whose line never came, is applied first (`settleDue`).
+ */
+export function reduceRecord(
+  state: GameRecord,
+  event: KindEvent,
+  options: RecordOptions = {}
+): GameRecord {
   const s = structuredClone(state);
   const t = event.t;
+  settleDue(s, t, options);
   const self = event['self'];
   if (typeof self === 'string') s.self = self.replace(/^@/u, '');
   const e = asGameEvent(event);
@@ -172,6 +228,10 @@ export function reduceRecord(state: GameRecord, event: KindEvent): GameRecord {
       arrived(s, e.player.name, t, e.seconds);
       break;
     case 'throwDelivered':
+      if (emojiKind(e.emoji) === '💦')
+        (player(s, e.to.name).expecting ??= []).push({ father: e.player.name, at: t });
+      arrived(s, e.player.name, t, undefined);
+      break;
     case 'freezeDelivered':
       arrived(s, e.player.name, t, undefined);
       break;
@@ -242,13 +302,10 @@ export function reduceRecord(state: GameRecord, event: KindEvent): GameRecord {
       break;
     case 'babyGone': {
       const name = e.player.name;
-      const baby = s.babies.find(
-        (b) => b.player === name && b.gone === undefined && b.stages.at(-1)?.emoji === e.emoji
-      );
+      const baby = leaving(s, name, e.emoji, t);
       if (baby === undefined) break;
       baby.gone = t;
-      const house = s.players[name]?.house;
-      if (house !== undefined && baby.slot !== undefined) house.slots[baby.slot - 1] = null;
+      freeSlot(s, baby, t);
       break;
     }
     case 'banned':
@@ -356,7 +413,13 @@ function setHouse(s: GameRecord, name: string, slotsNow: (string | null)[], t: n
       alive.find((b) => b.slot === slot && !seen.has(b)) ??
       alive.find((b) => b.slot === undefined && !seen.has(b));
     if (baby === undefined) {
-      const fresh: Baby = { player: name, slot, stages: [{ emoji, at: t }], lastSeen: t };
+      const fresh: Baby = {
+        player: name,
+        slot,
+        stages: [{ emoji, at: t }],
+        lastSeen: t,
+        leaves: leavesBy(emoji, t),
+      };
       s.babies.push(fresh);
       seen.add(fresh);
       return;
@@ -365,6 +428,8 @@ function setHouse(s: GameRecord, name: string, slotsNow: (string | null)[], t: n
     baby.slot = slot;
     baby.lastSeen = t;
     if (baby.stages.at(-1)?.emoji !== emoji) baby.stages.push({ emoji, at: t });
+    if (baby.born === undefined)
+      baby.leaves = Math.min(baby.leaves ?? Infinity, leavesBy(emoji, t));
   });
   for (const b of alive) if (!seen.has(b) && b.slot !== undefined) b.gone = t;
 }
@@ -372,12 +437,30 @@ function setHouse(s: GameRecord, name: string, slotsNow: (string | null)[], t: n
 /** A baby born in a house: its slot, where the house is known. */
 function born(s: GameRecord, e: EventOf<'born'>, t: number): void {
   const name = e.player.name;
+  const father = e.father.name;
+  // The 💦 it comes of is due no more.
+  const p = s.players[name];
+  const of = p?.expecting?.findIndex((x) => x.father === father) ?? -1;
+  if (p?.expecting !== undefined && of >= 0) {
+    p.expecting.splice(of, 1);
+    if (p.expecting.length === 0) delete p.expecting;
+  }
+  // A late line of a birth the record already took for missed: the line has the last word.
+  const assumed = s.babies.findIndex(
+    (b) =>
+      b.player === name && b.father === father && b.gone === undefined && b.unseen?.includes('born')
+  );
+  if (assumed >= 0) {
+    const [old] = s.babies.splice(assumed, 1);
+    if (old !== undefined) freeSlot(s, old, t);
+  }
   const baby: Baby = {
     player: name,
     born: t,
-    father: e.father.name,
+    father,
     stages: [{ emoji: e.emoji, at: t }],
     lastSeen: t,
+    leaves: t + BABY_LIFE_MS,
   };
   const replaced = e.replaced;
   if (replaced !== undefined) baby.replaced = replaced;
@@ -394,6 +477,124 @@ function born(s: GameRecord, e: EventOf<'born'>, t: number): void {
     }
   }
   s.babies.push(baby);
+}
+
+/** The baby whose `babyGone` line this is: by its last stage seen, else the one due nearest `t`. */
+function leaving(s: GameRecord, name: string, emoji: string, t: number): Baby | undefined {
+  const alive = s.babies.filter((b) => b.player === name && b.gone === undefined);
+  const kind = emojiKind(emoji);
+  const byStage = alive.find((b) => emojiKind(b.stages.at(-1)?.emoji ?? '') === kind);
+  if (byStage !== undefined) return byStage;
+  const due = (b: Baby): number => Math.abs((leavesOf(b) ?? Infinity) - t);
+  return alive.sort((a, b) => due(a) - due(b))[0];
+}
+
+/** A baby's slot, freed in its house where the house still shows a person there. */
+function freeSlot(s: GameRecord, baby: Baby, t: number): void {
+  const house = s.players[baby.player]?.house;
+  if (house === undefined || baby.slot === undefined) return;
+  if (!isPerson(house.slots[baby.slot - 1])) return;
+  house.slots[baby.slot - 1] = null;
+  house.at = t;
+}
+
+/** The latest a person seen at a stage at `at` leaves: born a stage a day, at most that old. */
+const leavesBy = (emoji: string, at: number): number =>
+  at - (STAGE[emojiKind(emoji)] ?? 0) * DAY + BABY_LIFE_MS;
+
+/**
+ * When a baby is due to leave: 96 h after its birth when the birth was seen (exact), else the
+ * latest its stages allow; undefined for one never seen in a stage.
+ */
+export function leavesOf(b: Baby): number | undefined {
+  if (b.leaves !== undefined) return b.leaves;
+  if (b.born !== undefined) return b.born + BABY_LIFE_MS;
+  const bounds = b.stages.map((st) => leavesBy(st.emoji, st.at));
+  return bounds.length === 0 ? undefined : Math.min(...bounds);
+}
+
+/** A change the record expected, whose line never came within the margin: applied all the same. */
+export type Missed =
+  | {
+      what: 'born';
+      player: string;
+      due: number;
+      father: string;
+      slot?: number;
+    }
+  | { what: 'babyGone'; player: string; due: number; emoji: string; slot?: number; exact: boolean }
+  | { what: 'returnHome'; player: string; due: number; to: string; arrived: boolean };
+
+/**
+ * Applies to `s` (in place) what was due more than the margin before `t` and whose line never
+ * came, as the game applied it: a baby born 9 h after a 💦 delivered (into the first free slot,
+ * when the house is known and has one; else its slot is left to the next /house), a baby gone 96 h
+ * after its birth (its slot freed), a trip back home by its return. Returns what it applied, in
+ * time order.
+ */
+export function settleDue(s: GameRecord, t: number, options: RecordOptions = {}): Missed[] {
+  const margin = options.missedAfterMs ?? MISSED_AFTER_MS;
+  const out: Missed[] = [];
+  for (const [name, p] of Object.entries(s.players)) {
+    const due = (p.expecting ?? []).filter((x) => x.at + BIRTH_AFTER_MS + margin < t);
+    if (due.length === 0) continue;
+    p.expecting = (p.expecting ?? []).filter((x) => !due.includes(x));
+    if (p.expecting.length === 0) delete p.expecting;
+    for (const x of due) {
+      const at = x.at + BIRTH_AFTER_MS;
+      const baby: Baby = {
+        player: name,
+        born: at,
+        father: x.father,
+        stages: [{ emoji: '👶', at }],
+        lastSeen: at,
+        leaves: at + BABY_LIFE_MS,
+        unseen: ['born'],
+      };
+      const i = p.house?.slots.indexOf(null) ?? -1;
+      if (p.house !== undefined && i >= 0) {
+        p.house.slots[i] = '👶';
+        p.house.at = t;
+        baby.slot = i + 1;
+      }
+      s.babies.push(baby);
+      out.push({
+        what: 'born',
+        player: name,
+        due: at,
+        father: x.father,
+        ...(baby.slot === undefined ? {} : { slot: baby.slot }),
+      });
+    }
+  }
+  for (const b of s.babies) {
+    const leaves = leavesOf(b);
+    if (b.gone !== undefined || leaves === undefined || leaves + margin >= t) continue;
+    b.gone = leaves;
+    b.unseen = [...(b.unseen ?? []), 'gone'];
+    freeSlot(s, b, t);
+    out.push({
+      what: 'babyGone',
+      player: b.player,
+      due: leaves,
+      emoji: b.stages.at(-1)?.emoji ?? '👶',
+      ...(b.slot === undefined ? {} : { slot: b.slot }),
+      exact: b.born !== undefined,
+    });
+  }
+  for (const [name, p] of Object.entries(s.players)) {
+    const trip = tripOf(s, name);
+    if (trip?.returnAt === undefined || trip.returnAt + margin >= t) continue;
+    delete p.trip;
+    out.push({
+      what: 'returnHome',
+      player: name,
+      due: trip.returnAt,
+      to: trip.to,
+      arrived: trip.arrivedAt !== undefined,
+    });
+  }
+  return out.sort((a, b) => a.due - b.due);
 }
 
 /** The first slot holding `from` (null: the first free one) now holds `to`. */
@@ -444,15 +645,43 @@ export function ballTotals(s: GameRecord, at: number): { name: string; seconds: 
     .sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name));
 }
 
-/** A house's slots, with the slots babies lock (1 to 10). */
+/** A slot a baby locks, and until when: `exact` when its birth was seen, else at the latest. */
+export interface Lock {
+  slot: number;
+  emoji: string;
+  until?: number;
+  exact: boolean;
+}
+
+/** A house's slots, with the slots babies lock (1 to 10), and until when each (`locks`). */
 export function houseOf(
   s: GameRecord,
   name: string
-): { slots: (string | null)[]; locked: number[]; at: number } | undefined {
+): { slots: (string | null)[]; locked: number[]; locks: Lock[]; at: number } | undefined {
   const house = s.players[name]?.house;
   if (house === undefined) return undefined;
   const locked = house.slots.flatMap((c, i) => (isPerson(c) ? [i + 1] : []));
-  return { slots: [...house.slots], locked, at: house.at };
+  const locks = locked.map((slot): Lock => {
+    const baby = s.babies.find((b) => b.player === name && b.gone === undefined && b.slot === slot);
+    const until = baby === undefined ? undefined : leavesOf(baby);
+    return {
+      slot,
+      emoji: String(house.slots[slot - 1]),
+      ...(until === undefined ? {} : { until }),
+      exact: baby?.born !== undefined,
+    };
+  });
+  return { slots: [...house.slots], locked, locks, at: house.at };
+}
+
+/** The babies (of one house, or all), each with when it is due to leave (`leaves`). */
+export function babiesOf(s: GameRecord, name?: string): (Baby & { exact: boolean })[] {
+  return s.babies
+    .filter((b) => name === undefined || b.player === name)
+    .map((b) => {
+      const leaves = leavesOf(b);
+      return { ...b, ...(leaves === undefined ? {} : { leaves }), exact: b.born !== undefined };
+    });
 }
 
 /** A player's trip under way, with when it is due home if known (`returnAt`). */

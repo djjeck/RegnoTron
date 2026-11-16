@@ -63,24 +63,37 @@ event log, and tells news only, never a correction, and nothing for an event pla
 its catch-up (bot-os.md D72, D83). It keeps, per player, the house (its slots, babies included), the
 carried emoji, the trip under way (from, to, start, arrival, return, the 🚀 carried), the balls and
 rank of the last `/profile`, and since when the game bans them; the ⚽'s holder and each player's
-time with it (reconciled with every `/leaderboard`, silently); every baby seen, with its birth,
-slot, father, each stage it was seen in and when, and when it was first seen gone, so that its
-lifetime can be measured; the base trip time measured between two homes (a trip's time is the base /
-(1 + 0.1 × 🚀 carried), floored); the prices the bot stated (an emoji's, `quote`'s); the commands it
-said are disabled.
+time with it (reconciled with every `/leaderboard`, silently); every 💦 delivered to a house, its
+baby due 9 hours later; every baby seen, with its birth, slot, father, each stage it was seen in and
+when, when it is due to leave (`leaves`: 96 hours after its birth, measured on 13 babies; for one
+whose birth was not seen, the latest its stages allow, a stage a day) and when it was first seen
+gone; the base trip time measured between two homes (a trip's time is the base / (1 + 0.1 × 🚀
+carried), floored); the prices the bot stated (an emoji's, `quote`'s); the commands it said are
+disabled.
+
+**What the game does on its own**, the record times (`settleDue` in `src/state/record.ts`): a baby's
+birth 9 hours after a 💦 delivered, its departure 96 hours after its birth, a trip's return. The bot
+says a line for each, and the line is the authority (a `babyGone` frees the slot), but a line can be
+lost on Telegram or IRC while the game applies the change all the same: once one is 10 minutes
+overdue with no line, the record applies it at the next event it applies (the state plugin has no
+timer of its own: the game's events, every few seconds, are its clock, and replaying the log gives
+the same record), as the game did: the baby born at its time (into the first free slot, when the
+house is known and has one), marked `unseen: ['born']`, a late birth line taking its place; the baby
+gone at its time, its slot freed (`unseen: ['gone']`); the player home. Its store is at version 1:
+its one migration gives each baby kept its `leaves`.
 
 Its interface, beside `state.get` and `state.freshness`:
 
-| Query                 | Answers                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------- |
-| `player({ name })`    | The player's record, or null                                                           |
-| `house({ name })`     | `{ slots, locked, at }`: the slots (empty null), those a baby locks (1–10), when known |
-| `trip({ name })`      | `{ from, to, start, arriveAt, arrivedAt, returnAt, rockets, load }`, or null           |
-| `ball({ at? })`       | `{ holder: { name, since }, totals: [{ name, seconds }] }`, most held first            |
-| `held({ name, at? })` | The seconds the player held the ⚽, the hold under way included                        |
-| `babies({ name? })`   | The babies (of one house): `{ player, slot, born, father, stages, lastSeen, gone }`    |
-| `banned()`            | `{ name: since }`                                                                      |
-| `price({ emoji })`    | `{ balls, at }` as the bot last stated it, or null                                     |
+| Query                 | Answers                                                                                                                                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `player({ name })`    | The player's record, or null                                                                                                                                                             |
+| `house({ name })`     | `{ slots, locked, locks, at }`: the slots (empty null), those a baby locks (1–10), and each lock `{ slot, emoji, until, exact }` (when its baby leaves; `exact` when its birth was seen) |
+| `trip({ name })`      | `{ from, to, start, arriveAt, arrivedAt, returnAt, rockets, load }`, or null                                                                                                             |
+| `ball({ at? })`       | `{ holder: { name, since }, totals: [{ name, seconds }] }`, most held first                                                                                                              |
+| `held({ name, at? })` | The seconds the player held the ⚽, the hold under way included                                                                                                                          |
+| `babies({ name? })`   | The babies (of one house): `{ player, slot, born, father, stages, lastSeen, leaves, exact, gone, unseen }`                                                                               |
+| `banned()`            | `{ name: since }`                                                                                                                                                                        |
+| `price({ emoji })`    | `{ balls, at }` as the bot last stated it, or null                                                                                                                                       |
 
 Its events: `norelec-state.ballMoved` (`{ from, to }`, the ⚽ taken, for anyone), and about the
 owner's account (`self`): `raided` (`{ by, outcome: stolen | held | dog, balls }`), `thrownAt`

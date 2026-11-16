@@ -1,6 +1,6 @@
 # NorelecBot "palle" game: rulebook
 
-Documented as of 15 Nov 2026. **Since 9–10 Nov 2026 the game is the ⚽ version (§0.1), which
+Documented as of 16 Nov 2026. **Since 9–10 Nov 2026 the game is the ⚽ version (§0.1), which
 replaces much of what follows**: read §0.1 first; the sections below describe the game before it,
 and stay true where §0.1 does not change them. NorelecBot is a Telegram bot, written by Norelec,
 that runs a game in the game's group and, through a relay, in an IRC channel. This describes the
@@ -49,11 +49,14 @@ Conquister).
 - **Disabled** [S]: /give and /burn (`… è disattivato.`), the ☢️ (`la ☢️ è disattivata.`);
   /avventura and throws at the place get no reply; the Sentinel (daily report, /sospetti, /unblock)
   is gone.
-- **Babies** [M]: a 💦 delivered at a home gives a baby 9 hours later, which takes a house slot (the
-  first free one, or in a full house replacing an emoji, destroyed) and **locks** it: it cannot be
-  bought over (`… c'è 👶, che non si tocca: se ne andrà da solo.`). It grows (👶 → 👦/👧 → 👨/👩 →
-  👴/👵), about a stage a day; when it leaves is not known yet [?]. A house full of babies holds no
-  🎈, 🐶, 📮 or 🐔.
+- **Babies** [M]: a 💦 delivered at a home gives a baby exactly 9 hours later, which takes a house
+  slot (the first free one, or in a full house replacing an emoji, destroyed) and **locks** it: it
+  cannot be bought over (`… c'è 👶, che non si tocca: se ne andrà da solo.`). It grows a stage a day
+  (👶 → 👦/👧 → 👨/👩 → 👴/👵) and **leaves 96 hours (4 days) after its birth**, freeing the slot
+  (`@V 👴 ha vissuto la sua vita e se n'è andato: il posto è di nuovo libero.`): measured on 13
+  babies, each line 96 h and 1 to 5 seconds after its birth's. The game applies a birth and a
+  departure whether or not its line reaches the chat. A house full of babies holds no 🎈, 🐶, 📮 or
+  🐔.
 - **Bans** [M]: a banned player gets `COGLIONE`, to some commands, and no reply to the others; they
   stay raidable.
 - Trips, raids, freezes (🧊 still stops a departure, and the frozen player's 🎈 does not defend),

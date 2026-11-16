@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { BABY_LIFE_MS, type GameRecord, initialRecord } from '#src/state/record.ts';
 import { bootRun, OWNER, T0 } from '#test/run.ts';
-import { norelecStatePlugin, plugins } from './norelec-state.ts';
+import { MIGRATIONS, norelecStatePlugin, plugins } from './norelec-state.ts';
 
 let dir: string;
 beforeEach(() => {
@@ -97,9 +98,18 @@ describe('the norelec-state node', () => {
       by: 'Bravo',
     });
     expect(run.of('norelec-state.thrownAt').map((e) => e['emoji'])).toEqual(['💦', '🧊', '💣']);
-    expect(run.read('house', { name: 'alice' })).toMatchObject({ locked: [2] });
+    expect(run.read('house', { name: 'alice' })).toMatchObject({
+      locked: [2],
+      locks: [{ slot: 2, emoji: '👶', until: T0 + 2500 + BABY_LIFE_MS, exact: true }],
+    });
     expect(run.read('babies', { name: 'alice' })).toEqual([
-      expect.objectContaining({ slot: 2, born: expect.any(Number), father: 'Bravo' }),
+      expect.objectContaining({
+        slot: 2,
+        born: T0 + 2500,
+        father: 'Bravo',
+        leaves: T0 + 2500 + BABY_LIFE_MS,
+        exact: true,
+      }),
     ]);
     expect(run.read('babies', {})).toHaveLength(1);
     await run.core.stop();
@@ -124,5 +134,29 @@ describe('the norelec-state node', () => {
     expect(run.read('player', { name: OWNER })).toMatchObject({ balls: { n: 10, rank: 2 } });
     expect(run.read('get', { path: 'self' })).toBe(OWNER);
     await run.core.stop();
+  });
+
+  it('gives each baby of a store kept before lifetimes its departure, as it migrates', () => {
+    const state: GameRecord = {
+      ...initialRecord(),
+      babies: [
+        { player: 'alice', born: 0, stages: [{ emoji: '👶', at: 0 }], lastSeen: 0 },
+        { player: 'alice', stages: [], lastSeen: 0 },
+      ],
+    };
+    const docs = new Map<string, unknown>([['state', { state, cursor: {} }]]);
+    const store = {
+      read: <T>(name: string) => docs.get(name) as T | undefined,
+      write: (name: string, value: unknown) => void docs.set(name, value),
+      remove: (name: string) => void docs.delete(name),
+      names: () => [...docs.keys()],
+    };
+    for (const m of MIGRATIONS) m(store);
+    const kept = docs.get('state') as { state: GameRecord };
+    expect(kept.state.babies.map((b) => b.leaves)).toEqual([BABY_LIFE_MS, undefined]);
+    // A store with no state yet has nothing to migrate.
+    docs.clear();
+    for (const m of MIGRATIONS) m(store);
+    expect(docs.size).toBe(0);
   });
 });
