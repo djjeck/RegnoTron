@@ -38,13 +38,6 @@ export const TURN_COMMANDS: Readonly<Record<GameBot, readonly string[]>> = {
   [LOREGAMEBOT]: ['/avventura', '/lore'],
   [EPICLORELECBOT]: ['/avventura', '/rompimiilcazzo'],
 };
-/**
- * @pescaccia_bot, whose catches' materials the ledger keeps too: read by a parser outside RegnoTron, and never played
- * (docs/game-bots.md §4).
- */
-export const PESCACCIABOT = 'pescaccia_bot';
-/** A bot whose gains the ledger keeps. */
-export type LedgerBot = GameBot | typeof PESCACCIABOT;
 
 const MINUTE = 60_000;
 /** Every bot's rest between turns: 15 minutes [M] (docs/game-bots.md §2). */
@@ -55,11 +48,9 @@ export const LORE_DEFEAT_REST_MS = 30 * MINUTE;
 export type Outcome =
   | {
       kind: 'gain';
-      bot: LedgerBot;
+      bot: GameBot;
       item: string;
       rarity: string;
-      /** How many of it, when more than one (@pescaccia_bot's materials). */
-      count?: number;
       /** The tags after the rarity, which start lower-case: `usabile`, `equipaggiabile 🗡`. */
       tags: string[];
       /** False when the item's name is a guess (@InventoryBot's, from an unknown sentence). */

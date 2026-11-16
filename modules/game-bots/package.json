@@ -1,17 +1,15 @@
 {
   "name": "@regnotron/game-bots",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "private": true,
-  "description": "RegnoTron's game bots: @LoreGameBot's and @EpicLorelecBot's parsers, and the ledger of their turns and @InventoryBot's",
+  "description": "RegnoTron's game bots: @LoreGameBot's and @EpicLorelecBot's parsers",
   "license": "MIT",
   "type": "module",
   "exports": {
-    "./*": "./src/*",
-    "./test/*": "./test/*"
+    "./*": "./src/*"
   },
   "imports": {
-    "#src/*": "./src/*",
-    "#test/*": "./test/*"
+    "#src/*": "./src/*"
   },
   "engines": {
     "node": ">=24"

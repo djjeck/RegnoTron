@@ -5,15 +5,13 @@ The turns of the group's game bots, read on the turn plugins of `@megabottron199
 - `src/replies.ts`: what a turn of @InventoryBot, @LoreGameBot or @EpicLorelecBot brought (an item,
   nothing and why, a count: `Outcome`), their rests, their turn commands (`TURN_COMMANDS`), and the
   grammars of @LoreGameBot and @EpicLorelecBot;
-- `src/ledger.ts`: the ledger of what the turns brought;
 - `src/plugins/`: the parser plugins of @LoreGameBot and @EpicLorelecBot (`loregame`,
-  `epiclorelec`), and `metagame`, the ledger's plugin and its `/loot` command, read only, over a
-  list of games.
+  `epiclorelec`).
 
 @InventoryBot's parser, the plugin `inventorybot`, is no longer here: it is the module
 `inventorybot` of [InventoryBotTron](https://github.com/djjeck/InventoryBotTron), beside its
-grammar, with the same plugin id and the same `inventorybot.turn` events, which `metagame` reads as
-before. This module imports no other.
+grammar, with the same plugin id and the same `inventorybot.turn` events. This module imports no
+other.
 
 It plays nothing. The bots are described in [docs/game-bots.md](../../docs/game-bots.md).
 
@@ -56,15 +54,3 @@ publishes `<id>.turn`, which the editor lists with its description, and which, t
 `turnParserPlugin`, answers its turn commands (the shell's bot-os.md D98: a "too soon" refused with
 its `retryAt`, any other outcome `ok`). A turn-actor of the shell, if the owner runs one beside a
 parser, needs `{ "command": "/avventura" }`.
-
-**`metagame`:** its optional events inputs `inventorybot-events` and `loregame-events` take the two
-parsers' turns: InventoryBotTron's `inventorybot` and this module's `loregame`. Another game's
-parser (outside RegnoTron) adds its outcomes through the action `add` (`{ t, outcomes }`), over an
-interface edge to `metagame`. Its store is at version 2: its two migrations, for a layout no store
-holds any more, are no-ops, kept because the shell refuses a store at a version above its plugin's
-count of migrations.
-
-| Config   | Default                           | Meaning                                                               |
-| -------- | --------------------------------- | --------------------------------------------------------------------- |
-| `ledger` | `true`                            | Keep the ledger; off, `/loot` says there is none                      |
-| `bots`   | `["InventoryBot", "LoreGameBot"]` | The bots whose gains `/loot` lists, in its order (another game's too) |

@@ -3,9 +3,8 @@
 NorelecBot's game and the turns of the group's other game bots, as modules for MegaBotTron1999
 (`vendor/MegaBotTron1999`, a git submodule): `norelec` (the parser, the game state, the `norelec`
 plugin), `norelec-tools` (the map and the nuclear clock) and `game-bots` (@LoreGameBot's and
-@EpicLorelecBot's parser plugins, and the ledger, which takes @InventoryBot's turns from
-InventoryBotTron's `inventorybot` parser). It reads the bots and plays nothing. See
-[README.md](README.md) for the overview.
+@EpicLorelecBot's parser plugins). It reads the bots and plays nothing. See [README.md](README.md)
+for the overview.
 
 **This repository is public.** Everything committed here, history included, is readable by anyone.
 
@@ -75,9 +74,7 @@ formatting. Address every error before marking a sub-task complete.
   here: a change to the shell is made in its repository, and the pin is bumped here (with
   `npm install` for the lockfile) in a commit of its own.
 - **@InventoryBot is read elsewhere:** its parser plugin, `inventorybot`, and its grammar live in
-  [InventoryBotTron](https://github.com/djjeck/InventoryBotTron). `metagame` takes its
-  `inventorybot.turn` events through the graph only (an events input of namespace `inventorybot`),
-  importing nothing of it; its tests stand a parser of that id and event in for it.
+  [InventoryBotTron](https://github.com/djjeck/InventoryBotTron); nothing here imports it.
 - **Coverage stays at or above 90%** on statements, branches, functions and lines, for the whole and
   for each module's `src/` on its own (`vitest.config.ts` sets a threshold per module).
 - **Dependencies:** the root has dev dependencies only, as few as possible, each justified in the

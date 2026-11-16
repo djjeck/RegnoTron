@@ -18,13 +18,12 @@ into a running shell. Everything here changes freely until the shell's launch.
 | --------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `norelec`       | `@regnotron/norelec`       | NorelecBot's game: its grammar (read and written), its parser over IRC, Telegram and Telegram exports, the game state; the `norelec` parser plugin and the `norelec-state` record |
 | `norelec-tools` | `@regnotron/norelec-tools` | The map of the players' homes (`/map`) and the nuclear clock (`/nuclear_warning`), as the plugins `norelec-map` and `nuclear-clock`; imports `norelec`                            |
-| `game-bots`     | `@regnotron/game-bots`     | @LoreGameBot's and @EpicLorelecBot's parser plugins, and `metagame`, the ledger of what the owner's turns brought (`/loot`), @InventoryBot's included                             |
+| `game-bots`     | `@regnotron/game-bots`     | @LoreGameBot's and @EpicLorelecBot's parser plugins (`loregame`, `epiclorelec`)                                                                                                   |
 
 @InventoryBot's parser plugin, `inventorybot`, is the module `inventorybot` of
-[InventoryBotTron](https://github.com/djjeck/InventoryBotTron), beside the bot's grammar; `metagame`
-reads its `inventorybot.turn` events as any parser's. Each module has its own README. The bots'
-texts are quoted in Italian, as they write them; the players' names in the tests and fixtures are
-made up.
+[InventoryBotTron](https://github.com/djjeck/InventoryBotTron), beside the bot's grammar. Each
+module has its own README. The bots' texts are quoted in Italian, as they write them; the players'
+names in the tests and fixtures are made up.
 
 ## Installing a module
 

@@ -3,11 +3,10 @@
 Documented as of 16 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
 has other game bots, each with its own game played one turn at a time. RegnoTron reads the turns of
 two of them, @LoreGameBot and @EpicLorelecBot, in `modules/game-bots/`: their reply grammars
-(`src/replies.ts`), their parser plugins in `src/plugins/`, and a ledger of what the turns brought,
-listed by `/loot`, which takes @InventoryBot's turns too. @InventoryBot's parser, the plugin
+(`src/replies.ts`) and their parser plugins in `src/plugins/`. @InventoryBot's parser, the plugin
 `inventorybot`, is [InventoryBotTron](https://github.com/djjeck/InventoryBotTron)'s, beside the
-bot's grammar and protocol; its turns reach the ledger as its `inventorybot.turn` events. Marks as
-in [game-rules.md](game-rules.md): **[S]** stated, **[M]** measured, **[?]** unknown.
+bot's grammar and protocol, and publishes its turns as `inventorybot.turn` events. Marks as in
+[game-rules.md](game-rules.md): **[S]** stated, **[M]** measured, **[?]** unknown.
 
 **Nothing here plays any bot.** RegnoTron's modules only read the bots' answers; they send no turn.
 @pescaccia_bot, the group's fishing game, does not allow automation, and nothing here plays it.
@@ -61,8 +60,7 @@ account and its bot, and the group when its edge reads it too:
 - **@EpicLorelecBot** names the player by display name, so its count is read only in the direct
   chat; its "too soon" replies to the command, so it is read in either chat.
 
-The ledger keeps what @InventoryBot and @LoreGameBot give. @EpicLorelecBot's count is not in it: it
-is a running total the bot states at each turn, not an item.
+@EpicLorelecBot's count is a running total the bot states at each turn, not an item.
 
 ## 4. Not read, not played
 
