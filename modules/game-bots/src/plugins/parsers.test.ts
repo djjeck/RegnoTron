@@ -71,6 +71,7 @@ describe('the game bots’ parsers', () => {
       }
       expect(turns).toEqual([
         'loregame.turn @LoreGameBot',
+        'loregame.turn @LoreGameBot',
         'epiclorelec.turn @EpicLorelecBot',
         'epiclorelec.turn @EpicLorelecBot',
       ]);

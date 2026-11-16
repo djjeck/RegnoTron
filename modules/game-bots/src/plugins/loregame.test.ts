@@ -71,4 +71,18 @@ describe('the loregame parser', () => {
     expect(p.iface.rest()).toMatchObject({ until: T0 + 40 * MIN, why: 'it said too soon' });
     expect(p.drift()).toMatchObject({ read: 6, unread: 1 });
   });
+
+  it('counts /lore as a turn, as /avventura, in the group and in private', async () => {
+    const p = await run(loregamePlugin, {}, GROUP);
+    const lore = { sender: 'LoreGameBot' };
+    const hand = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/lore@LoreGameBot' });
+    p.hear({ ...lore, chat: GROUP, replyTo: hand, text: "Hai ottenuto un'ampolla di nebbia [C]!" });
+    // In private, the first answer to a /lore it cannot read is a turn's (drift); to another
+    // command, not its business.
+    p.hear({ chat: '@LoreGameBot', sender: 'alice', own: true, text: '/inventario' });
+    p.hear({ ...lore, chat: '@LoreGameBot', text: 'Il tuo inventario: …' });
+    p.hear({ chat: '@LoreGameBot', sender: 'alice', own: true, text: '/lore' });
+    p.hear({ ...lore, chat: '@LoreGameBot', text: 'Un messaggio qualunque' });
+    expect(p.outcomes()).toEqual(['gain', 'unknown']);
+  });
 });

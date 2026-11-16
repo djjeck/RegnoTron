@@ -35,7 +35,7 @@ export type GameBot = typeof INVENTORYBOT | typeof LOREGAMEBOT | typeof EPICLORE
  */
 export const TURN_COMMANDS: Readonly<Record<GameBot, readonly string[]>> = {
   [INVENTORYBOT]: ['/avventura'],
-  [LOREGAMEBOT]: ['/avventura'],
+  [LOREGAMEBOT]: ['/avventura', '/lore'],
   [EPICLORELECBOT]: ['/avventura', '/rompimiilcazzo'],
 };
 /**
