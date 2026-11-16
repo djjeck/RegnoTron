@@ -60,16 +60,16 @@ of migrations.
 (`src/state/record.ts`), kept by MegaBotTron1999's `statePlugin` from the `norelec` node's
 `norelec.<kind>` events (its `events` input): it survives restarts, resumes from its cursor in the
 event log, and tells news only, never a correction, and nothing for an event played back or read at
-its catch-up (bot-os.md D72, D83). It keeps, per player, the house (its slots, babies included), the
-carried emoji, the trip under way (from, to, start, arrival, return, the 🚀 carried), the balls and
-rank of the last `/profile`, and since when the game bans them; the ⚽'s holder and each player's
-time with it (reconciled with every `/leaderboard`, silently); every 💦 delivered to a house, its
-baby due 9 hours later; every baby seen, with its birth, slot, father, each stage it was seen in and
-when, when it is due to leave (`leaves`: 96 hours after its birth, measured on 13 babies; for one
-whose birth was not seen, the latest its stages allow, a stage a day) and when it was first seen
-gone; the base trip time measured between two homes (a trip's time is the base / (1 + 0.1 × 🚀
-carried), floored); the prices the bot stated (an emoji's, `quote`'s); the commands it said are
-disabled.
+its catch-up (bot-os.md D72, D83). It keeps, per player, the house (its slots, babies included; a
+🏴‍☠️'s plunder taken out of it), the carried emoji, the trip under way (from, to, start, arrival,
+return, the 🚀 carried), the balls and rank of the last `/profile`, and since when the game bans
+them; the ⚽'s holder and each player's time with it (reconciled with every `/leaderboard`,
+silently); every 💦 delivered to a house, its baby due 9 hours later; every baby seen, with its
+birth, slot, father, each stage it was seen in and when, when it is due to leave (`leaves`: 96 hours
+after its birth, measured on 13 babies; for one whose birth was not seen, the latest its stages
+allow, a stage a day) and when it was first seen gone; the base trip time measured between two homes
+(a trip's time is the base / (1 + 0.1 × 🚀 carried), floored); the prices the bot stated (an
+emoji's, `quote`'s); the commands it said are disabled.
 
 **What the game does on its own**, the record times (`settleDue` in `src/state/record.ts`): a baby's
 birth 9 hours after a 💦 delivered, its departure 96 hours after its birth, a trip's return. The bot

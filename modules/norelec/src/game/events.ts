@@ -51,8 +51,11 @@ export interface EventFields {
   };
   alarm: { victim: PlayerRef; player?: PlayerRef };
   dinosaur: { victim: PlayerRef; eaten: string; player?: PlayerRef };
-  /** The raider takes `emoji` from the victim's house; `carried`: their slots after it, if listed. */
-  pirate: { emoji: string; carried?: (string | null)[]; player?: PlayerRef };
+  /**
+   * The raider takes `emoji` from the victim's house; `carried`: their slots after it, if listed;
+   * `player` and `victim`: the raider and the robbed of the theft before it (parse-message.ts).
+   */
+  pirate: { emoji: string; carried?: (string | null)[]; player?: PlayerRef; victim?: PlayerRef };
   /**
    * The ⚽ taken from its holder by a theft (the line after the theft's): `player` the thief,
    * `from` the holder robbed, both from the theft (parse-message.ts).

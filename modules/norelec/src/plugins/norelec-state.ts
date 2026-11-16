@@ -47,6 +47,7 @@ export const CONSUMES = [
   'balloonHeld',
   'dog',
   'bombAtHome',
+  'pirate',
   'bombDefective',
   'throwUndelivered',
   'throwDelivered',

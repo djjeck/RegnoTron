@@ -19,6 +19,13 @@ describe('parseMessage', () => {
     const fixture = BOT_MESSAGES.find((f) => f.name === 'a theft with pity and a pirate flag');
     const pity = parseMessage(fixture?.text ?? '').find((e) => e.kind === 'pity');
     expect(pity).toMatchObject({ player: { name: 'Alfa' } });
+    // The pirate flag's plunder: the raider's, from the house of the theft's victim.
+    const pirate = parseMessage(fixture?.text ?? '').find((e) => e.kind === 'pirate');
+    expect(pirate).toMatchObject({
+      player: { name: 'Alfa' },
+      victim: { name: 'Bravo' },
+      emoji: '🧊',
+    });
   });
 
   it('leaves a line without a player alone when the message names none', () => {

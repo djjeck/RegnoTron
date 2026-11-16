@@ -7,7 +7,7 @@
  * - After `/addquote`'s answer the bot echoes the new quote, which is not game text: after it,
  *   lines no template knows are dropped. Blank lines are ignored (IRC loses them).
  * - The ⚽ taken (`⚽ E gli porti via la palla!`) names nobody: it is the thief's, from the victim
- *   of the theft before it.
+ *   of the theft before it; so does the pirate flag's plunder, whose house is that victim's.
  * - Listings and announcements (the /emoji printout, /help, "📣 Novità") are one `info` event:
  *   they describe rules, they change no state.
  * - A /profile reply is one `profile` event, and a /house reply one `house` event. A profile starts
@@ -156,6 +156,7 @@ function parseLines(lines: readonly string[]): GameEvent[] {
       event.player = theft.player;
       event.from = theft.victim;
     }
+    if (event.kind === 'pirate' && theft !== undefined) event.victim = theft.victim;
     if ('player' in event && event.player !== undefined) subject = event.player;
     else if (NEEDS_PLAYER.has(event.kind) && subject !== undefined) {
       (event as { player?: PlayerRef }).player = subject;

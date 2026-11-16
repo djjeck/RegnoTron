@@ -127,6 +127,25 @@ describe('houses and babies', () => {
     expect(houseOf(m, 'Bravo')?.slots).toEqual([null, '🐔', ...Array(8).fill(null)]);
   });
 
+  it('takes a pirate flag’s plunder out of the robbed house, onto the raider', () => {
+    const s = after(
+      [0, 'Casa di Bravo (2/10):\n1 🎈  2 🧊  3 ·  4 ·  5 ·  6 ·  7 ·  8 ·  9 ·  10 ·'],
+      [
+        S,
+        'Alfa (🏴‍☠️🎈) hai rubato 4 palle a Bravo (🎈), che non era a casa! Torni in Alfa tra 58 secondi.\n' +
+          'Arrembaggio: ti porti via anche 🧊 da casa sua: ora hai con te 🏴‍☠️🎈🧊.',
+      ]
+    );
+    expect(houseOf(s, 'Bravo')?.slots.slice(0, 2)).toEqual(['🎈', null]);
+    expect(s.players['Alfa']?.carried).toEqual(['🏴‍☠️', '🎈', '🧊']);
+    // Without its theft (a line read alone), no house is touched.
+    const alone = after(
+      [0, 'Casa di Bravo (2/10):\n1 🎈  2 🧊  3 ·  4 ·  5 ·  6 ·  7 ·  8 ·  9 ·  10 ·'],
+      [S, 'Arrembaggio: ti porti via anche 🧊 da casa sua.']
+    );
+    expect(houseOf(alone, 'Bravo')?.slots[1]).toBe('🧊');
+  });
+
   it('puts a purchase over the slot it names, and moves an emoji between house and carried', () => {
     const s = after(
       [0, FULL_HOUSE],

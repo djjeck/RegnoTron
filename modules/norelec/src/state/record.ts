@@ -289,6 +289,12 @@ export function reduceRecord(
       if (e.carried) replaceInHouse(s, e.player.name, e.emoji, e.swapped ?? null, t);
       else replaceInHouse(s, e.player.name, null, e.emoji, t);
       break;
+    case 'pirate':
+      // A 🏴‍☠️'s plunder: out of the robbed house, onto the raider.
+      if (e.victim !== undefined) replaceInHouse(s, e.victim.name, e.emoji, null, t);
+      if (e.player !== undefined && e.carried !== undefined)
+        player(s, e.player.name).carried = e.carried;
+      break;
     case 'slotLocked': {
       const house = s.players[e.player.name]?.house;
       if (house === undefined) break;
