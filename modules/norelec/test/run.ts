@@ -22,8 +22,11 @@ export const T0 = Date.UTC(2026, 10, 14, 12, 0, 0);
 export const CHANNEL = '#lobby';
 export const OWNER = 'alice';
 
-/** An instance in `dir`, from `at`. */
-export async function bootRun(dir: string, o: { at?: number } = {}) {
+/** An instance in `dir`, from `at`, its `norelec-state` node configured with `state`. */
+export async function bootRun(
+  dir: string,
+  o: { at?: number; state?: Record<string, unknown> } = {}
+) {
   const clock = new VirtualClock(o.at ?? T0);
   const log = new CoreEventLog(path.join(dir, 'events'));
   const account = new FakeConnector({ account: `irc:${OWNER}` });
@@ -37,7 +40,10 @@ export async function bootRun(dir: string, o: { at?: number } = {}) {
       records.push(r as BusEvent);
       return log.write(r);
     },
-    config: { norelec: { channel: CHANNEL, self: OWNER } },
+    config: {
+      norelec: { channel: CHANNEL, self: OWNER },
+      ...(o.state === undefined ? {} : { [NORELEC_STATE]: o.state }),
+    },
     graph: (defaults) => withChats(defaults, 'norelec.channel', { reads: [CHANNEL] }),
   });
   core.register(fakeConnectorPlugin(IRC, account), norelecPlugin, norelecStatePlugin);

@@ -59,28 +59,28 @@ of migrations.
 **Plugin:** `norelec-state` (`src/plugins/norelec-state.ts`), the game's record
 (`src/state/record.ts`), kept by MegaBotTron1999's `statePlugin` from the `norelec` node's
 `norelec.<kind>` events (its `events` input): it survives restarts, resumes from its cursor in the
-event log, and tells news only, never a correction, and nothing for an event played back or read at
-its catch-up (bot-os.md D72, D83). It keeps, per player, the house (its slots, babies included; a
-🏴‍☠️'s plunder taken out of it), the carried emoji, the trip under way (from, to, start, arrival,
-return, the 🚀 carried), the balls and rank of the last `/profile`, and since when the game bans
-them; the ⚽'s holder and each player's time with it (reconciled with every `/leaderboard`,
-silently); every 💦 delivered to a house, its baby due 9 hours later; every baby seen, with its
-birth, slot, father, each stage it was seen in and when, when it is due to leave (`leaves`: 96 hours
-after its birth, measured on 13 babies; for one whose birth was not seen, the latest its stages
-allow, a stage a day) and when it was first seen gone; the base trip time measured between two homes
-(a trip's time is the base / (1 + 0.1 × 🚀 carried), floored); the prices the bot stated (an
-emoji's, `quote`'s); the commands it said are disabled.
+event log, and tells news (and where the record and the game disagree, below), and nothing for an
+event played back or read at its catch-up (bot-os.md D72, D83). It keeps, per player, the house (its
+slots, babies included; a 🏴‍☠️'s plunder taken out of it), the carried emoji, the trip under way
+(from, to, start, arrival, return, the 🚀 carried), the balls and rank of the last `/profile`, and
+since when the game bans them; the ⚽'s holder and each player's time with it (reconciled with every
+`/leaderboard`); every 💦 delivered to a house, its baby due 9 hours later; every baby seen, with
+its birth, slot, father, each stage it was seen in and when, when it is due to leave (`leaves`: 96
+hours after its birth, measured on 13 babies; for one whose birth was not seen, the latest its
+stages allow, a stage a day) and when it was first seen gone; the base trip time measured between
+two homes (a trip's time is the base / (1 + 0.1 × 🚀 carried), floored); the prices the bot stated
+(an emoji's, `quote`'s); the commands it said are disabled.
 
 **What the game does on its own**, the record times (`settleDue` in `src/state/record.ts`): a baby's
 birth 9 hours after a 💦 delivered, its departure 96 hours after its birth, a trip's return. The bot
 says a line for each, and the line is the authority (a `babyGone` frees the slot), but a line can be
-lost on Telegram or IRC while the game applies the change all the same: once one is 10 minutes
-overdue with no line, the record applies it at the next event it applies (the state plugin has no
-timer of its own: the game's events, every few seconds, are its clock, and replaying the log gives
-the same record), as the game did: the baby born at its time (into the first free slot, when the
-house is known and has one), marked `unseen: ['born']`, a late birth line taking its place; the baby
-gone at its time, its slot freed (`unseen: ['gone']`); the player home. Its store is at version 1:
-its one migration gives each baby kept its `leaves`.
+lost on Telegram or IRC while the game applies the change all the same: once one is `missedAfterMin`
+(10) minutes overdue with no line, the record applies it at the next event it applies (the state
+plugin has no timer of its own: the game's events, every few seconds, are its clock, and replaying
+the log gives the same record), as the game did: the baby born at its time (into the first free
+slot, when the house is known and has one), marked `unseen: ['born']`, a late birth line taking its
+place; the baby gone at its time, its slot freed (`unseen: ['gone']`); the player home. Its store is
+at version 1: its one migration gives each baby kept its `leaves`.
 
 Its interface, beside `state.get` and `state.freshness`:
 
@@ -99,3 +99,32 @@ Its events: `norelec-state.ballMoved` (`{ from, to }`, the ⚽ taken, for anyone
 owner's account (`self`): `raided` (`{ by, outcome: stolen | held | dog, balls }`), `thrownAt`
 (`{ by, emoji }`: a 💦, a 🧊, a 💣 arrived), `ballTaken` (`{ by }`) and `slotLocked`
 (`{ slot, emoji, by, replaced }`: a baby born in the owner's house).
+
+**Where the record and the game disagree** (`src/state/checks.ts`), told with the same rule, never
+for an event played back or read at the catch-up:
+
+- `missed` (`{ what: born | babyGone | returnHome, player, due, slot?, detail }`): a change the
+  record expected for the owner's account and applied with no line (above): a birth, a baby's
+  departure, a return (only for a trip seen arriving: one not seen may be a dream, whose line comes
+  late).
+- `disagreed` (`{ what: house | trip | ball, player?, before, after, detail }`): a listing that
+  contradicts what the record held, which the record takes as the truth, as it always did: the
+  owner's `/house` (a slot holding something else, a lost raid, purchase, birth or departure; a baby
+  grown a stage, or one whose time is up, is none), the owner's `/profile` where it puts them
+  elsewhere than the record's trip (a lost departure or return; a trip not seen arriving, now home,
+  is left to the dream it may be), and a holder of the ⚽ the leaderboard names other than the
+  record's (a lost theft), whoever holds it.
+
+Left out, as they drift in silence: the balances (the 🐔 pay a ball a minute, unannounced), the
+carried emoji (kept as last listed, never through each change), and other players' houses and
+profiles (their /take, /store and /move may be made in a private chat with the bot). `detail` is one
+line for the owner. Both are also raised as the owner's notices of their kind (`missed`,
+`disagreed`; MegaBotTron1999's bot-os-api.md §4.16), which an `owner-notice` node tells among its
+`other` kinds (on by default; grouped, a minute's gather, at most one message per 10 minutes): no
+edge of their own is needed, only an `owner-notice` node with its chat edge. A script or a reactor
+can take the events (`norelec-state.missed`, `norelec-state.disagreed`) instead.
+
+| Config           | Default | Meaning                                                                                    |
+| ---------------- | ------- | ------------------------------------------------------------------------------------------ |
+| `pin`            | `[]`    | The state's paths drawn first in its panel (the state plugin's)                            |
+| `missedAfterMin` | `10`    | Minutes past its time an expected change waits for its line, before it is applied and told |

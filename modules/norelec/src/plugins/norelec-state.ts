@@ -13,18 +13,29 @@
  *   `babies({ name? })` (each birth, the stages seen and when, when it is due to leave, and when
  *   it went), `banned()`, `price({ emoji })`.
  * - **What the game does on its own** (record.ts `settleDue`): a baby 9 h after a 💦 delivered, its
- *   departure 96 h after its birth, a trip's return; overdue by 10 minutes with no line, applied
- *   at the next event, as the game applied it.
+ *   departure 96 h after its birth, a trip's return; overdue by `missedAfterMin` (10) minutes with
+ *   no line, applied at the next event, as the game applied it. The state plugin has no timer: the
+ *   game's events, every few seconds, are its clock, and a replay of the log gives the same record.
  * - **Its store** is at version 1: the one migration gives each baby kept its departure time.
- * - **What happened** (D83), new facts only, never a correction (a leaderboard that shows another
- *   holder than the record had settles it silently), and nothing for an event played back or read
- *   at the catch-up: `ballMoved` (the ⚽ changed hands, for anyone), and about the owner's account
- *   (`self`): `raided`, `thrownAt`, `ballTaken` (the ⚽ taken from them) and `slotLocked` (a baby
- *   born in their house took a slot).
+ * - **What happened** (D83), and nothing for an event played back or read at the catch-up:
+ *   `ballMoved` (the ⚽ changed hands, for anyone), and about the owner's account (`self`):
+ *   `raided`, `thrownAt`, `ballTaken` (the ⚽ taken from them) and `slotLocked` (a baby born in
+ *   their house took a slot).
+ * - **Where the record and the game disagree** (src/state/checks.ts), with the same rule: `missed`
+ *   (a change expected for the owner's account applied with no line) and `disagreed` (the owner's
+ *   /house or /profile, or the ⚽'s holder a leaderboard names, contradicting the record, which
+ *   takes the listing as the truth); each also raised as the owner's notice of its kind, for an
+ *   `owner-notice` node to tell (docs/bot-os-api.md §4.16).
  */
 import { type BusEvent, type MigrationStore, type Plugin } from '@megabottron1999/core';
-import { type Announcement, STATE_DOC, statePlugin } from '@megabottron1999/turns/state-plugin.ts';
+import {
+  type Announcement,
+  STATE_DOC,
+  statePlugin,
+  type StateSpec,
+} from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
+import { disagreements, missedNews, settled } from '#src/state/checks.ts';
 import {
   babiesOf,
   ballTotals,
@@ -33,6 +44,8 @@ import {
   houseOf,
   initialRecord,
   leavesOf,
+  MISSED_AFTER_MS,
+  type RecordOptions,
   recordSchema,
   reduceRecord,
   tripOf,
@@ -102,19 +115,58 @@ export const STATE_EVENTS = {
       replaced: z.string().optional(),
     })
     .describe("A baby born in the owner's house took a slot, locked until it goes"),
+  missed: z
+    .object({
+      what: z.enum(['born', 'babyGone', 'returnHome']),
+      player: z.string(),
+      due: z.number(),
+      slot: z.number().optional(),
+      detail: z.string(),
+    })
+    .describe(
+      "A change the record expected for the owner's account (a birth, a baby's departure, a return) whose line never came: applied all the same"
+    ),
+  disagreed: z
+    .object({
+      what: z.enum(['house', 'trip', 'ball']),
+      player: z.string().optional(),
+      before: z.string(),
+      after: z.string(),
+      detail: z.string(),
+    })
+    .describe(
+      "A listing contradicted the record (the owner's /house or /profile, the ⚽'s holder): taken as the truth, a line was lost"
+    ),
 };
+
+/** The announcements also raised as notices for the owner (`owner-notice` tells them). */
+const NOTICED = new Set(['missed', 'disagreed']);
 
 const nameOf = (v: unknown): string | undefined =>
   typeof v === 'object' && v !== null && typeof (v as { name?: unknown }).name === 'string'
     ? (v as { name: string }).name
     : undefined;
 
-/** What an applied event means for the owner, and the ⚽'s moves: news, never corrections. */
-export function announce(before: GameRecord, after: GameRecord, event: BusEvent): Announcement[] {
+/**
+ * What an applied event means for the owner, and the ⚽'s moves: news; and what the record and the
+ * game disagree on (src/state/checks.ts): the changes it expected and applied with no line
+ * (`missed`), and a listing that contradicts it (`disagreed`).
+ */
+export function announce(
+  before: GameRecord,
+  after: GameRecord,
+  event: BusEvent,
+  options: RecordOptions = {}
+): Announcement[] {
   const kind = event.type.slice(event.type.indexOf('.') + 1);
   const self = after.self;
   const player = nameOf(event['player']);
+  const was = settled(before, event.t, options);
   const out: Announcement[] = [];
+  if (self !== null)
+    for (const m of missedNews(was.missed, self)) out.push({ type: 'missed', payload: { ...m } });
+  for (const d of disagreements(was.state, event, self))
+    out.push({ type: 'disagreed', payload: { ...d } });
   if (kind === 'ballTaken' && player !== undefined) {
     const from = nameOf(event[`from`]) ?? before.ball.holder?.name;
     if (from !== player)
@@ -187,17 +239,20 @@ const at = z.number().optional().describe('The time to count to (ms); the last e
 /** The time of the record's last event, for the queries that count time held. */
 const lastT = (s: GameRecord): number => Math.max(s.ball.holder?.since ?? 0, s.ball.readAt ?? 0);
 
-export const norelecStatePlugin: Plugin = statePlugin<GameRecord & Record<string, unknown>>({
+type Kept = GameRecord & Record<string, unknown>;
+
+/** The state plugin's spec, with the record's options. */
+const specOf = (options: RecordOptions): StateSpec<Kept> => ({
   id: NORELEC_STATE,
   version: '0.1.0',
   description:
     "NorelecBot's game, kept: houses, babies and locks, trips, the ⚽ and its hold times, bans",
   schema: recordSchema,
-  initial: initialRecord() as GameRecord & Record<string, unknown>,
+  initial: initialRecord() as Kept,
   consumes: CONSUMES,
-  reduce: (state, event) => reduceRecord(state, event) as GameRecord & Record<string, unknown>,
+  reduce: (state, event) => reduceRecord(state, event, options) as Kept,
   events: STATE_EVENTS,
-  announce,
+  announce: (before, after, event) => announce(before, after, event, options),
   migrations: MIGRATIONS,
   queries: {
     player: {
@@ -258,6 +313,48 @@ export const norelecStatePlugin: Plugin = statePlugin<GameRecord & Record<string
     },
   },
 });
+
+const base = statePlugin(specOf({}));
+
+/** Its config: the state plugin's (`pin`), and how long an expected change waits for its line. */
+const config = (base.manifest.config as z.ZodObject).extend({
+  missedAfterMin: z
+    .number()
+    .min(0)
+    .default(MISSED_AFTER_MS / 60_000)
+    .describe(
+      'Minutes past its time that an expected change (a birth, a baby leaving, a return) waits for its line, before it is applied and told as missed'
+    ),
+});
+
+/**
+ * The plugin: MegaBotTron1999's state plugin, made for each instance from its config (the margin
+ * of the record's expectations), whose `missed` and `disagreed` are also raised as the owner's
+ * notices (docs/bot-os-api.md §4.16), so that an `owner-notice` node tells them (among its `other`
+ * kinds) with no edge of their own.
+ */
+export const norelecStatePlugin: Plugin = {
+  manifest: { ...base.manifest, config },
+  create: (ctx) => {
+    const minutes = (ctx.config as { missedAfterMin?: number }).missedAfterMin;
+    const inner = statePlugin(
+      specOf({ missedAfterMs: (minutes ?? MISSED_AFTER_MS / 60_000) * 60_000 })
+    );
+    const prefix = `${NORELEC_STATE}.`;
+    return inner.create({
+      ...ctx,
+      bus: {
+        ...ctx.bus,
+        publish: (type, payload, t) => {
+          ctx.bus.publish(type, payload, t);
+          const name = type.slice(prefix.length);
+          if (type.startsWith(prefix) && NOTICED.has(name))
+            ctx.notice(name, `${ctx.id}: ${String(payload['detail'])}`, payload);
+        },
+      },
+    });
+  },
+};
 
 /** The module's plugin entry (MegaBotTron1999's docs/bot-os-api.md §7.2). */
 export const plugins: Plugin[] = [norelecStatePlugin];

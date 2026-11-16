@@ -231,6 +231,11 @@ only: `N prendi 🏚️ rovine: arrivi tra …`).
   road in the game state until a restart. The game state now takes a player home once the return is
   2 minutes overdue (the `returnMissed` notice), as it takes a departure with no arrival for a
   dream.
+- **Any line may be lost while the game goes on.** A birth, a raid, a gift, a departure: the bot's
+  message can be lost on Telegram or IRC while the game applied the change. The listings (`/house`,
+  the carried emoji next to a name, the ⚽'s leaderboard, `/profile`) are the truth. The
+  `norelec-state` record applies what it expected and never read once overdue, and takes a listing
+  over what it held, telling the owner of both (modules/norelec/README.md).
 - **Time.** Durations are rounded down to the second; distances fit to ±0.7 s (rules §2.2).
 - **Variants.** Wording changes without notice (the return lines changed on 18 Oct). Match on stable
   fragments (`parti per`, `hai rubato`, `ha resistito`, `congeli`) and log unmatched bot lines, so

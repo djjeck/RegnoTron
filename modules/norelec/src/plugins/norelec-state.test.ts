@@ -159,4 +159,61 @@ describe('the norelec-state node', () => {
     for (const m of MIGRATIONS) m(store);
     expect(docs.size).toBe(0);
   });
+
+  it('tells the owner of a return whose line never came, as an event and a notice', async () => {
+    const run = await bootRun(dir, { state: { missedAfterMin: 1 } });
+    await run.bot('alice parti per Bravo: arrivi tra 10 secondi. Casa tua resta scoperta.');
+    run.clock.advance(10 * S);
+    await run.bot(
+      'alice (🎈) il cane di Bravo ti ha intercettato: niente bottino. Torni in alice tra 10 secondi.'
+    );
+    // The return line is lost; the next line, past the margin, settles it.
+    run.clock.advance(80 * S);
+    await run.bot("La palla ce l'ha Charlie da 10 secondi: rubagliela con /raid @Charlie.");
+    expect(run.read('trip', { name: OWNER })).toBeNull();
+    expect(run.of('norelec-state.missed')).toEqual([
+      expect.objectContaining({
+        what: 'returnHome',
+        player: OWNER,
+        detail: expect.stringContaining("no return line came: alice's trip to Bravo"),
+      }),
+    ]);
+    expect(run.core.notices().filter((n) => n.kind === 'missed')).toEqual([
+      expect.objectContaining({
+        node: 'norelec-state',
+        text: expect.stringMatching(/^norelec-state: no return line came/u),
+      }),
+    ]);
+    await run.core.stop();
+  });
+
+  it('tells the owner of a listing that contradicts the record, but not of one played back', async () => {
+    const run = await bootRun(dir);
+    await run.bot("La palla ce l'ha Bravo da 10 secondi: rubagliela con /raid @Bravo.");
+    await run.bot('Casa di alice (1/10):\n1 🎈  2 🐔  3 ·  4 ·  5 ·  6 ·  7 ·  8 ·  9 ·  10 ·');
+    // The same house, and a holder the record knew: nothing to say.
+    await run.bot('Casa di alice (1/10):\n1 🎈  2 🐔  3 ·  4 ·  5 ·  6 ·  7 ·  8 ·  9 ·  10 ·');
+    await run.bot("La palla ce l'ha Bravo da 20 secondi: rubagliela con /raid @Bravo.");
+    expect(run.of('norelec-state.disagreed')).toEqual([]);
+    // A theft and a purchase never read.
+    await run.bot("La palla ce l'ha Charlie da 1 secondo: rubagliela con /raid @Charlie.");
+    await run.bot('Casa di alice (1/10):\n1 🎈  2 🐶  3 ·  4 ·  5 ·  6 ·  7 ·  8 ·  9 ·  10 ·');
+    expect(run.of('norelec-state.disagreed')).toEqual([
+      expect.objectContaining({ what: 'ball', before: 'Bravo', after: 'Charlie' }),
+      expect.objectContaining({
+        what: 'house',
+        player: OWNER,
+        before: '2 🐔',
+        after: '2 🐶',
+        detail: expect.stringContaining('slot 2 🐔 → 🐶'),
+      }),
+    ]);
+    expect(run.core.notices().filter((n) => n.kind === 'disagreed')).toHaveLength(2);
+    // Played back: never told.
+    await run.bot('Casa di alice (1/10):\n1 🎈  2 🦖  3 ·  4 ·  5 ·  6 ·  7 ·  8 ·  9 ·  10 ·', {
+      playback: true,
+    });
+    expect(run.of('norelec-state.disagreed')).toHaveLength(2);
+    await run.core.stop();
+  });
 });
