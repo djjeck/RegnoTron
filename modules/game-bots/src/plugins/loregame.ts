@@ -141,6 +141,10 @@ const accumuloEvent = z
     count: z.number().optional().describe("The bot's counter: turns since the last use"),
     max: z.number().optional().describe('How many turns it needs, as the bot states it'),
     level: z.number().optional().describe('locked: the level it asks'),
+    holds: z
+      .record(z.string(), z.number())
+      .optional()
+      .describe("used: the turn commands' rest, ended now (ms), for the outbox (D98, D132)"),
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("How @LoreGameBot answered the owner's /accumulo");
@@ -150,6 +154,7 @@ const playerTurnEvent = z
     chat: z.string(),
     player,
     owner: z.boolean().describe('The player is the owner of the account'),
+    command: z.string().describe('The turn command it answered (/avventura, /lore, /l)'),
     outcome: z
       .looseObject({ kind: z.string(), bot: z.string() })
       .describe("The turn as the parser reads it (src/replies.ts's Outcome), or a 'too soon'"),
@@ -159,6 +164,28 @@ const playerTurnEvent = z
 const playerAccumuloEvent = accumuloEvent
   .extend({ player, owner: z.boolean().describe('The player is the owner of the account') })
   .describe("How @LoreGameBot answered a player's /accumulo: any player's the account reads");
+
+/**
+ * What the bot's answer to the owner's `/accumulo` tells a node that sent it (D98), as the parser's
+ * own watch pairs it, in private or in the group, where the bot replies to no command and the
+ * shell's parser cannot pair it: a use is the `ok`, and ends the turns' hold in the outbox
+ * (`holds`); the rest are refusals.
+ */
+const ACCUMULO_ANSWERS = (
+  [
+    ['used', 'ok', 'used'],
+    ['idle', 'refused', 'idle'],
+    ['short', 'refused', 'not_ready'],
+    ['locked', 'refused', 'locked'],
+  ] as const
+).map(([result, status, reason]) => ({
+  event: ACCUMULO_EVENT,
+  commands: ACCUMULO_COMMANDS.flatMap((c) => [c, `${c}@${LOREGAMEBOT}`]),
+  when: { result },
+  status,
+  reason,
+  holdsAtFrom: 'holds',
+}));
 
 /** The parser, with the bans and the accumulo it watches for, beside the turns it reads. */
 export const loregamePlugin: Plugin = {
@@ -184,6 +211,7 @@ export const loregamePlugin: Plugin = {
         holds: [...LORE_COMMANDS],
       },
       ...(parser.manifest.answers ?? []),
+      ...ACCUMULO_ANSWERS,
     ],
   },
   create: async (ctx) => {
@@ -232,7 +260,12 @@ export const loregamePlugin: Plugin = {
         );
       const answer = any?.owner === true ? any.reply : undefined;
       if (answer !== undefined) {
-        ctx.bus.publish(ACCUMULO_EVENT, { chat: m.chat, ...answer, ...old }, m.time);
+        // A use ends the turns' rest: told to the outbox with the answer (`holds`).
+        const holds =
+          answer.result === 'used'
+            ? { holds: Object.fromEntries(TURN_COMMANDS[LOREGAMEBOT].map((c) => [c, m.time])) }
+            : {};
+        ctx.bus.publish(ACCUMULO_EVENT, { chat: m.chat, ...answer, ...holds, ...old }, m.time);
         // "Already ready" spends nothing and says it is full: it holds nothing back.
         if (answer.result !== 'idle') {
           spent = { t: m.time, result: answer.result };
@@ -241,7 +274,14 @@ export const loregamePlugin: Plugin = {
       }
     });
     const turns = instance.interface as TurnParserInterface;
-    const { rest, ready } = turns.state;
+    const { rest, ready, lastTurn } = turns.state;
+    /**
+     * The owner used the accumulo since their last turn: the rest that turn started is over, as
+     * the bot ended it, whether or not the shell's parser paired the answer (in the group it
+     * cannot). Since when, if so.
+     */
+    const zeroed = (): number | undefined =>
+      spent?.result === 'used' && spent.t >= (lastTurn()?.t ?? -Infinity) ? spent.t : undefined;
     /** Until when the owner is banned, if they are now. */
     const banned = (): number | undefined =>
       watch.until(BanWatch.owner(chat.self()), ctx.clock.now());
@@ -249,11 +289,20 @@ export const loregamePlugin: Plugin = {
       ...instance,
       interface: {
         ...turns,
+        actions: {
+          ...turns.actions,
+          // The account never hears its own sends: the watches learn of the player's here.
+          sent: (sent: Parameters<TurnParserInterface['actions']['sent']>[0]) => {
+            turns.actions.sent(sent);
+            asked.sent(sent);
+            players.sent(sent, chat.self());
+          },
+        },
         state: {
           ...turns.state,
           // While the owner is banned, the bot rests until the ban ends.
           rest: () => {
-            const base = rest();
+            const base = zeroed() === undefined ? rest() : undefined;
             const until = banned();
             return until === undefined || (base !== undefined && base.until >= until)
               ? base
@@ -263,6 +312,14 @@ export const loregamePlugin: Plugin = {
           // shell's player asks this before each command).
           ready: () => {
             const base = ready();
+            const since = zeroed();
+            if (since !== undefined)
+              for (const c of TURN_COMMANDS[LOREGAMEBOT]) {
+                const r = base[c];
+                if (r === undefined || r.ready) continue;
+                const { until: _u, why: _w, ...seen } = r;
+                base[c] = { ...seen, ready: true, since };
+              }
             // Spent, or refused, since the bot last said it was full: not ready, whatever the
             // shell's parser paired (a use by hand, the other spelling, an answer in the group).
             for (const c of ACCUMULO_COMMANDS) {

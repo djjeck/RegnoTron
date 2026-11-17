@@ -176,7 +176,9 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
   turns' rest, so the player plays it only while `/lore` rests. A use is the success; "not yet"
   holds it for the turns still needed (15 minutes each), the gate for 6 hours, "already ready" not
   at all. The owner's own use, by hand or in the group (where the shell cannot pair it), holds it
-  until the next line.
+  until the next line. A player in the group (D139): the bot answers its `/accumulo` with a message
+  of its own, so the parser pairs it with the send the player tells it of, declares it the answer
+  (`loregame.accumulo`, with the turns' `holds`), and frees the turns itself.
 
 **Not read yet**: Stoccaggio itself (the maximum is the one the bot's counter states, else the usual
 20), and the level, which a training or a level-up elsewhere raises without the state hearing.

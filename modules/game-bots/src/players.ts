@@ -19,19 +19,27 @@ import { LOREGAMEBOT, type Outcome, parseLoreGameBot, TURN_COMMANDS } from '#src
 /** How many messages are remembered per watch. */
 const KEPT = 5000;
 
-/** A message heard: who sent it, and whether it was a turn command. */
+/** A message heard: who sent it, and the turn command it was, if one (its first word). */
 interface Said {
   player: string;
   owner: boolean;
-  turn: boolean;
+  command: string | undefined;
 }
 
 /** A player's turn, as the bot answered it: a turn read, or a "too soon". */
 export interface PlayerTurn {
   player: string;
   owner: boolean;
+  /** The turn command it answered, by first word, lower case (`/avventura`, `/lore`, `/l`). */
+  command: string;
   outcome: Outcome;
 }
+
+/** A turn command's first word, lower case, without the bot it is addressed to. */
+const commandOf = (text: string, bot: string): string | undefined =>
+  isTurnCommand(text, TURN_COMMANDS[LOREGAMEBOT], bot)
+    ? (text.trim().split('@')[0] as string).toLowerCase()
+    : undefined;
 
 export class PlayerWatch {
   private readonly bot: string;
@@ -54,17 +62,27 @@ export class PlayerWatch {
         this.remember(`${m.chat}\n${m.id}`, {
           player,
           owner,
-          turn: isTurnCommand(m.text, TURN_COMMANDS[LOREGAMEBOT], this.bot),
+          command: commandOf(m.text, this.bot),
         });
       return undefined;
     }
     if (m.replyTo === undefined) return undefined;
     const to = this.said.get(`${m.chat}\n${m.replyTo}`);
-    if (to === undefined || !to.turn) return undefined;
+    if (to?.command === undefined) return undefined;
     const outcome = parseLoreGameBot(m.text);
     if (outcome.kind !== 'gain' && outcome.kind !== 'nothing') return undefined;
     const player = to.owner ? (self ?? to.player) : to.player;
-    return player === '' ? undefined : { player, owner: to.owner, outcome };
+    return player === '' ? undefined : { player, owner: to.owner, command: to.command, outcome };
+  }
+
+  /** A command the owner's account sent (`actions.sent`), which it never hears come back. */
+  sent(s: { chat: string; id?: string; command?: string }, self: string | undefined): void {
+    if (s.id === undefined || s.command === undefined) return;
+    this.remember(`${s.chat}\n${s.id}`, {
+      player: self ?? '',
+      owner: true,
+      command: commandOf(s.command, this.bot),
+    });
   }
 
   private remember(key: string, said: Said): void {

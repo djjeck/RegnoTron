@@ -615,3 +615,68 @@ describe('every player, as the group shows them', () => {
     await again.core.stop();
   });
 });
+
+describe('a player that plays in the group', () => {
+  const sent = async (run: Awaited<ReturnType<typeof bootState>>, command: string) => {
+    const id = `sent-${command}-${String(run.clock.now())}`;
+    await run.core.controls.act('loregame', 'sent', {
+      chat: '-1001',
+      id,
+      t: run.clock.now(),
+      command,
+    });
+    return id;
+  };
+
+  it('pairs the bot’s answer to its /accumulo, which replies to nothing, and frees the next turn', async () => {
+    const run = await bootState(path.join(dir, 'r'), { group: true });
+    // Its /avventura, which the account never hears come back, and the bot's turn replying to it.
+    const turn = await sent(run, '/avventura');
+    await run.group('LoreGameBot', lit('un sasso [B1]'), { replyTo: turn });
+    expect(run.ready()['/accumulo']).toMatchObject({ ready: true });
+    expect(run.ready()['/avventura']).toMatchObject({ ready: false });
+    expect(run.of('loregame.playerTurn')).toMatchObject([
+      { player: 'alice', owner: true, command: '/avventura' },
+    ]);
+    // Its /accumulo; the bot's use, a message of its own.
+    run.clock.advance(10_000);
+    await sent(run, '/accumulo');
+    run.clock.advance(1000);
+    await run.group('LoreGameBot', USED);
+    expect(run.of('loregame.accumulo').at(-1)).toMatchObject({
+      result: 'used',
+      holds: { '/avventura': run.clock.now(), '/lore': run.clock.now(), '/l': run.clock.now() },
+    });
+    // The turn is free again, for the parser as for the player, and the accumulo spent.
+    expect(run.rest()).toBeUndefined();
+    expect(run.ready()['/avventura']).toMatchObject({ ready: true, since: run.clock.now() });
+    expect(run.ready()['/lore']).toMatchObject({ ready: true });
+    expect(run.ready()['/accumulo']).toMatchObject({ ready: false });
+    // The next turn starts its rest as usual.
+    run.clock.advance(60_000);
+    const next = await sent(run, '/avventura');
+    await run.group('LoreGameBot', gain('una perla [B1]'), { replyTo: next });
+    expect(run.ready()['/avventura']).toMatchObject({ ready: false });
+    await run.core.stop();
+  });
+
+  it('declares the answer to the outbox: a use ends the turns’ hold, the rest are refusals', () => {
+    const { answers } = parseManifest(loregamePlugin.manifest);
+    const used = readAnswer(
+      answers,
+      'loregame.accumulo',
+      { chat: '-1001', result: 'used', holds: { '/avventura': T0, '/lore': T0, '/l': T0 } },
+      T0
+    );
+    expect(used?.answer).toMatchObject({ status: 'ok', reason: 'used' });
+    expect(used?.holdsAt).toEqual({ '/avventura': T0, '/lore': T0, '/l': T0 });
+    expect(used?.commands).toEqual([
+      '/accumulo',
+      '/accumulo@LoreGameBot',
+      '/acc',
+      '/acc@LoreGameBot',
+    ]);
+    const short = readAnswer(answers, 'loregame.accumulo', { chat: '-1001', result: 'short' }, T0);
+    expect(short?.answer).toMatchObject({ status: 'refused', reason: 'not_ready' });
+  });
+});

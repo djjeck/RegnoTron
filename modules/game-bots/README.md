@@ -90,6 +90,11 @@ lists it beside the turns, ticked by default, with its mechanics:
 - **its answers** are `loregame.answer` (`command: "/accumulo"`): a use is the success; "not yet"
   holds it for the turns the bot's counter says it still needs, at 15 minutes each, the level gate
   for 6 hours, "already ready" (nothing spent) not at all; a ban, like every command, until it ends;
+- **a player that plays in the group** (MegaBotTron1999's D139): the bot answers its `/accumulo`
+  with a message of its own, which the shell cannot pair; the parser pairs it itself (the player
+  tells it each send), declares it the command's answer, and frees the turns in the parser and the
+  outbox at once. The player looks again when its two-minute wait for an answer is over, so the free
+  turn comes a couple of minutes after the use;
 - **a use by hand** counts too, in private or in the group, `/acc` included, which the shell alone
   would not pair: it is not ready again until the next turn's line.
 

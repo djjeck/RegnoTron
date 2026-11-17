@@ -113,6 +113,15 @@ export class AccumuloWatch {
     this.bot = bot.toLowerCase();
   }
 
+  /**
+   * A command the owner's account sent, as the shell's player tells its parser (`actions.sent`):
+   * the account never hears its own sends come back, so the watch would not know it waits.
+   */
+  sent(s: { chat: string; id?: string; t: number; command?: string }): void {
+    if (s.command === undefined || !isAccumuloCommand(s.command, this.bot)) return;
+    this.asked.push({ chat: s.chat, id: s.id, owner: true, player: '', time: s.t });
+  }
+
   /** The owner's answer, if `m` is the bot's answer to the owner's accumulo command. */
   hear(m: Heard): AccumuloReply | undefined {
     const a = this.answer(m, undefined);
