@@ -114,3 +114,17 @@ The outcome the plugin publishes carries all this, as `Outcome` (`replies.ts`): 
 `item` (without its count and its stats), `qty`, `rarity`, `tags` and `stats`; every outcome of a
 turn has its `place`, its `fight` (`enemy`, `result`, `player`, `learned`, `powers`) and its
 `levelUp` (`level`, `coins`, `skillPoints`, `items`, `other`) when the reply had them.
+
+## 6. The owner's state at @LoreGameBot
+
+`loregame-state` (`modules/game-bots/`) keeps what the `loregame` parser reads of the owner's turns.
+It is a floor, not the truth, while the turns are all it reads:
+
+- **The inventory** gains what a turn drops (with its `2x`) and the items of a level-up's list. It
+  loses nothing: a `/usa`, a `/dai`, a `/give`, the generators and the recipes change the owner's
+  items and are not read yet, nor is a whole `/zaino` (paginated, and not whole in an export), which
+  will make a count exact. Until they are, a count only rises, and a real inventory is richer than
+  what turns alone bring.
+- **A turn cut off** (§5) may have gained an item the reply lost, so the inventory is marked
+  uncertain, not changed.
+- **Items are named by players**, anything, `__proto__` included.

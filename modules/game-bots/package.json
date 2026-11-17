@@ -1,6 +1,6 @@
 {
   "name": "@regnotron/game-bots",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "RegnoTron's game bots: @LoreGameBot's and @EpicLorelecBot's parsers",
   "license": "MIT",
@@ -9,7 +9,8 @@
     "./*": "./src/*"
   },
   "imports": {
-    "#src/*": "./src/*"
+    "#src/*": "./src/*",
+    "#test/*": "./test/*"
   },
   "engines": {
     "node": ">=24"

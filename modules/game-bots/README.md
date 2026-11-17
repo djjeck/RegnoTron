@@ -7,8 +7,9 @@ The turns of the group's game bots, read on the turn plugins of `@megabottron199
   grammars of @LoreGameBot and @EpicLorelecBot. A @LoreGameBot turn is read whole (its place, its
   fight, its gain with the count and the stats, its level-up:
   [docs/game-bots.md](../../docs/game-bots.md) §5), and `loregame.turn` publishes it so;
+- `src/loregame-state.ts`: the owner's state at @LoreGameBot (its schema, reducer and freshness);
 - `src/plugins/`: the parser plugins of @LoreGameBot and @EpicLorelecBot (`loregame`,
-  `epiclorelec`).
+  `epiclorelec`), and `loregame-state`, the state plugin on @LoreGameBot's turns.
 
 @InventoryBot's parser, the plugin `inventorybot`, is no longer here: it is the module
 `inventorybot` of [InventoryBotTron](https://github.com/djjeck/InventoryBotTron), beside its
@@ -56,3 +57,36 @@ graph. Each publishes `<id>.turn`, which the editor lists with its description, 
 `turnParserPlugin`, answers its turn commands (the shell's bot-os.md D98: a "too soon" refused with
 its `retryAt`, any other outcome `ok`). A turn-actor of the shell, if the owner runs one beside a
 parser, needs `{ "command": "/avventura" }`.
+
+## The state: `loregame-state`
+
+The owner's state at @LoreGameBot, kept by MegaBotTron1999's `statePlugin` from what the `loregame`
+parser reads (`src/plugins/loregame-state.ts`, its reducer in `src/loregame-state.ts`). In the graph
+editor, add a `loregame-state` node and bind its one input, `events` (required), to the `loregame`
+node's events output; in the graph file:
+
+```json
+{
+  "nodes": [{ "id": "loregame-state", "plugin": "loregame-state" }],
+  "edges": [{ "from": "loregame.events", "to": "loregame-state.events", "type": "events" }]
+}
+```
+
+Its config is `pin` alone, the paths of the state its panel draws first (the first two make the line
+on its card; by default `inventory.held` and `owner.as_of`). It survives restarts, resumes from its
+cursor in the event log, so each turn is applied once (those the parser published while it was down
+included), and announces each change as `loregame-state.changed`.
+
+It keeps, so far, the **inventory**: what the owner's turns gained (a drop with its `2x` count, and
+the items a level-up gives), per item its count, rarity, tags, when and by what (`drop` or
+`level-up`). It is an **estimate, a floor**: nothing lists the inventory yet (`/zaino` is paginated,
+and is read later), and a `/usa`, a `/dai` or a generator are not read yet, so a count only rises
+and `exact` stays false. A turn cut off at Telegram's limit may have gained what the reply lost: it
+changes no count, and marks the inventory `uncertain` in `state.freshness`.
+
+| Interface               | Answers                                                        |
+| ----------------------- | -------------------------------------------------------------- |
+| `state.get({ path? })`  | The state, or the value at a dotted path (`inventory.items`)   |
+| `state.freshness`       | How fresh each section is: its last snapshot, the deltas since |
+| `state.count({ name })` | How many of an item the owner holds, as the state estimates it |
+| `state.held()`          | Every item held, with its count                                |
