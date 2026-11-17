@@ -33,7 +33,7 @@ describe('the game bots’ parsers', () => {
       const graph = {
         version: 2,
         nodes: [
-          { id: TELEGRAM_USER, plugin: TELEGRAM_USER },
+          { id: TELEGRAM_USER, plugin: TELEGRAM_USER, account: 'telegram:alice' },
           ...bots.map(([id]) => ({ id, plugin: id, config: { commands: ['/play'] } })),
         ],
         edges: bots.map(([id, bot]) => ({

@@ -165,7 +165,7 @@ describe('the loregame parser’s bans', () => {
     expect(ok?.answer).toMatchObject({ status: 'ok', reason: 'rest' });
   });
 
-  it('reads the owner’s ban in private as an outcome, not drift, and holds the actor until it ends', async () => {
+  it('reads the owner’s ban in private as an outcome, not drift, and holds the player until it ends', async () => {
     const dir2 = path.join(dir, 'a');
     const run = await bootState(dir2);
     expect(run.rest()).toBeUndefined();
@@ -178,6 +178,9 @@ describe('the loregame parser’s bans', () => {
     expect(run.read('ban')).toEqual({ until: BAN_ISO, since: new Date(T0).toISOString() });
     expect(run.read('get', { path: 'owner.name' })).toBe('alice');
     expect(run.rest()).toEqual({ until: BAN_END, why: 'the owner is banned' });
+    // A shell player asks each command's readiness: every one is held until the ban ends.
+    for (const r of Object.values(run.ready()))
+      expect(r).toMatchObject({ ready: false, until: BAN_END, why: 'the owner is banned' });
     // The ban answers every message, not only a turn's: each is the same news, once.
     await run.owner('/zaino');
     await run.bot(BAN);
@@ -185,9 +188,10 @@ describe('the loregame parser’s bans', () => {
     expect(run.of('loregame-state.banned')).toMatchObject([
       { player: 'alice', until: BAN_ISO, owner: true },
     ]);
-    // Its end passes: the actor may go on.
+    // Its end passes: the player may go on.
     run.clock.advance(6 * 60 * MIN);
     expect(run.rest()).toBeUndefined();
+    expect(run.ready()['/lore']).toMatchObject({ ready: true });
     await run.core.stop();
   });
 
@@ -247,7 +251,7 @@ describe('the loregame parser’s bans', () => {
     await run.core.stop();
   });
 
-  it('keeps the bans across a restart, and the owner’s still holds the actor', async () => {
+  it('keeps the bans across a restart, and the owner’s still holds the player', async () => {
     const dir2 = path.join(dir, 'd');
     const run = await bootState(dir2, { group: true });
     const bob = await run.group('bob', '/lore');

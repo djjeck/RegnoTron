@@ -9,16 +9,16 @@ nothing: there is no automation here. Its models of the games include the rules 
 without announcing them, since a rule that is public levels the field.
 
 **Status: v1-alpha.** The code is the parsers, state and tools that ran in production on an earlier,
-monolithic version, now split into modules for MegaBotTron1999 `v0.1.21`, whose loader installs them
+monolithic version, now split into modules for MegaBotTron1999 `v0.1.40`, whose loader installs them
 into a running shell. Everything here changes freely until the shell's launch.
 
 ## The modules
 
-| Module          | Provides                   | What it holds                                                                                                                                                                                                                                                           |
-| --------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `norelec`       | `@regnotron/norelec`       | NorelecBot's game: its grammar (read and written), its parser over IRC, Telegram and Telegram exports, the game state; the `norelec` parser plugin and the `norelec-state` record                                                                                       |
-| `norelec-tools` | `@regnotron/norelec-tools` | The map of the players' homes (`/map`) and the nuclear clock (`/nuclear_warning`), as the plugins `norelec-map` and `nuclear-clock`; imports `norelec`                                                                                                                  |
-| `game-bots`     | `@regnotron/game-bots`     | @LoreGameBot's and @EpicLorelecBot's parser plugins (`loregame`, `epiclorelec`), `loregame-state`, the owner's state at @LoreGameBot (the inventory, the accumulo and the players' bans, so far), and `loregame-accumulo`, when a shell turn-actor may play `/accumulo` |
+| Module          | Provides                   | What it holds                                                                                                                                                                                    |
+| --------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `norelec`       | `@regnotron/norelec`       | NorelecBot's game: its grammar (read and written), its parser over IRC, Telegram and Telegram exports, the game state; the `norelec` parser plugin and the `norelec-state` record                |
+| `norelec-tools` | `@regnotron/norelec-tools` | The map of the players' homes (`/map`) and the nuclear clock (`/nuclear_warning`), as the plugins `norelec-map` and `nuclear-clock`; imports `norelec`                                           |
+| `game-bots`     | `@regnotron/game-bots`     | @LoreGameBot's and @EpicLorelecBot's parser plugins (`loregame`, `epiclorelec`), `loregame-state`, the owner's state at @LoreGameBot (the inventory, the accumulo and the players' bans, so far) |
 
 @InventoryBot's parser plugin, `inventorybot`, is the module `inventorybot` of
 [InventoryBotTron](https://github.com/djjeck/InventoryBotTron), beside the bot's grammar. Each
@@ -65,8 +65,7 @@ nodes. Modules run with the shell's full rights, unsandboxed: install only what 
   `TURN_COMMANDS` in `modules/game-bots/src/replies.ts`), since which commands are turns is the
   game's (the shell's bot-os.md D70). A parser node saved with a `commands` config, as before, still
   runs; the key is ignored and may be removed. An edge that also reads the game's group has them
-  read the turns played there. A shell turn-actor run beside one needs
-  `{ "command": "/avventura" }`.
+  read the turns played there. A shell `player` bound to one lists its bot's commands to play.
 - The nuclear clock posts only to the group its config names (`group`), which its chat-out edge to
   `telegram-bot` must send to, and only with its `nuclearClock` setting on.
 
@@ -75,7 +74,7 @@ Each module's README lists its plugins' config fields.
 ## Developing
 
 MegaBotTron1999 is vendored as a git submodule, `vendor/MegaBotTron1999`, pinned to a tag
-(`v0.1.21`). The shell's packages are workspaces here, beside the modules, which are workspaces too
+(`v0.1.40`). The shell's packages are workspaces here, beside the modules, which are workspaces too
 (each `@regnotron/<id>`, with `exports` `./*` → `./src/*`), so that imports and tests resolve as the
 loader will resolve them.
 

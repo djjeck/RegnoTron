@@ -34,9 +34,8 @@ export type GameBot = typeof INVENTORYBOT | typeof LOREGAMEBOT | typeof EPICLORE
 
 /**
  * The turn commands each of the three bots takes, in private and in the group: each parser's spec
- * names its bot's (`turnCommands`, a fact of the game, MegaBotTron1999's bot-os.md D70), and a
- * turn-actor of the shell, which defaults to a placeholder (`/play`), is configured with one of
- * them as its `command`.
+ * names its bot's (`turnCommands`, a fact of the game, MegaBotTron1999's bot-os.md D70), which a
+ * shell `player` bound to the parser offers to play.
  */
 export const TURN_COMMANDS: Readonly<Record<GameBot, readonly string[]>> = {
   [INVENTORYBOT]: ['/avventura'],

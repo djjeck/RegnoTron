@@ -19,7 +19,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { LOREGAME_STATE } from '#src/loregame-state.ts';
 import { loregamePlugin } from '#src/plugins/loregame.ts';
-import { loregameAccumuloPlugin } from '#src/plugins/loregame-accumulo.ts';
 import { loregameStatePlugin } from '#src/plugins/loregame-state.ts';
 
 export const OWNER = 'alice';
@@ -41,7 +40,7 @@ export async function bootState(
     const graph = {
       version: 2,
       nodes: [
-        { id: TELEGRAM_USER, plugin: TELEGRAM_USER },
+        { id: TELEGRAM_USER, plugin: TELEGRAM_USER, account: `telegram:${OWNER}` },
         { id: 'loregame', plugin: 'loregame' },
         { id: LOREGAME_STATE, plugin: LOREGAME_STATE },
       ],
@@ -74,12 +73,7 @@ export async function bootState(
     },
     ...(o.config === undefined ? {} : { config: { [LOREGAME_STATE]: o.config } }),
   });
-  core.register(
-    fakeConnectorPlugin(TELEGRAM_USER, account),
-    loregamePlugin,
-    loregameStatePlugin,
-    loregameAccumuloPlugin
-  );
+  core.register(fakeConnectorPlugin(TELEGRAM_USER, account), loregamePlugin, loregameStatePlugin);
   await core.start();
   account.open();
   // Message ids that no earlier start of the same instance used.
@@ -133,6 +127,12 @@ export async function bootState(
     const r = core.controls.read(node, 'rest');
     return 'value' in r ? r.value : r;
   };
+  /** Each command's readiness, as the parser tells a shell player (`state.ready`). */
+  const ready = (): Record<string, { ready: boolean; until?: number; why?: string }> => {
+    const r = core.controls.read('loregame', 'ready');
+    if ('error' in r) throw new Error(r.error);
+    return r.value as Record<string, { ready: boolean; until?: number; why?: string }>;
+  };
   const of = (type: string): BusEvent[] => records.filter((r) => r.type === type);
-  return { core, clock, log, account, bot, owner, turn, read, of, settle, group, rest };
+  return { core, clock, log, account, bot, owner, turn, read, of, settle, group, rest, ready };
 }

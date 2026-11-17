@@ -22,8 +22,8 @@
  * - The parser also watches every message of the chats it reads for bans (`src/bans.ts`), the
  *   owner's and the group's players' (named by the message the bot replies to), and publishes
  *   `loregame.ban` and `loregame.unban` when one starts, changes or ends, `loregame-state` keeps
- *   them. While the owner is banned, its `state.rest` says so, so that the shell's turn-actor,
- *   which asks its parser as it wakes, sends nothing.
+ *   them. While the owner is banned, its `state.rest` and `state.ready` say so (every command
+ *   held), so that the shell's player, which asks its parser before each command, sends nothing.
  */
 import { type Plugin } from '@megabottron1999/core';
 import {
@@ -194,7 +194,10 @@ export const loregamePlugin: Plugin = {
         ctx.bus.publish(ACCUMULO_EVENT, { chat: m.chat, ...answer, ...old }, m.time);
     });
     const turns = instance.interface as TurnParserInterface;
-    const rest = turns.state.rest;
+    const { rest, ready } = turns.state;
+    /** Until when the owner is banned, if they are now. */
+    const banned = (): number | undefined =>
+      watch.until(BanWatch.owner(chat.self()), ctx.clock.now());
     return {
       ...instance,
       interface: {
@@ -204,11 +207,24 @@ export const loregamePlugin: Plugin = {
           // While the owner is banned, the bot rests until the ban ends.
           rest: () => {
             const base = rest();
-            const now = ctx.clock.now();
-            const until = watch.until(BanWatch.owner(chat.self()), now);
+            const until = banned();
             return until === undefined || (base !== undefined && base.until >= until)
               ? base
               : { until, why: 'the owner is banned' };
+          },
+          // And every command is held until then, as the bot answers each with the ban (the
+          // shell's player asks this before each command).
+          ready: () => {
+            const base = ready();
+            const until = banned();
+            if (until === undefined) return base;
+            return Object.fromEntries(
+              Object.entries(base).map(([command, r]) => {
+                if (!r.ready && r.until !== undefined && r.until >= until) return [command, r];
+                const { since: _, ...seen } = r;
+                return [command, { ...seen, ready: false, until, why: 'the owner is banned' }];
+              })
+            );
           },
         },
       },

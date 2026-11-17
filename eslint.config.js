@@ -29,7 +29,7 @@ const FOREIGN_IMPORTS = {
 
 /** RegnoTron plays nothing: no module imports the shell's actors. */
 const ACTOR_IMPORTS = {
-  regex: '^@megabottron1999/turns/turn-actor\\.ts$',
+  regex: '^@megabottron1999/turns/(turn-actor|player|attention)\\.ts$',
   message: 'RegnoTron has no automation: it imports no actor.',
 };
 

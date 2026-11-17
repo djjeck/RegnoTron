@@ -128,9 +128,9 @@ a ban is read off any reply of the bot:
 - **The owner's turn** answered with a ban is the outcome `banned` (with its `until`), declared a
   refusal (`reason: banned`, MegaBotTron1999's bot-os.md D98) that holds the bot's commands
   (`LORE_COMMANDS`) back in that chat until `until`, not an `ok`.
-- **The parser's `state.rest`**, which the shell's turn-actor asks as it wakes, says the bot rests
-  until the owner's ban ends. It never sends into a ban, and plays again at its end, or when the bot
-  serves the owner again.
+- **The parser's `state.rest` and `state.ready`**, which the shell's `player` asks before each
+  command, say the bot rests, and every command is held, until the owner's ban ends. It never sends
+  into a ban, and plays again at its end, or when the bot serves the owner again.
 - **`loregame.ban` and `loregame.unban`** are the parser's events for any player, each when a ban
   starts, changes or ends (a banned player's hundred replies are one `ban`): `loregame-state` keeps
   them (§6). The parser keeps the bans it knows across restarts.
@@ -171,18 +171,8 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
   `count`, `max`, `level`), as the parser's event; the turn's line is `accumulo` in the outcome of
   `loregame.turn`. `loregame-state` counts against them (§6).
 
-**Playing it.** `loregame-accumulo` (the module's README) tells a shell turn-actor with
-`command: "/accumulo"` when it may go: the bot said the accumulo is full, the owner is not banned or
-under the level, and the bot rests, which a use zeroes (without a rest it is answered
-`La lore è già pronta!`, and spends nothing). The permission is the bot's word, never our count. A
-use gains a turn only if a `/lore` follows at once; the stock `/lore` actor does not (its gaps are
-17 to 20 minutes, over the bot's 15). The command's answers are declared for the shell (D98): used
-is `ok`, and `not_ready`, `idle` and `locked` are refusals.
-
 **Not read yet**: Stoccaggio itself (the maximum is the one the bot's counter states, else the usual
-20), the zeroed rest (a `used` does not shorten `state.rest`, so an actor that uses it waits for the
-answer to its own `/lore`), and the level, which a training or a level-up elsewhere raises without
-the state hearing.
+20), and the level, which a training or a level-up elsewhere raises without the state hearing.
 
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
