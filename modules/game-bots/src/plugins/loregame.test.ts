@@ -86,6 +86,40 @@ describe('the loregame parser', () => {
     expect(p.outcomes()).toEqual(['gain', 'unknown']);
   });
 
+  it('rests a cut-off turn 15 minutes, 30 when the fight it kept was lost', async () => {
+    const p = await run(loregamePlugin, {}, GROUP);
+    const lore = { sender: 'LoreGameBot' };
+    const cut = (fight: string): string =>
+      [
+        'Lore - Il Bosco Inventato ⛅️ [B1]',
+        '',
+        'x'.repeat(900),
+        'Durante il tuo cammino compare un orso di burro 🧈 [L4]!',
+        'Il combattimento inizia...',
+        fight,
+      ]
+        .join('\n')
+        .padEnd(1024, '.');
+    const first = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/lore@LoreGameBot' });
+    p.hear({
+      ...lore,
+      chat: GROUP,
+      replyTo: first,
+      text: cut('alice [L6] sconfigge un orso di burro 🧈 [L4]!'),
+    });
+    expect(p.iface.rest()).toMatchObject({ until: T0 + 15 * MIN });
+    const second = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/lore@LoreGameBot' });
+    p.hear({
+      ...lore,
+      chat: GROUP,
+      replyTo: second,
+      text: cut('un orso di burro 🧈 [L4] sconfigge alice [L2]!'),
+    });
+    expect(p.outcomes()).toEqual(['nothing', 'nothing']);
+    expect(p.iface.rest()).toMatchObject({ until: T0 + 30 * MIN });
+    expect(p.drift()).toMatchObject({ read: 2, unread: 0 });
+  });
+
   it('counts /l, the short alias, as a turn too, in the group and in private', async () => {
     const p = await run(loregamePlugin, {}, GROUP);
     const lore = { sender: 'LoreGameBot' };

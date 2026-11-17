@@ -2,8 +2,9 @@
  * The `loregame` parser plugin: @LoreGameBot's answers to the owner's turns, on the base of
  * @megabottron1999/turns/turn-parser.ts and the grammar of modules/game-bots/src/replies.ts.
  *
- * It replies to the command and names nobody: a reply to one of the owner's turns is read (an item, a
- * fight lost or the item lost, a "too soon"), and one it cannot read is claimed and unread (drift).
+ * It replies to the command and names nobody: a reply to one of the owner's turns is read (an item,
+ * a fight lost or the item lost, a "too soon", a reply cut off at Telegram's limit, each with its
+ * place, fight and level-up), and one it cannot read is claimed and unread (drift).
  * In private, a reply to a message it does not know (a turn sent an instant before the actor
  * learnt its id) still counts when it reads as a turn's outcome. Its rest: 15 minutes, 30 after a
  * fight lost, or the wait it states.
@@ -27,6 +28,9 @@ function restOf(o: Outcome): number | undefined {
   if (o.kind !== 'nothing') return undefined;
   if (o.reason === 'defeated') return LORE_DEFEAT_REST_MS;
   if (o.reason === 'lost') return TURN_REST_MS;
+  // The ending is cut off, but a fight lost shows in the line before it.
+  if (o.reason === 'truncated')
+    return o.fight?.result === 'lost' ? LORE_DEFEAT_REST_MS : TURN_REST_MS;
   if (o.reason === 'cooldown') return o.retryMs;
   return undefined;
 }

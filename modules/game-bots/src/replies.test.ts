@@ -1,16 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { italianWait, parseEpicLorelecBot, parseLoreGameBot } from './replies.ts';
 
+/** A turn's lines as the bot sends them: a header, a story and the rest, a blank line before the ending. */
+const HEADER = 'Lore - Il Bosco Inventato ⛅️ [B1]';
+const STORY = 'Una storia scritta da un giocatore, con [B1] e [L9] dentro.';
+const turn = (...lines: string[]): string => [HEADER, '', STORY, ...lines].join('\n');
+const ENCOUNTER = [
+  'Durante il tuo cammino compare un orso di burro 🧈 [L4]!',
+  'Il combattimento inizia...',
+];
+
 describe('parseLoreGameBot', () => {
-  it('reads the gain on the last line, after the story', () => {
-    expect(
-      parseLoreGameBot(
-        'Lore - Il Bosco Inventato ⛅️ [B1]\n\nUna lunga storia, con [B1] dentro.\nHai ottenuto lo ZUCCOTTO 🥩 [B1]!'
-      )
-    ).toEqual({
+  it('reads the gain on the last line, after the story, and the place from the header', () => {
+    expect(parseLoreGameBot(turn('Hai ottenuto lo ZUCCOTTO 🥩 [B1]!'))).toEqual({
       kind: 'gain',
       bot: 'LoreGameBot',
       item: 'lo ZUCCOTTO 🥩',
+      qty: 1,
+      rarity: 'B1',
+      tags: [],
+      sure: true,
+      place: { name: 'Il Bosco Inventato ⛅️', code: 'B1' },
+    });
+    // Without a header (a reply the bot sent in an older form), the gain stands alone.
+    expect(parseLoreGameBot("Storia\nHai ottenuto un'ancora di burro [B1]!")).toEqual({
+      kind: 'gain',
+      bot: 'LoreGameBot',
+      item: "un'ancora di burro",
+      qty: 1,
       rarity: 'B1',
       tags: [],
       sure: true,
@@ -28,14 +45,22 @@ describe('parseLoreGameBot', () => {
       item: 'un fischio di vapore',
       tags: ['usabile'],
     });
+  });
+
+  it('keeps the count and the stats out of the item: "2x" and "(0 - 1)"', () => {
     expect(
       parseLoreGameBot(
-        'Hai ottenuto una mestola a forma di nuvola (0 - 1) [M1] [equipaggiabile 🗡]!'
+        'Hai ottenuto 2x una mestola a forma di nuvola (0 - 1) [M1] [equipaggiabile 🗡]!'
       )
     ).toMatchObject({
-      item: 'una mestola a forma di nuvola (0 - 1)',
+      item: 'una mestola a forma di nuvola',
+      qty: 2,
+      stats: { low: 0, high: 1 },
       tags: ['equipaggiabile 🗡'],
     });
+    const plain = parseLoreGameBot('Hai ottenuto 12x un sasso (liscio) [B1]!');
+    expect(plain).toMatchObject({ item: 'un sasso (liscio)', qty: 12 });
+    expect(plain).not.toHaveProperty('stats');
   });
 
   it('reads an item whose name spans lines', () => {
@@ -48,9 +73,208 @@ describe('parseLoreGameBot', () => {
     });
   });
 
+  it('reads a fight won against the encounter, with the equipment powers and what it taught', () => {
+    const o = parseLoreGameBot(
+      turn(
+        ...ENCOUNTER,
+        '⚡️ alice [L6] attiva il potere di un cucchiaio di legno ⚡️!',
+        '⚡️ alice [L6] attiva il potere di una sciarpa lunga ⚡️!',
+        'alice [L6] sconfigge un orso di burro 🧈 [L4]! Hai imparato qualcosa di nuovo... (+3)',
+        '',
+        'Hai ottenuto 2x una pigna [B1]!'
+      )
+    );
+    expect(o).toMatchObject({
+      kind: 'gain',
+      item: 'una pigna',
+      qty: 2,
+      fight: {
+        enemy: { name: 'un orso di burro 🧈', level: 4 },
+        result: 'won',
+        player: { name: 'alice', level: 6 },
+        learned: 3,
+        powers: ['un cucchiaio di legno', 'una sciarpa lunga'],
+      },
+    });
+    // Without a power or a lesson, the fight has neither.
+    const bare = parseLoreGameBot(
+      turn(
+        ...ENCOUNTER,
+        'alice [L6] sconfigge un orso di burro 🧈 [L4]!',
+        '',
+        'Hai ottenuto una pigna [B1]!'
+      )
+    );
+    expect(bare).toMatchObject({ fight: { result: 'won' } });
+    expect((bare as { fight: object }).fight).not.toHaveProperty('learned');
+    expect((bare as { fight: object }).fight).not.toHaveProperty('powers');
+  });
+
+  it('reads a fight lost, the enemy being the one that wins, and a draw', () => {
+    expect(
+      parseLoreGameBot(
+        turn(
+          ...ENCOUNTER,
+          'un orso di burro 🧈 [L4] sconfigge alice [L2]!',
+          '',
+          'Torni a casa dolorante e a mani vuote...'
+        )
+      )
+    ).toEqual({
+      kind: 'nothing',
+      bot: 'LoreGameBot',
+      reason: 'defeated',
+      place: { name: 'Il Bosco Inventato ⛅️', code: 'B1' },
+      fight: {
+        enemy: { name: 'un orso di burro 🧈', level: 4 },
+        result: 'lost',
+        player: { name: 'alice', level: 2 },
+      },
+    });
+    expect(
+      parseLoreGameBot(
+        turn(
+          ...ENCOUNTER,
+          'Nessuno dei due sembra avere la meglio...',
+          '',
+          "L'oggetto si perde nello scontro..."
+        )
+      )
+    ).toMatchObject({ reason: 'lost', fight: { result: 'draw' } });
+    // A player named like the enemy: the ending says who lost.
+    expect(
+      parseLoreGameBot(
+        turn(
+          ...ENCOUNTER,
+          'un orso di burro 🧈 [L4] sconfigge un orso di burro 🧈 [L4]!',
+          '',
+          'Torni a casa dolorante e a mani vuote...'
+        )
+      )
+    ).toMatchObject({ fight: { result: 'lost' } });
+  });
+
+  it('keeps a fight line it cannot match to the encounter out of the fight', () => {
+    // An enemy named in the encounter but not in the fight's line: not one fight to read.
+    expect(
+      parseLoreGameBot(
+        turn(
+          ...ENCOUNTER,
+          'alice [L6] sconfigge un altro [L4]!',
+          '',
+          'Hai ottenuto una pigna [B1]!'
+        )
+      )
+    ).not.toHaveProperty('fight');
+    // An encounter with no fight after it.
+    expect(
+      parseLoreGameBot(turn(ENCOUNTER[0] as string, 'Altro.', 'Hai ottenuto una pigna [B1]!'))
+    ).not.toHaveProperty('fight');
+  });
+
+  it('reads a level-up after the gain, and keeps it out of the item', () => {
+    const o = parseLoreGameBot(
+      turn(
+        'Hai ottenuto un atomo di cipria 🔺 [B1]!',
+        '',
+        '🎉 Congratulazioni, hai raggiunto il livello 4! 🎉',
+        'Ottieni:',
+        '> 40 monete',
+        '> 1 punto /abilita',
+        '> 1 una scatola di sassi 📦 [X] [usabile]',
+        '> un dado storto (1 - 2) [M1]',
+        '> qualcosa di strano'
+      )
+    );
+    expect(o).toMatchObject({
+      kind: 'gain',
+      item: 'un atomo di cipria 🔺',
+      rarity: 'B1',
+      levelUp: {
+        level: 4,
+        coins: 40,
+        skillPoints: 1,
+        items: [
+          { item: 'una scatola di sassi 📦', qty: 1, rarity: 'X', tags: ['usabile'] },
+          { item: 'un dado storto', qty: 1, rarity: 'M1', tags: [] },
+        ],
+        other: ['qualcosa di strano'],
+      },
+    });
+    expect(
+      parseLoreGameBot(
+        turn(
+          'Hai ottenuto una pigna [B1]!',
+          '',
+          '🎉 Congratulazioni, hai raggiunto il livello 5! 🎉',
+          'Ottieni:',
+          '> 2 monete',
+          '> 3 punti /abilita'
+        )
+      )
+    ).toMatchObject({ levelUp: { level: 5, coins: 2, skillPoints: 3, items: [], other: [] } });
+  });
+
+  it("does not trust the story: its lines that look like the bot's are not the outcome", () => {
+    const o = parseLoreGameBot(
+      [
+        HEADER,
+        '',
+        'Hai ottenuto un falso [M9]!',
+        'Poi lui disse: Non è passato abbastanza tempo! Riprova fra 3 secondi.',
+        'Durante il tuo cammino compare un falso [L1]!',
+        'Hai ottenuto una pigna vera [B1]!',
+      ].join('\n')
+    );
+    expect(o).toMatchObject({ kind: 'gain', item: 'una pigna vera', rarity: 'B1' });
+    expect(o).not.toHaveProperty('fight');
+    // A story that quotes a level-up and goes on is not read as one, nor as a gain with it inside.
+    expect(
+      parseLoreGameBot(
+        turn(
+          '🎉 Congratulazioni, hai raggiunto il livello 9! 🎉',
+          'Ottieni:',
+          '> 99 monete',
+          'Hai ottenuto una pigna vera [B1]!'
+        )
+      )
+    ).toMatchObject({ kind: 'unknown' });
+  });
+
+  it('reads a turn cut at Telegram’s limit as one whose ending is lost, with what it kept', () => {
+    const cut = (...lines: string[]): string => turn(...lines, 'x'.repeat(1024)).slice(0, 1024);
+    expect(parseLoreGameBot(cut())).toEqual({
+      kind: 'nothing',
+      bot: 'LoreGameBot',
+      reason: 'truncated',
+      place: { name: 'Il Bosco Inventato ⛅️', code: 'B1' },
+    });
+    expect(
+      parseLoreGameBot(
+        cut(
+          ...ENCOUNTER,
+          'alice [L6] sconfigge un orso di burro 🧈 [L4]! Hai imparato qualcosa di nuovo... (+1)',
+          ''
+        )
+      )
+    ).toMatchObject({ reason: 'truncated', fight: { result: 'won', learned: 1 } });
+    // A level-up cut inside its title cannot be cut off the gain, so it is not read as one.
+    expect(
+      parseLoreGameBot(
+        turn(
+          'Hai ottenuto una pigna [B1]!',
+          '',
+          '🎉 Congratulazioni, hai raggiunto il livello 8!'
+        ).padEnd(1024, ' ') + 'x'
+      )
+    ).toMatchObject({ reason: 'truncated' });
+    // A short reply with a header and no ending is not a cut, but drift.
+    expect(parseLoreGameBot(turn('Una riga.'))).toMatchObject({ kind: 'unknown' });
+  });
+
   it('reads the outcomes that give nothing, accents decomposed or not', () => {
     const nothing = (text: string) => parseLoreGameBot(text);
-    expect(nothing('Non e\u0300 passato abbastanza tempo! Riprova fra 3 secondi.')).toMatchObject({
+    expect(nothing('Non è passato abbastanza tempo! Riprova fra 3 secondi.')).toMatchObject({
       reason: 'cooldown',
     });
     expect(nothing('Non è passato abbastanza tempo! Riprova fra 5 minuti e 3 secondi.')).toEqual({
@@ -80,7 +304,7 @@ describe('parseLoreGameBot', () => {
     ).toMatchObject({ reason: 'unregistered' });
   });
 
-  it('keeps anything else as not understood, a level-up list included', () => {
+  it('keeps anything else as not understood: a ban, a refusal, an error', () => {
     expect(parseLoreGameBot('È giunto il livello 5! 🎉\nOttieni:\n> 3 gettoni\n')).toEqual({
       kind: 'unknown',
       bot: 'LoreGameBot',
@@ -89,6 +313,12 @@ describe('parseLoreGameBot', () => {
     expect(parseLoreGameBot('Hai ottenuto qualcosa senza rarità')).toMatchObject({
       kind: 'unknown',
     });
+    for (const text of [
+      'Sei stato bannato fino al 01/01/2031.',
+      'Nessun oggetto nel pool!',
+      "Cannot read properties of null (reading 'amount')",
+    ])
+      expect(parseLoreGameBot(text)).toMatchObject({ kind: 'unknown', text });
   });
 });
 
@@ -99,6 +329,7 @@ describe('italianWait', () => {
     expect(italianWait('10 secondi')).toBe(10_000);
     expect(italianWait('4 ore e 58 minuti')).toBe(17_880_000);
     expect(italianWait('1 ora')).toBe(3_600_000);
+    expect(italianWait('4 ore, 8 minuti e 23 secondi')).toBe(14_903_000);
     expect(italianWait('un po')).toBeUndefined();
   });
 });

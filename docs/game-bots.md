@@ -69,3 +69,48 @@ account and its bot, and the group when its edge reads it too:
 - **NorelecBot** is read by `modules/norelec/` over IRC ([bot-protocol.md](bot-protocol.md)), not by
   these plugins. It answers `/avventura` only in the group, where it tries to enter @TheConquister37
   ([game-rules.md](game-rules.md) §3.1); alone it is `/avventura@NorelecBot` [S].
+
+## 5. @LoreGameBot's turn
+
+The grammar of a reply to `/avventura`, `/lore` or `/l`, which `parseLoreGameBot`
+(`modules/game-bots/src/replies.ts`) reads and the `loregame` plugin publishes as `loregame.turn`.
+Measured [M] over some 49,600 replies to the three commands, in the private chat and in the group,
+up to 17 Nov 2026. A reply, in order:
+
+| Line(s)                                                       | What it is                                                                                                                                                                         | Seen in              |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `Lore - <place> [<code>]`                                     | The place the turn took place in. The code is in the rarities' notation (`B1`, `M4`, `N1`); a place keeps its code. The name may hold emoji and spaces.                            | all but a "too soon" |
+| `<story>`                                                     | Free text, one line or many, **written by players**: it may hold anything, the bot's own phrases included, so the parser anchors on the end.                                       | all but a "too soon" |
+| `Durante il tuo cammino compare <enemy> [L<n>]!`              | An encounter: about one turn in nine. The enemy has a level; it may be named like an item, tags and all.                                                                           | 11% of the turns     |
+| `Il combattimento inizia...`                                  | Opens the fight.                                                                                                                                                                   | each encounter       |
+| `⚡️ <player> [L<n>] attiva il potere di <item> ⚡️!`           | One per equipped item whose power fires, before the fight's line.                                                                                                                  | 4% of the fights     |
+| `<player> [L<n>] sconfigge <enemy> [L<n>]!`                   | The fight is won. The player is named by their game name and level, which the line gives and no other does.                                                                        | 2/3 of the fights    |
+| ` Hai imparato qualcosa di nuovo... (+<n>)`                   | Ends a won fight's line, most of the time. Not the level bar's points: it does not add up to them [?].                                                                             | 3/4 of the wins      |
+| `<enemy> [L<n>] sconfigge <player> [L<n>]!`                   | The fight is lost, then `Torni a casa dolorante e a mani vuote...` (a rest of 30 minutes, §2).                                                                                     | 1/3 of the fights    |
+| `Nessuno dei due sembra avere la meglio...`                   | A draw, then `L'oggetto si perde nello scontro...`: the item is lost.                                                                                                              | 1.6% of the fights   |
+| `Hai ottenuto [<n>x ]<item> [(<a> - <b>) ]<rarity>[ <tag>…]!` | The gain. `<n>x` is how many (1 without); `(a - b)` follows an equippable item's name, two numbers whose meaning is unknown [?]; the tags are `[usabile]`, `[equipaggiabile 🗡]`, … | 72% of the turns     |
+| `🎉 Congratulazioni, hai raggiunto il livello <n>! 🎉`        | A level-up, after the gain, then `Ottieni:` and a list of `> ` lines: `> <n> monete`, `> <n> punto /abilita` (`punti`) and items (`> 1 <item> [<rarity>]…`).                       | 110 turns            |
+
+Besides these, a turn's reply may be:
+
+- the "too soon" (§2), 25% of the replies, with its wait:
+  `Riprova fra 4 ore, 8 minuti e 23 secondi.` (the units are separated by commas or by "e"),
+  sometimes followed by a line of the bot's own;
+- `Stai calmo maschio...` and `Non sei registrato!`;
+- **cut off** [M]: the bot's reply is cut where Telegram cuts a caption, at 1024 characters, when
+  its story is long (0.3% of the replies, the latest on 6 Nov 2026), often just before the gain, so
+  that it ends in `Hai ott`. Its place and its fight, if they came first, are still read; its
+  outcome is lost, and the parser reads it as `nothing` with the reason `truncated`.
+
+**Not read**, and so reported as drift (P5): the bot's refusals and failures, which end no turn:
+`Sei stato bannato fino al <date>.` (a ban: the actor must not go on), `Nessun oggetto nel pool!`,
+`Manda un'immagine valida!`, and JavaScript errors the bot leaks (`Cannot read properties of …`);
+0.2% of the replies.
+
+**Not supported**, as past the game's changes: the encounter of level 0 that ends in
+`Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
+
+The outcome the plugin publishes carries all this, as `Outcome` (`replies.ts`): a gain has its
+`item` (without its count and its stats), `qty`, `rarity`, `tags` and `stats`; every outcome of a
+turn has its `place`, its `fight` (`enemy`, `result`, `player`, `learned`, `powers`) and its
+`levelUp` (`level`, `coins`, `skillPoints`, `items`, `other`) when the reply had them.

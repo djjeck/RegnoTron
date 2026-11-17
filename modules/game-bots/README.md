@@ -4,7 +4,9 @@ The turns of the group's game bots, read on the turn plugins of `@megabottron199
 
 - `src/replies.ts`: what a turn of @InventoryBot, @LoreGameBot or @EpicLorelecBot brought (an item,
   nothing and why, a count: `Outcome`), their rests, their turn commands (`TURN_COMMANDS`), and the
-  grammars of @LoreGameBot and @EpicLorelecBot;
+  grammars of @LoreGameBot and @EpicLorelecBot. A @LoreGameBot turn is read whole (its place, its
+  fight, its gain with the count and the stats, its level-up:
+  [docs/game-bots.md](../../docs/game-bots.md) §5), and `loregame.turn` publishes it so;
 - `src/plugins/`: the parser plugins of @LoreGameBot and @EpicLorelecBot (`loregame`,
   `epiclorelec`).
 
