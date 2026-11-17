@@ -11,9 +11,11 @@ import {
   CoreEventLog,
   FakeConnector,
   fakeConnectorPlugin,
+  GraphFile,
   type Heard,
   VirtualClock,
 } from '@megabottron1999/core';
+import fs from 'node:fs';
 import path from 'node:path';
 import { LOREGAME_STATE } from '#src/loregame-state.ts';
 import { loregamePlugin } from '#src/plugins/loregame.ts';
@@ -23,9 +25,38 @@ export const OWNER = 'alice';
 export const DM = '@LoreGameBot';
 export const MIN = 60_000;
 export const T0 = Date.parse('2026-11-06T12:00:00Z');
+/** The game's group, when a test reads it. */
+export const GROUP = '-1001';
 
-/** An instance in `dir`, from `at`; `config`, the state node's. */
-export async function bootState(dir: string, o: { at?: number; config?: object } = {}) {
+/**
+ * An instance in `dir`, from `at`; `config`, the state node's; `group`: the parser also reads the
+ * game's group (`GROUP`), from every sender, as a graph that names the bans' players needs.
+ */
+export async function bootState(
+  dir: string,
+  o: { at?: number; config?: object; group?: boolean } = {}
+) {
+  if (o.group === true) {
+    const graph = {
+      version: 2,
+      nodes: [
+        { id: TELEGRAM_USER, plugin: TELEGRAM_USER },
+        { id: 'loregame', plugin: 'loregame' },
+        { id: LOREGAME_STATE, plugin: LOREGAME_STATE },
+      ],
+      edges: [
+        {
+          from: `${TELEGRAM_USER}.chat`,
+          to: 'loregame.chat',
+          type: 'chat-in',
+          reads: [DM, GROUP],
+        },
+        { from: 'loregame.events', to: `${LOREGAME_STATE}.events`, type: 'events' },
+      ],
+    };
+    fs.mkdirSync(path.join(dir, 'graph'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'graph', 'graph.json'), JSON.stringify(graph));
+  }
   const clock = new VirtualClock(o.at ?? T0);
   const log = new CoreEventLog(path.join(dir, 'events'));
   const account = new FakeConnector({ account: `telegram:${OWNER}` });
@@ -33,6 +64,7 @@ export async function bootState(dir: string, o: { at?: number; config?: object }
   const core = new Core({
     clock,
     dataDir: path.join(dir, 'data'),
+    ...(o.group === true ? { graphFile: new GraphFile(path.join(dir, 'graph')) } : {}),
     events: log,
     print: () => undefined,
     record: (r) => {
@@ -79,6 +111,22 @@ export async function bootState(dir: string, o: { at?: number; config?: object }
     if ('error' in r) throw new Error(r.error);
     return r.value;
   };
+  /** A message in the group: from `sender`, replying to `replyTo`; the bot's, if `sender` is its. */
+  const group = async (
+    sender: string,
+    text: string,
+    m: { replyTo?: string; own?: boolean } = {}
+  ): Promise<string> => {
+    const id = String(n++);
+    account.hear({ chat: GROUP, sender, time: clock.now(), id, text, ...m });
+    await settle();
+    return id;
+  };
+  /** Until when the parser says the bot rests (its `state.rest`). */
+  const rest = (): unknown => {
+    const r = core.controls.read('loregame', 'rest');
+    return 'value' in r ? r.value : r;
+  };
   const of = (type: string): BusEvent[] => records.filter((r) => r.type === type);
-  return { core, clock, log, account, bot, owner, turn, read, of, settle };
+  return { core, clock, log, account, bot, owner, turn, read, of, settle, group, rest };
 }

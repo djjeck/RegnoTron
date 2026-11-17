@@ -7,12 +7,18 @@
  *   namespace `loregame`): `loregame.turn`. It resumes from its cursor in the event log, so nothing
  *   is applied twice, and the turns the parser published while it was down are applied at its next
  *   start.
- * - **Its sections:** `owner` (when its state last changed) and `inventory` (an estimate: the
- *   items the turns gained, `exact` once a listing says so).
+ * - **Its sections:** `owner` (when its state last changed, and the owner's name in the bans),
+ *   `bans` (the banned players, with when each ban ends) and `inventory` (an estimate: the items
+ *   the turns gained, `exact` once a listing says so).
  * - **Freshness:** a turn that gains is a `delta` of the inventory; one cut off at Telegram's limit
  *   is an `uncertain` one.
- * - **Its interface:** `state.get`, `state.freshness`, and `state.count({ name })` (how many of an
- *   item the owner holds) and `state.held()` (every item held, with its count).
+ * - **Its interface:** `state.get`, `state.freshness`, `state.count({ name })` (how many of an
+ *   item the owner holds), `state.held()` (every item held, with its count), `state.ban({ player? })`
+ *   (a player's ban, the owner's unless named; `bannedUntil` in `src/bans.ts` is the actor's
+ *   helper over it) and `state.bans()` (every banned player).
+ * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
+ *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
+ *   them again, or `expired`), each for any player, from live news alone (not history).
  * - **Its config:** `pin`, by default `inventory.held` (how many items the owner holds) and
  *   `owner.as_of` (when it last changed), the line of its card.
  *
@@ -23,6 +29,8 @@ import { type Plugin } from '@megabottron1999/core';
 import { statePlugin } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
 import {
+  announce,
+  banOf,
   CONSUMES,
   freshness,
   held,
@@ -34,18 +42,67 @@ import {
   stateSchema,
 } from '#src/loregame-state.ts';
 
+/** What a migration works on: a staged copy of the plugin's store. */
+interface Store {
+  read<T>(name: string): T | undefined;
+  write(name: string, value: unknown): void;
+}
+
 /** The state, as `statePlugin` keeps it: an object of sections. */
 type Kept = LoreState & Record<string, unknown>;
 
 const base = statePlugin<Kept>({
   id: LOREGAME_STATE,
-  description: "The owner's state at @LoreGameBot: the inventory the turns gained",
+  description:
+    "The owner's state at @LoreGameBot: the inventory the turns gained, and the players' bans",
   schema: stateSchema,
   initial: initialState() as Kept,
   consumes: CONSUMES,
   reduce: (state, event) => reduce(state, event) as Kept,
   freshness,
+  events: {
+    banned: z
+      .object({
+        player: z.string(),
+        until: z.string().nullable().describe('When the ban ends (ISO); none: not stated'),
+        owner: z.boolean().describe('The player is the owner of the account'),
+      })
+      .describe("A player's ban, new or changed"),
+    unbanned: z
+      .object({
+        player: z.string(),
+        owner: z.boolean(),
+        reason: z
+          .enum(['lifted', 'expired'])
+          .describe('Served again by the bot, or its end passed'),
+      })
+      .describe("A player's ban ended"),
+  },
+  announce,
+  // 0.4.0 kept no bans: the section is added, empty.
+  migrations: [
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined) return;
+      const owner = (kept.state['owner'] ?? {}) as Record<string, unknown>;
+      store.write('state', {
+        ...kept,
+        state: { ...kept.state, owner: { name: null, ...owner }, bans: kept.state['bans'] ?? {} },
+      });
+    },
+  ],
   queries: {
+    ban: {
+      help: "A player's ban (the owner's unless named), when it ends: none if the state holds none; it may have ended by now",
+      input: z.object({ player: z.string().optional() }),
+      output: z.object({ until: z.string().nullable(), since: z.string() }).nullable(),
+      run: (s, input: { player?: string }) => banOf(s, input.player),
+    },
+    bans: {
+      help: 'Every banned player, with when their ban ends and when it was told',
+      output: z.record(z.string(), z.object({ until: z.string().nullable(), since: z.string() })),
+      run: (s) => s.bans,
+    },
     count: {
       help: 'How many of an item the owner holds, as the state estimates it',
       input: z.object({ name: z.string() }),

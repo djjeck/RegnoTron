@@ -44,6 +44,36 @@ export const TURN_COMMANDS: Readonly<Record<GameBot, readonly string[]>> = {
   [EPICLORELECBOT]: ['/avventura', '/rompimiilcazzo'],
 };
 
+/**
+ * The commands of @LoreGameBot (the turn's, and those of the game that move the owner's state) that
+ * a ban holds back. It answers a banned player's every message with the ban, whatever the command,
+ * so a ban is the account's: the parser declares it a hold on these (MegaBotTron1999's bot-os.md
+ * D98), for the commands a node queues. A command the list lacks is not held by the shell: an actor
+ * checks the ban itself (`bannedUntil`, `src/bans.ts`).
+ */
+export const LORE_COMMANDS: readonly string[] = [
+  ...TURN_COMMANDS[LOREGAMEBOT],
+  '/vai',
+  '/v',
+  '/zaino',
+  '/i',
+  '/z',
+  '/info',
+  '/usa',
+  '/dai',
+  '/give',
+  '/abilita',
+  '/accumulo',
+  '/generaoggetto',
+  '/generastoria',
+  '/generaguardiano',
+  '/generautilizzo',
+  '/generaequipaggiamento',
+  '/generastagione',
+  '/generaricetta',
+  '/generablueprint',
+];
+
 const MINUTE = 60_000;
 /** Every bot's rest between turns: 15 minutes [M] (docs/game-bots.md §2). */
 export const TURN_REST_MS = 15 * MINUTE;
@@ -111,6 +141,12 @@ export type Outcome =
       /** A cooldown's wait, as the bot states it, in ms. */
       retryMs?: number;
     } & LoreDetails)
+  /**
+   * @LoreGameBot's "Sei stato bannato fino al …": the player is banned, and the bot answers every
+   * message of theirs with it. `until` is when the ban ends [?] (ms): the end of the day for a date
+   * alone, and Rome's clock for a time.
+   */
+  | { kind: 'banned'; bot: GameBot; until: number }
   /** @EpicLorelecBot's count of the player's "rotture". */
   | { kind: 'count'; bot: GameBot; count: number }
   | { kind: 'unknown'; bot: GameBot; text: string };
@@ -257,9 +293,55 @@ function fightOf(text: string): LoreFight | undefined {
   return undefined;
 }
 
+const BAN =
+  /^Sei stato bannato fino al (\d{2})\/(\d{2})\/(\d{4})(?:, (\d{2}):(\d{2}):(\d{2}))?\.\s*$/u;
+
+/** How far Rome's clock is ahead of UTC at `ms`, in ms. */
+function romeOffset(ms: number): number {
+  const p = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Rome',
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+  }).formatToParts(ms);
+  const n = (type: string): number => Number(p.find((x) => x.type === type)?.value);
+  return Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute'), n('second')) - ms;
+}
+
+/** The instant at which Rome's clock reads `local` (written as if UTC), in ms. */
+export function romeMs(local: number): number {
+  const guess = local - romeOffset(local);
+  return local - romeOffset(guess);
+}
+
+/**
+ * The end of a ban, from its date and, if it states one, its time, Rome's: undefined for a date that
+ * does not exist. A date alone is read as the end of that day: the bot answers with the ban through
+ * the day itself [M]; it also lifts bans early [M], so the end is an upper bound that a normal
+ * answer overrides.
+ */
+function banEnd(m: RegExpExecArray): number | undefined {
+  const [day, month, year] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const time = m[4] === undefined ? undefined : [Number(m[4]), Number(m[5]), Number(m[6])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return undefined;
+  if (time === undefined) return romeMs(Date.UTC(year, month - 1, day + 1));
+  const [h, mi, s] = time as [number, number, number];
+  return h > 23 || mi > 59 || s > 59 ? undefined : romeMs(Date.UTC(year, month - 1, day, h, mi, s));
+}
+
 /** An @LoreGameBot reply to the owner's `/avventura`, `/lore` or `/l`. */
 export function parseLoreGameBot(raw: string): Outcome {
   const whole = raw.normalize('NFC');
+  const ban = BAN.exec(whole.trim());
+  if (ban !== null) {
+    const until = banEnd(ban);
+    return until === undefined ? unknownLore(whole) : { kind: 'banned', bot: LOREGAMEBOT, until };
+  }
   const up = levelUpAt(whole);
   const text = up === null ? whole : whole.slice(0, up.at).trimEnd();
   const place = PLACE.exec(text.split('\n')[0] as string);

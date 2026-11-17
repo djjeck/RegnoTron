@@ -314,11 +314,52 @@ describe('parseLoreGameBot', () => {
       kind: 'unknown',
     });
     for (const text of [
-      'Sei stato bannato fino al 01/01/2031.',
+      'Sei stato bannato fino al 31/02/2026.',
+      'Sei stato bannato fino al 05/11/2026, 24:00:00.',
+      'Sei stato bannato.',
       'Nessun oggetto nel pool!',
       "Cannot read properties of null (reading 'amount')",
     ])
       expect(parseLoreGameBot(text)).toMatchObject({ kind: 'unknown', text });
+  });
+});
+
+describe('a ban', () => {
+  const until = (text: string): string | undefined => {
+    const o = parseLoreGameBot(text);
+    return o.kind === 'banned' ? new Date(o.until).toISOString() : undefined;
+  };
+
+  it('ends at Rome’s time, or at the end of the day for a date alone', () => {
+    // November: Rome is an hour ahead of UTC; in summer, two.
+    expect(until('Sei stato bannato fino al 12/11/2026, 21:15:42.')).toBe(
+      '2026-11-12T20:15:42.000Z'
+    );
+    expect(until('Sei stato bannato fino al 15/07/2026, 08:00:00.')).toBe(
+      '2026-07-15T06:00:00.000Z'
+    );
+    expect(until('Sei stato bannato fino al 04/11/2026.')).toBe('2026-11-04T23:00:00.000Z');
+    expect(until('Sei stato bannato fino al 01/01/2031.')).toBe('2031-01-01T23:00:00.000Z');
+    // The day clocks change: 29 March 2026 (an hour lost at 02:00) and 25 October (gained at 03:00).
+    expect(until('Sei stato bannato fino al 28/03/2026.')).toBe('2026-03-28T23:00:00.000Z');
+    expect(until('Sei stato bannato fino al 29/03/2026.')).toBe('2026-03-29T22:00:00.000Z');
+    expect(until('Sei stato bannato fino al 25/10/2026.')).toBe('2026-10-25T23:00:00.000Z');
+    expect(until('Sei stato bannato fino al 31/12/2026.')).toBe('2026-12-31T23:00:00.000Z');
+  });
+
+  it('is the whole reply: a story that quotes it is not a ban, and a stray word is not understood', () => {
+    expect(
+      parseLoreGameBot('Lore - Il Bosco [B1]\n\nSei stato bannato fino al 01/01/2031.')
+    ).toMatchObject({
+      kind: 'unknown',
+    });
+    expect(parseLoreGameBot('Sei stato bannato fino al 01/01/2031. Ciao')).toMatchObject({
+      kind: 'unknown',
+    });
+    expect(parseLoreGameBot('  Sei stato bannato fino al 01/01/2031.\n')).toMatchObject({
+      kind: 'banned',
+      bot: 'LoreGameBot',
+    });
   });
 });
 

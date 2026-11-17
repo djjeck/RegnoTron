@@ -15,25 +15,36 @@
  * - **A turn cut off** at Telegram's limit (`truncated`) may have gained an item the reply lost: it
  *   changes no count, and marks the inventory `uncertain`.
  *
+ * - **The bans**, of every player the parser heard of, the owner's and the group's (src/bans.ts):
+ *   `loregame.ban` sets a player's ban with when it ends (`until`; none if the bot does not say),
+ *   `loregame.unban` ends it (the bot served them again: it lifts bans early), and one past its end
+ *   is dropped at the next event, by that event's time. The state keeps who is banned, not a
+ *   history. A ban is the account's, whatever the command: an actor asks `bannedUntil` as it wakes.
+ *
  * Any other outcome (a "too soon", a fight lost, the item lost) changes nothing: the state records
- * facts, and the parser has already read the reply. An item may be named anything (players write
- * them), `__proto__` included, so the holdings are read and written as own properties.
+ * facts, and the parser has already read the reply. An item or a player may be named anything
+ * (players write them), `__proto__` included, so both are read and written as own properties.
  */
 import { type BusEvent } from '@megabottron1999/core';
-import { type Mark } from '@megabottron1999/turns/state-plugin.ts';
+import { type Announcement, type Mark } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
-import { LOREGAME_PARSER } from '#src/plugins/loregame.ts';
+import { BAN_EVENT, LOREGAME_PARSER, UNBAN_EVENT } from '#src/plugins/loregame.ts';
 
 /** The plugin's id, and the namespace of its events (`loregame-state.changed`). */
 export const LOREGAME_STATE = 'loregame-state';
 
 /** The parser's events it applies: the owner's turns. */
-export const CONSUMES: readonly string[] = [`${LOREGAME_PARSER}.turn`];
+export const CONSUMES: readonly string[] = [`${LOREGAME_PARSER}.turn`, BAN_EVENT, UNBAN_EVENT];
 
 /** The paths of the state its node's panel draws first, and its card's line. */
 export const PINS = ['inventory.held', 'owner.as_of'];
 
 const date = z.string().nullable();
+
+const ban = z.object({
+  until: date.describe('Ends (none: the bot did not say)'),
+  since: z.string().describe('Told'),
+});
 
 const holding = z.object({
   qty: z.number().describe('Count'),
@@ -46,7 +57,13 @@ const holding = z.object({
 
 /** The state's schema: its sections, each described for the panel. */
 export const stateSchema = z.object({
-  owner: z.object({ as_of: date.describe('Latest change') }).describe('Owner'),
+  owner: z
+    .object({
+      as_of: date.describe('Latest change'),
+      name: z.string().nullable().describe('Name in the bans, once told'),
+    })
+    .describe('Owner'),
+  bans: z.record(z.string(), ban).describe('Banned players'),
   inventory: z
     .object({
       held: z.number().describe('Items held'),
@@ -56,11 +73,12 @@ export const stateSchema = z.object({
 });
 
 export type Holding = z.infer<typeof holding>;
+export type Ban = z.infer<typeof ban>;
 export type LoreState = z.infer<typeof stateSchema>;
 
 /** The state a fresh instance starts from. */
 export function initialState(): LoreState {
-  return { owner: { as_of: null }, inventory: { held: 0, items: {} } };
+  return { owner: { as_of: null, name: null }, bans: {}, inventory: { held: 0, items: {} } };
 }
 
 /** What a turn brought into the inventory: one item, how many, and by what. */
@@ -114,12 +132,49 @@ function gainsOf(e: BusEvent): Gain[] {
 const own = (items: Record<string, Holding>, name: string): Holding | undefined =>
   Object.hasOwn(items, name) ? items[name] : undefined;
 
-/** The next state: an event's gains added to the inventory (pure; a turn of no gain: the same state). */
+/** What a ban or an unban event says (the parser's, `src/plugins/loregame.ts`). */
+const banEventSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean().optional(),
+  until: z.number().optional(),
+});
+
+const asIso = (ms: number): string => new Date(ms).toISOString();
+
+/**
+ * The state after an event, as to the bans: a ban set or ended, and every ban that ended by the
+ * event's time dropped (the state is a pure function of its events, so time is theirs).
+ */
+function reduceBans(state: LoreState, e: BusEvent): LoreState {
+  const kept = Object.entries(state.bans).filter(
+    ([, b]) => b.until === null || Date.parse(b.until) > e.t
+  );
+  let bans = kept.length === Object.keys(state.bans).length ? state.bans : Object.fromEntries(kept);
+  let name = state.owner.name;
+  const said = e.type === BAN_EVENT || e.type === UNBAN_EVENT ? banEventSchema.safeParse(e) : null;
+  if (said?.success === true) {
+    const { player, until } = said.data;
+    if (said.data.owner === true) name = player;
+    if (e.type === UNBAN_EVENT) {
+      if (Object.hasOwn(bans, player))
+        bans = Object.fromEntries(Object.entries(bans).filter(([p]) => p !== player));
+    } else if (until === undefined || until > e.t) {
+      const end = until === undefined ? null : asIso(until);
+      if (!Object.hasOwn(bans, player) || bans[player]?.until !== end)
+        bans = { ...bans, [player]: { until: end, since: asIso(e.t) } };
+    }
+  }
+  if (bans === state.bans && name === state.owner.name) return state;
+  return { ...state, owner: { as_of: asIso(e.t), name }, bans };
+}
+
+/** The next state: an event's gains added to the inventory, a ban set or ended (pure). */
 export function reduce(state: LoreState, e: BusEvent): LoreState {
+  const withBans = reduceBans(state, e);
   const gains = gainsOf(e);
-  if (gains.length === 0) return state;
-  const at = new Date(e.t).toISOString();
-  let items = state.inventory.items;
+  if (gains.length === 0) return withBans;
+  const at = asIso(e.t);
+  let items = withBans.inventory.items;
   for (const g of gains) {
     const before = own(items, g.item);
     items = {
@@ -135,9 +190,41 @@ export function reduce(state: LoreState, e: BusEvent): LoreState {
     };
   }
   return {
-    owner: { as_of: at },
+    ...withBans,
+    owner: { ...withBans.owner, as_of: at },
     inventory: { held: Object.values(items).filter((h) => h.qty > 0).length, items },
   };
+}
+
+/** What a state tells of a change in its bans, as `loregame-state` announces it. */
+export function announce(before: LoreState, after: LoreState, e: BusEvent): Announcement[] {
+  const owner = (player: string): boolean => player === after.owner.name;
+  const set = Object.entries(after.bans).flatMap(([player, b]) =>
+    Object.hasOwn(before.bans, player) && before.bans[player]?.until === b.until
+      ? []
+      : [{ type: 'banned', payload: { player, until: b.until, owner: owner(player) } }]
+  );
+  const ended = Object.keys(before.bans).flatMap((player) =>
+    Object.hasOwn(after.bans, player)
+      ? []
+      : [
+          {
+            type: 'unbanned',
+            payload: {
+              player,
+              owner: owner(player),
+              reason: e.type === UNBAN_EVENT ? 'lifted' : 'expired',
+            },
+          },
+        ]
+  );
+  return [...set, ...ended];
+}
+
+/** The ban of a player (the owner, unless named), if the state holds one: it may have ended by now. */
+export function banOf(s: LoreState, player?: string): Ban | null {
+  const name = player ?? s.owner.name;
+  return name !== null && Object.hasOwn(s.bans, name) ? (s.bans[name] ?? null) : null;
 }
 
 /**

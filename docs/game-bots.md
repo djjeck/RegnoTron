@@ -102,10 +102,37 @@ Besides these, a turn's reply may be:
   that it ends in `Hai ott`. Its place and its fight, if they came first, are still read; its
   outcome is lost, and the parser reads it as `nothing` with the reason `truncated`.
 
-**Not read**, and so reported as drift (P5): the bot's refusals and failures, which end no turn:
-`Sei stato bannato fino al <date>.` (a ban: the actor must not go on), `Nessun oggetto nel pool!`,
-`Manda un'immagine valida!`, and JavaScript errors the bot leaks (`Cannot read properties of …`);
-0.2% of the replies.
+**Not read**, and so reported as drift (P5): the bot's failures, which end no turn:
+`Nessun oggetto nel pool!`, `Manda un'immagine valida!`, and JavaScript errors the bot leaks
+(`Cannot read properties of …`); under 0.1% of the replies.
+
+### 5.1 Bans
+
+`Sei stato bannato fino al <date>.` [M] is the bot's answer to **every message** of a banned player,
+not only to a turn: the replies in the exports (two players, Feb and Oct–Nov 2026) answer a `/lore`
+or `/avventura`, a command of another bot (`/pesca`, `/take`) and a plain word in the chat alike. So
+a ban is read off any reply of the bot:
+
+- **The date** is `DD/MM/YYYY`, or `DD/MM/YYYY, HH:MM:SS`. It is read on Rome's clock [?], and a
+  date alone as the **end of that day**: the bot answered with the ban through the day itself, so
+  midnight cannot be its end.
+- **The bot lifts bans early** [M], with no word: of the bans measured, most ended before the end
+  they named (one by hours), and a player was served between two replies of the same ban. So the
+  date is an upper bound, and a reply that is anything but a ban to a banned player ends their ban.
+- **In private** the reply is the owner's. **In the group** it replies to the banned player's
+  message and names nobody: the player is the sender of the message replied to, which the parser
+  remembers as it hears (the last 5,000 messages), so it needs the group's chat edge to deliver
+  every sender, not only the bot's and the owner's. A reply to a message it did not hear is no
+  one's.
+- **The owner's turn** answered with a ban is the outcome `banned` (with its `until`), declared a
+  refusal (`reason: banned`, MegaBotTron1999's bot-os.md D98) that holds the bot's commands
+  (`LORE_COMMANDS`) back in that chat until `until`, not an `ok`.
+- **The parser's `state.rest`**, which the shell's turn-actor asks as it wakes, says the bot rests
+  until the owner's ban ends. It never sends into a ban, and plays again at its end, or when the bot
+  serves the owner again.
+- **`loregame.ban` and `loregame.unban`** are the parser's events for any player, each when a ban
+  starts, changes or ends (a banned player's hundred replies are one `ban`): `loregame-state` keeps
+  them (§6). The parser keeps the bans it knows across restarts.
 
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
@@ -127,4 +154,11 @@ It is a floor, not the truth, while the turns are all it reads:
   what turns alone bring.
 - **A turn cut off** (§5) may have gained an item the reply lost, so the inventory is marked
   uncertain, not changed.
-- **Items are named by players**, anything, `__proto__` included.
+- **The bans** (§5.1) of every player the parser heard of, the owner's and the group's: per player,
+  when the ban ends (none if the bot does not say) and when it was told. A ban ends in the state
+  when the parser says the bot served the player again, and one past its end is dropped at the next
+  event, by that event's time. `state.ban({ player? })` is a player's (the owner's unless named),
+  `state.bans()` every one; `loregame-state.banned` and `loregame-state.unbanned` announce each
+  change, for any player, from live news alone. **An actor** checks the ban as it wakes, before each
+  command, with `bannedUntil` (`src/bans.ts`): a ban is the account's, whatever the command.
+- **Items and players are named by players**, anything, `__proto__` included.

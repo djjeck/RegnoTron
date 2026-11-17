@@ -1,6 +1,8 @@
 import { type BusEvent } from '@megabottron1999/core';
 import { describe, expect, it } from 'vitest';
 import {
+  announce,
+  banOf,
   CONSUMES,
   freshness,
   held,
@@ -19,7 +21,7 @@ const gain = (item: string, extra: Record<string, unknown> = {}) =>
 describe('the loregame state', () => {
   it('starts empty, fits its schema, and applies the parser’s turns', () => {
     expect(stateSchema.safeParse(initialState()).success).toBe(true);
-    expect(CONSUMES).toEqual(['loregame.turn']);
+    expect(CONSUMES).toEqual(['loregame.turn', 'loregame.ban', 'loregame.unban']);
   });
 
   it('adds a gain, its count one without one, and keeps the exactness it had', () => {
@@ -125,5 +127,106 @@ describe('the loregame state', () => {
     expect(freshness(turn({ kind: 'nothing', bot: 'LoreGameBot', reason: 'lost' }), [])).toEqual(
       {}
     );
+  });
+});
+
+const HOUR = 3_600_000;
+const ban = (player: string, until: number | undefined, t = T, owner = false): BusEvent =>
+  ({
+    type: 'loregame.ban',
+    t,
+    chat: '-1001',
+    player,
+    owner,
+    ...(until === undefined ? {} : { until }),
+  }) as unknown as BusEvent;
+const unban = (player: string, t = T): BusEvent =>
+  ({ type: 'loregame.unban', t, chat: '-1001', player, owner: false }) as unknown as BusEvent;
+
+describe('the loregame state’s bans', () => {
+  it('holds a ban per player, with when it ends, and the owner’s name once told', () => {
+    let s = reduce(initialState(), ban('bob', T + 5 * HOUR));
+    s = reduce(s, ban('alice', T + HOUR, T + 60_000, true));
+    expect(s.bans).toEqual({
+      bob: { until: '2026-11-06T17:00:00.000Z', since: '2026-11-06T12:00:00.000Z' },
+      alice: { until: '2026-11-06T13:00:00.000Z', since: '2026-11-06T12:01:00.000Z' },
+    });
+    expect(s.owner).toEqual({ as_of: '2026-11-06T12:01:00.000Z', name: 'alice' });
+    expect(stateSchema.safeParse(s).success).toBe(true);
+    expect(banOf(s)).toMatchObject({ until: '2026-11-06T13:00:00.000Z' });
+    expect(banOf(s, 'bob')).toMatchObject({ until: '2026-11-06T17:00:00.000Z' });
+    expect(banOf(s, 'carol')).toBeNull();
+    expect(banOf(initialState())).toBeNull();
+  });
+
+  it('keeps a ban that states no end, changes one when the end moves, and ignores a repeat', () => {
+    const open = reduce(initialState(), ban('bob', undefined));
+    expect(open.bans['bob']).toMatchObject({ until: null });
+    const moved = reduce(open, ban('bob', T + HOUR, T + 1000));
+    expect(moved.bans['bob']).toEqual({
+      until: '2026-11-06T13:00:00.000Z',
+      since: '2026-11-06T12:00:01.000Z',
+    });
+    expect(reduce(moved, ban('bob', T + HOUR, T + 2000))).toBe(moved);
+    // A ban that has ended by its own time is none.
+    const none = initialState();
+    expect(reduce(none, ban('bob', T - 1))).toBe(none);
+  });
+
+  it('ends a ban when the bot serves the player, and drops the ones that ran out by the time of any event', () => {
+    let s = reduce(initialState(), ban('bob', T + 5 * HOUR));
+    s = reduce(s, ban('carol', T + HOUR));
+    expect(Object.keys(reduce(s, unban('bob')).bans)).toEqual(['carol']);
+    expect(reduce(s, unban('dave'))).toBe(s);
+    // Any event after the end drops the ban, a turn's too.
+    const later = reduce(
+      s,
+      turn({ kind: 'nothing', bot: 'LoreGameBot', reason: 'lost' }, T + 2 * HOUR)
+    );
+    expect(Object.keys(later.bans)).toEqual(['bob']);
+    expect(later.owner.as_of).toBe('2026-11-06T14:00:00.000Z');
+  });
+
+  it('serves players named like a prototype’s key', () => {
+    let s = reduce(initialState(), ban('__proto__', T + HOUR));
+    s = reduce(s, ban('constructor', T + HOUR));
+    expect(Object.keys(s.bans)).toEqual(['__proto__', 'constructor']);
+    expect(banOf(s, '__proto__')).not.toBeNull();
+    expect(banOf(s, 'toString')).toBeNull();
+    expect(Object.keys(reduce(s, unban('__proto__')).bans)).toEqual(['constructor']);
+    expect(stateSchema.safeParse(s).success).toBe(true);
+  });
+
+  it('ignores a ban event that does not fit', () => {
+    const bad = { type: 'loregame.ban', t: T, chat: '-1001' } as unknown as BusEvent;
+    const s = initialState();
+    expect(reduce(s, bad)).toBe(s);
+  });
+
+  it('announces each ban set or changed, and each ended, lifted or expired', () => {
+    const s0 = initialState();
+    const s1 = reduce(s0, ban('alice', T + HOUR, T, true));
+    expect(announce(s0, s1, ban('alice', T + HOUR, T, true))).toEqual([
+      {
+        type: 'banned',
+        payload: { player: 'alice', until: '2026-11-06T13:00:00.000Z', owner: true },
+      },
+    ]);
+    expect(announce(s1, s1, ban('alice', T + HOUR))).toEqual([]);
+    const s2 = reduce(s1, unban('alice', T + 1000));
+    expect(announce(s1, s2, unban('alice', T + 1000))).toEqual([
+      { type: 'unbanned', payload: { player: 'alice', owner: true, reason: 'lifted' } },
+    ]);
+    const e = turn({ kind: 'nothing', bot: 'LoreGameBot', reason: 'lost' }, T + 2 * HOUR);
+    expect(announce(s1, reduce(s1, e), e)).toEqual([
+      { type: 'unbanned', payload: { player: 'alice', owner: true, reason: 'expired' } },
+    ]);
+  });
+
+  it('marks the sections a ban changed a delta, as any event', () => {
+    expect(freshness(ban('bob', T + HOUR), ['owner', 'bans'])).toEqual({
+      owner: 'delta',
+      bans: 'delta',
+    });
   });
 });

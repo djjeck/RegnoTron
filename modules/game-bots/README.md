@@ -8,6 +8,8 @@ The turns of the group's game bots, read on the turn plugins of `@megabottron199
   fight, its gain with the count and the stats, its level-up:
   [docs/game-bots.md](../../docs/game-bots.md) §5), and `loregame.turn` publishes it so;
 - `src/loregame-state.ts`: the owner's state at @LoreGameBot (its schema, reducer and freshness);
+- `src/bans.ts`: @LoreGameBot's bans, as the parser watches them (`BanWatch`) and an actor checks
+  them (`bannedUntil`);
 - `src/plugins/`: the parser plugins of @LoreGameBot and @EpicLorelecBot (`loregame`,
   `epiclorelec`), and `loregame-state`, the state plugin on @LoreGameBot's turns.
 
@@ -55,8 +57,17 @@ of the game rather than of a deployment (MegaBotTron1999's bot-os.md D70). A nod
 `commands` config, as they had before, still runs: the key is ignored, and may be removed from the
 graph. Each publishes `<id>.turn`, which the editor lists with its description, and which, through
 `turnParserPlugin`, answers its turn commands (the shell's bot-os.md D98: a "too soon" refused with
-its `retryAt`, any other outcome `ok`). A turn-actor of the shell, if the owner runs one beside a
-parser, needs `{ "command": "/avventura" }`.
+its `retryAt`, any other outcome `ok`).
+
+**Bans.** @LoreGameBot answers a banned player's every message with the ban, so `loregame` watches
+all it hears (docs/game-bots.md §5.1). The owner's turn answered with a ban is the outcome `banned`,
+a refusal that holds the bot's commands until the ban ends, and the parser's `state.rest` says so,
+so a shell turn-actor sends nothing into a ban. It also publishes `loregame.ban` and
+`loregame.unban` for any player, the group's too, which `loregame-state` keeps. To name the group's
+players, the edge from the `telegram-user` node that reads the group must deliver every sender: no
+`senders` filter (the default, `@LoreGameBot` and `me`, shows the bot's replies and the owner's
+messages alone, and the parser can then place the owner's bans only). A turn-actor of the shell, if
+the owner runs one beside a parser, needs `{ "command": "/avventura" }`.
 
 ## The state: `loregame-state`
 
@@ -77,16 +88,35 @@ on its card; by default `inventory.held` and `owner.as_of`). It survives restart
 cursor in the event log, so each turn is applied once (those the parser published while it was down
 included), and announces each change as `loregame-state.changed`.
 
-It keeps, so far, the **inventory**: what the owner's turns gained (a drop with its `2x` count, and
-the items a level-up gives), per item its count, rarity, tags, when and by what (`drop` or
-`level-up`). It is an **estimate, a floor**: nothing lists the inventory yet (`/zaino` is paginated,
-and is read later), and a `/usa`, a `/dai` or a generator are not read yet, so a count only rises
-and `exact` stays false. A turn cut off at Telegram's limit may have gained what the reply lost: it
-changes no count, and marks the inventory `uncertain` in `state.freshness`.
+It keeps the **bans** of every player the parser heard of, with when each ends (below), and the
+**inventory**: what the owner's turns gained (a drop with its `2x` count, and the items a level-up
+gives), per item its count, rarity, tags, when and by what (`drop` or `level-up`). It is an
+**estimate, a floor**: nothing lists the inventory yet (`/zaino` is paginated, and is read later),
+and a `/usa`, a `/dai` or a generator are not read yet, so a count only rises and `exact` stays
+false. A turn cut off at Telegram's limit may have gained what the reply lost: it changes no count,
+and marks the inventory `uncertain` in `state.freshness`.
 
-| Interface               | Answers                                                        |
-| ----------------------- | -------------------------------------------------------------- |
-| `state.get({ path? })`  | The state, or the value at a dotted path (`inventory.items`)   |
-| `state.freshness`       | How fresh each section is: its last snapshot, the deltas since |
-| `state.count({ name })` | How many of an item the owner holds, as the state estimates it |
-| `state.held()`          | Every item held, with its count                                |
+| Interface                | Answers                                                        |
+| ------------------------ | -------------------------------------------------------------- |
+| `state.get({ path? })`   | The state, or the value at a dotted path (`inventory.items`)   |
+| `state.freshness`        | How fresh each section is: its last snapshot, the deltas since |
+| `state.count({ name })`  | How many of an item the owner holds, as the state estimates it |
+| `state.held()`           | Every item held, with its count                                |
+| `state.ban({ player? })` | A player's ban (the owner's unless named): `{ until, since }`  |
+| `state.bans()`           | Every banned player, with their ban                            |
+
+A ban is kept with when it ends, as the bot states it (Rome's clock; a date alone: the end of the
+day), and is over when the bot serves the player again, which it does early at times, or when its
+end passes: the state drops it at the next event, and `state.ban` may answer a ban that has ended,
+which an actor checks against its clock. **An actor** (a script or a plugin) that sends the bot's
+commands asks as it wakes, before each one:
+
+```ts
+import { type BansInterface, bannedUntil } from '@regnotron/game-bots/bans.ts';
+
+const until = bannedUntil(ctx.use<BansInterface>('bans'), ctx.clock.now());
+if (until !== undefined) return; // banned: the account's, whatever the command; ask again later
+```
+
+`loregame-state.banned` (`player`, `until`, `owner`) and `loregame-state.unbanned` (`player`,
+`owner`, `reason`: `lifted` or `expired`) announce each change, for any player, from live news.
