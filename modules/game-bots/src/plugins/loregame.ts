@@ -9,7 +9,8 @@
  * learnt its id) still counts when it reads as a turn's outcome. Its rest: 15 minutes, 30 after a
  * fight lost, or the wait it states.
  *
- * **The accumulo** (docs/game-bots.md §5.2): a turn that finds it full carries the line
+ * **The accumulo** (docs/game-bots.md §5.2; `loregame-accumulo` plays it): a turn that finds it
+ * full carries the line
  * "🔋 /accumulo pronto!", which the outcome of `loregame.turn` has as `accumulo`; and the bot's
  * answer to the owner's `/accumulo` (in private, or the one that follows the command in the
  * group) is published as `loregame.accumulo`, for `loregame-state` to count against.
@@ -31,7 +32,7 @@ import {
   type TurnReading,
 } from '@megabottron1999/turns/turn-parser.ts';
 import { z } from 'zod';
-import { AccumuloWatch } from '#src/accumulo.ts';
+import { ACCUMULO_COMMANDS, AccumuloWatch } from '#src/accumulo.ts';
 import { BanWatch } from '#src/bans.ts';
 import {
   LORE_COMMANDS,
@@ -117,6 +118,26 @@ const accumuloEvent = z
   })
   .describe("How @LoreGameBot answered the owner's /accumulo");
 
+/**
+ * What the bot's answer to `/accumulo` tells a node that sent it (MegaBotTron1999's bot-os.md D98):
+ * used is the `ok`; the rest are refusals, each for its reason, none with a time to retry (the
+ * accumulo fills with turns, not with time).
+ */
+const ACCUMULO_ANSWERS = (
+  [
+    ['used', 'ok', 'used'],
+    ['idle', 'refused', 'idle'],
+    ['short', 'refused', 'not_ready'],
+    ['locked', 'refused', 'locked'],
+  ] as const
+).map(([result, status, reason]) => ({
+  event: ACCUMULO_EVENT,
+  commands: [...ACCUMULO_COMMANDS],
+  when: { result },
+  status,
+  reason,
+}));
+
 /** The parser, with the bans and the accumulo it watches for, beside the turns it reads. */
 export const loregamePlugin: Plugin = {
   manifest: {
@@ -131,7 +152,7 @@ export const loregamePlugin: Plugin = {
     answers: [
       {
         event: `${LOREGAME_PARSER}.turn`,
-        commands: [...TURN_COMMANDS[LOREGAMEBOT]],
+        commands: [...TURN_COMMANDS[LOREGAMEBOT], ...ACCUMULO_COMMANDS],
         when: { 'outcome.kind': 'banned' },
         status: 'refused',
         reason: 'banned',
@@ -139,6 +160,7 @@ export const loregamePlugin: Plugin = {
         holds: [...LORE_COMMANDS],
       },
       ...(parser.manifest.answers ?? []),
+      ...ACCUMULO_ANSWERS,
     ],
   },
   create: async (ctx) => {

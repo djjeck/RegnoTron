@@ -13,7 +13,8 @@ The turns of the group's game bots, read on the turn plugins of `@megabottron199
 - `src/accumulo.ts`: @LoreGameBot's accumulo: the bot's answers to `/accumulo` (`parseAccumulo`),
   whose they are (`AccumuloWatch`) and when an actor may send it (`accumuloReady`);
 - `src/plugins/`: the parser plugins of @LoreGameBot and @EpicLorelecBot (`loregame`,
-  `epiclorelec`), and `loregame-state`, the state plugin on @LoreGameBot's turns.
+  `epiclorelec`), `loregame-state`, the state plugin on @LoreGameBot's turns, and
+  `loregame-accumulo`, which tells a shell turn-actor when `/accumulo` may go.
 
 @InventoryBot's parser, the plugin `inventorybot`, is no longer here: it is the module
 `inventorybot` of [InventoryBotTron](https://github.com/djjeck/InventoryBotTron), beside its
@@ -151,3 +152,63 @@ if (accumuloReady(ctx.use<AccumuloInterface>('state').state.accumulo())) {
 `loregame-state.accumuloReady` (`count`, `max`, `via`: `turn` or `reading`), `accumuloUsed` (`turns`
 since the last use, `exact`) and `accumuloDrift` (`kind`, `counted`, `said`, `max`) announce each
 change from live news.
+
+## Auto-playing the accumulo: `loregame-accumulo`
+
+`/lore` is played by a shell `turn-actor` on the `loregame` parser, which tells it when the bot
+rests. The accumulo has no rest of its own: it may go when the bot said it is full and there is a
+`/lore` rest to zero. `loregame-accumulo` answers the actor's question for it, so that a second
+`turn-actor` with `command: "/accumulo"` plays it as soon as it is available. The module sends
+nothing: the actor is the shell's, and wired in the owner's graph.
+
+```json
+{
+  "nodes": [
+    { "id": "loregame-accumulo", "plugin": "loregame-accumulo" },
+    {
+      "id": "loregame-accumulo-turns",
+      "plugin": "turn-actor",
+      "config": { "command": "/accumulo" }
+    }
+  ],
+  "edges": [
+    { "from": "loregame-state.interface", "to": "loregame-accumulo.state", "type": "interface" },
+    { "from": "loregame.interface", "to": "loregame-accumulo.parser", "type": "interface" },
+    {
+      "from": "loregame-accumulo.interface",
+      "to": "loregame-accumulo-turns.parser",
+      "type": "interface"
+    },
+    {
+      "from": "loregame-accumulo-turns.chat",
+      "to": "telegram-user.chat",
+      "type": "chat-out",
+      "sends": ["@LoreGameBot"],
+      "commands": ["/accumulo"],
+      "dryRun": true
+    }
+  ]
+}
+```
+
+(beside the `loregame` and `loregame-state` nodes above; the chat-out edge is a dry run until the
+owner turns it off). The actor sends to the private chat with the bot, as every turn-actor does; the
+state is the account's, so it makes no difference where the owner plays. It has no config of its own
+beyond the shell's: the `schedule` is the actor's pace.
+
+- **It goes when** the bot said the accumulo is full (a turn's line, or a counter at its maximum:
+  never our own count), the owner is not banned or under the level, and the parser says the bot
+  rests, since `/accumulo` zeroes that rest and is answered "already ready", spending nothing,
+  without one. Otherwise `state.rest` says until when to wait and why, and the actor looks again
+  every few minutes (every half hour at most while the count says it is far from full), logging each
+  as a `rest` step.
+- **What the bot answers** is the command's answer for the shell (bot-os.md D98): used is `ok`; not
+  yet, already ready and under the level are refusals (`not_ready`, `idle`, `locked`), so a command
+  that keeps being refused is backed off.
+- **It gains a turn only if a `/lore` follows.** The actor does not play it, and `turn-actor` paces
+  `/lore` 17 to 20 minutes apart by default, over the bot's 15: the zeroed rest is no earlier a
+  turn. Play the next `/lore` by hand, or send it when `loregame-state.accumuloUsed` is announced (a
+  shell `reactor` on that event).
+- **Under the level** it waits an hour at a time, and nothing lifts that but the bot's word: a
+  `/accumulo` by hand once the owner has levelled up elsewhere (a training raises the level without
+  a turn).

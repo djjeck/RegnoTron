@@ -1,12 +1,13 @@
 {
   "id": "game-bots",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "api": "1",
   "provides": "@regnotron/game-bots",
   "imports": {},
   "plugins": [
     "src/plugins/loregame.ts",
     "src/plugins/loregame-state.ts",
+    "src/plugins/loregame-accumulo.ts",
     "src/plugins/epiclorelec.ts"
   ]
 }

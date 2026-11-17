@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   ACCUMULO_COMMANDS,
   accumuloReady,
+  accumuloRest,
+  type AccumuloView,
   AccumuloWatch,
   ANSWER_WINDOW_MS,
   isAccumuloCommand,
+  LOOK_AGAIN_MS,
   parseAccumulo,
+  POLL_MS,
+  WAIT_MS,
 } from './accumulo.ts';
 import { type Heard } from './bans.ts';
 
@@ -171,5 +176,68 @@ describe('when to send /accumulo', () => {
     expect(accumuloReady({ ready: true, locked: null })).toBe(true);
     expect(accumuloReady({ ready: false, locked: null })).toBe(false);
     expect(accumuloReady({ ready: true, locked: 4 })).toBe(false);
+  });
+});
+
+describe('when a turn-actor may send /accumulo', () => {
+  const MIN = 60_000;
+  const NOW = T + 5 * MIN;
+  const view = (v: Partial<AccumuloView> = {}): AccumuloView => ({
+    ready: false,
+    locked: null,
+    count: 4,
+    exact: true,
+    max: 20,
+    as_of: new Date(T).toISOString(),
+    ...v,
+  });
+  const at = (a: { banUntil?: number; loreRests?: boolean } = {}) => ({
+    now: NOW,
+    banUntil: a.banUntil,
+    loreRests: a.loreRests ?? true,
+  });
+
+  it('goes when the bot said it is full and the next /lore rests, and not before', () => {
+    expect(accumuloRest(view({ ready: true }), at())).toBeUndefined();
+    // Nothing to zero: it would be answered "already ready", and spend nothing.
+    expect(accumuloRest(view({ ready: true }), at({ loreRests: false }))).toEqual({
+      until: NOW + POLL_MS,
+      why: 'the next /lore is not resting: nothing to zero',
+    });
+  });
+
+  it('never goes on its own count: it waits for the bot’s word, and looks again in time', () => {
+    // A count at the maximum is not the word.
+    expect(accumuloRest(view({ count: 20 }), at())).toMatchObject({
+      why: 'the accumulo is not full',
+    });
+    // Sixteen turns to go, a rest of 15 minutes each: it need not look for a long while, but does.
+    expect(accumuloRest(view(), at())?.until).toBe(NOW + LOOK_AGAIN_MS);
+    // One turn to go: the earliest it fills is a rest after the last turn the state heard.
+    expect(accumuloRest(view({ count: 19 }), at())?.until).toBe(T + 15 * MIN);
+    // That moment has passed (the turn is late): a few minutes at a time.
+    expect(accumuloRest(view({ count: 19 }), { ...at(), now: T + 40 * MIN })?.until).toBe(
+      T + 40 * MIN + POLL_MS
+    );
+    // A count that is only a floor, or has no time, rules nothing out.
+    expect(accumuloRest(view({ count: 19, exact: false }), at())?.until).toBe(NOW + POLL_MS);
+    expect(accumuloRest(view({ count: 19, as_of: null }), at())?.until).toBe(NOW + POLL_MS);
+    // A count past the maximum still needs the bot's word, one turn at most away.
+    expect(accumuloRest(view({ count: 25, max: null }), at())?.until).toBe(T + 15 * MIN);
+  });
+
+  it('waits out a ban and a level, an hour at a time when nothing says when they end', () => {
+    expect(accumuloRest(view({ ready: true }), at({ banUntil: NOW + 7 * MIN }))).toEqual({
+      until: NOW + 7 * MIN,
+      why: 'the owner is banned',
+    });
+    expect(accumuloRest(view({ ready: true }), at({ banUntil: Infinity }))).toEqual({
+      until: NOW + WAIT_MS,
+      why: 'the owner is banned',
+    });
+    expect(accumuloRest(view({ ready: true, locked: 4 }), at())).toEqual({
+      until: NOW + WAIT_MS,
+      why: 'the accumulo needs level 4',
+    });
   });
 });

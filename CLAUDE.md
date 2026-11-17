@@ -55,7 +55,9 @@ formatting. Address every error before marking a sub-task complete.
 - **Test data is synthetic.** Tests and fixtures are made up, never copied from a real chat, log or
   export; tests never read real exports.
 - **No automation.** No module imports the shell's actors (`@megabottron1999/turns/turn-actor.ts`;
-  ESLint refuses it), and nothing here sends a game command.
+  ESLint refuses it), and nothing here sends a game command. A plugin may tell a shell actor when a
+  command may go, in the terms of its parser (`state.rest`: `loregame-accumulo`), since the actor
+  and the decision to run it are the owner's, in their graph.
 - **Modules** (MegaBotTron1999's bot-os.md D49): each `modules/<id>/` has a `module.json` (`id`,
   `version`, `api`, `provides` `@regnotron/<id>`, the modules it `imports` with version ranges, its
   `plugins`) and is also a workspace package of the same name and version, with `exports` `./*` →

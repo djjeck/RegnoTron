@@ -171,6 +171,14 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
   `count`, `max`, `level`), as the parser's event; the turn's line is `accumulo` in the outcome of
   `loregame.turn`. `loregame-state` counts against them (§6).
 
+**Playing it.** `loregame-accumulo` (the module's README) tells a shell turn-actor with
+`command: "/accumulo"` when it may go: the bot said the accumulo is full, the owner is not banned or
+under the level, and the bot rests, which a use zeroes (without a rest it is answered
+`La lore è già pronta!`, and spends nothing). The permission is the bot's word, never our count. A
+use gains a turn only if a `/lore` follows at once; the stock `/lore` actor does not (its gaps are
+17 to 20 minutes, over the bot's 15). The command's answers are declared for the shell (D98): used
+is `ok`, and `not_ready`, `idle` and `locked` are refusals.
+
 **Not read yet**: Stoccaggio itself (the maximum is the one the bot's counter states, else the usual
 20), the zeroed rest (a `used` does not shorten `state.rest`, so an actor that uses it waits for the
 answer to its own `/lore`), and the level, which a training or a level-up elsewhere raises without

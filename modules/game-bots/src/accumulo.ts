@@ -19,6 +19,7 @@
  */
 import { isPrivate } from '@megabottron1999/turns/turn-parser.ts';
 import { type Heard } from '#src/bans.ts';
+import { TURN_REST_MS } from '#src/replies.ts';
 
 /** The commands of the accumulo, as a player types them (`/acc` is the one they use most). */
 export const ACCUMULO_COMMANDS: readonly string[] = ['/accumulo', '/acc'];
@@ -143,6 +144,10 @@ export class AccumuloWatch {
 export interface AccumuloView {
   ready: boolean;
   locked: number | null;
+  count: number;
+  exact: boolean;
+  max: number | null;
+  as_of: string | null;
 }
 
 /** What an actor uses of `loregame-state`: the accumulo. */
@@ -162,6 +167,64 @@ export const ACCUMULO_MEMBERS = ['state.accumulo'];
  * if (accumuloReady(ctx.use<AccumuloInterface>('state').state.accumulo())) await send('/accumulo');
  * ```
  */
-export function accumuloReady(view: AccumuloView): boolean {
+export function accumuloReady(view: Pick<AccumuloView, 'ready' | 'locked'>): boolean {
   return view.ready && view.locked === null;
+}
+
+/** How soon a turn-actor asks again while the accumulo cannot go: the bot's pace is minutes. */
+export const POLL_MS = 4 * 60_000;
+/** How long it waits behind a level or a ban with no end: a lock only lifts when the bot says so. */
+export const WAIT_MS = 60 * 60_000;
+/**
+ * The longest it sleeps for a count that says the accumulo is far from full: a count that missed
+ * turns would be late for the bot's own word, so it looks again at least this often.
+ */
+export const LOOK_AGAIN_MS = 30 * 60_000;
+
+/** Until when a turn-actor holds `/accumulo` back, and why. */
+export interface AccumuloRest {
+  until: number;
+  why: string;
+}
+
+/**
+ * Whether `/accumulo` may go at `now`, in the terms of a turn-actor's parser (`state.rest`: until
+ * when to wait, none to go): the shell's actor plays any command, and asks this before it sends.
+ *
+ * - **Banned**: until the ban ends (an hour at a time if it states no end), since the bot answers
+ *   every command of a banned player with the ban.
+ * - **Under the level**: an hour at a time. Nothing lifts it but the bot's own word (a counter, or
+ *   a turn that levels up), so an owner who has levelled up elsewhere answers `/accumulo` once by
+ *   hand.
+ * - **Not full** (the bot's word, not our count): a few minutes at a time; longer when the count is
+ *   exact and cannot be full yet, the bot resting 15 minutes between turns, but never beyond
+ *   `LOOK_AGAIN_MS`.
+ * - **Full, but no rest to zero**: `/accumulo` would be answered "La lore è già pronta!" and spend
+ *   nothing, so it waits for the next `/lore` to rest. `loreRests`: the parser says the bot rests.
+ */
+export function accumuloRest(
+  view: AccumuloView,
+  at: { now: number; banUntil: number | undefined; loreRests: boolean }
+): AccumuloRest | undefined {
+  const { now } = at;
+  if (at.banUntil !== undefined)
+    return {
+      until: Number.isFinite(at.banUntil) ? at.banUntil : now + WAIT_MS,
+      why: 'the owner is banned',
+    };
+  if (view.locked !== null)
+    return { until: now + WAIT_MS, why: `the accumulo needs level ${view.locked}` };
+  if (!view.ready) {
+    // The turns it still needs, each at least a rest after the last one the state heard.
+    const left = Math.max((view.max ?? ACCUMULO_MAX) - view.count, 1);
+    const earliest =
+      view.exact && view.as_of !== null ? Date.parse(view.as_of) + left * TURN_REST_MS : 0;
+    return {
+      until: Math.max(now + POLL_MS, Math.min(earliest, now + LOOK_AGAIN_MS)),
+      why: 'the accumulo is not full',
+    };
+  }
+  return at.loreRests
+    ? undefined
+    : { until: now + POLL_MS, why: 'the next /lore is not resting: nothing to zero' };
 }

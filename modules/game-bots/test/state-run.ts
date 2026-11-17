@@ -19,6 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { LOREGAME_STATE } from '#src/loregame-state.ts';
 import { loregamePlugin } from '#src/plugins/loregame.ts';
+import { loregameAccumuloPlugin } from '#src/plugins/loregame-accumulo.ts';
 import { loregameStatePlugin } from '#src/plugins/loregame-state.ts';
 
 export const OWNER = 'alice';
@@ -73,7 +74,12 @@ export async function bootState(
     },
     ...(o.config === undefined ? {} : { config: { [LOREGAME_STATE]: o.config } }),
   });
-  core.register(fakeConnectorPlugin(TELEGRAM_USER, account), loregamePlugin, loregameStatePlugin);
+  core.register(
+    fakeConnectorPlugin(TELEGRAM_USER, account),
+    loregamePlugin,
+    loregameStatePlugin,
+    loregameAccumuloPlugin
+  );
   await core.start();
   account.open();
   // Message ids that no earlier start of the same instance used.
@@ -122,9 +128,9 @@ export async function bootState(
     await settle();
     return id;
   };
-  /** Until when the parser says the bot rests (its `state.rest`). */
-  const rest = (): unknown => {
-    const r = core.controls.read('loregame', 'rest');
+  /** Until when the parser (or another node of its contract) says the bot rests (`state.rest`). */
+  const rest = (node = 'loregame'): unknown => {
+    const r = core.controls.read(node, 'rest');
     return 'value' in r ? r.value : r;
   };
   const of = (type: string): BusEvent[] => records.filter((r) => r.type === type);

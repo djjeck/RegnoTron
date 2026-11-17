@@ -153,7 +153,7 @@ describe('the loregame parser’s bans', () => {
       T0
     );
     expect(banned?.answer).toMatchObject({ status: 'refused', reason: 'banned', retryAt: BAN_END });
-    expect(banned?.commands).toEqual(['/avventura', '/lore', '/l']);
+    expect(banned?.commands).toEqual(['/avventura', '/lore', '/l', '/accumulo', '/acc']);
     expect(banned?.holds).toEqual(expect.arrayContaining(['/lore', '/vai', '/usa', '/zaino']));
     // What else a turn brings is still the ok it was.
     const ok = readAnswer(
