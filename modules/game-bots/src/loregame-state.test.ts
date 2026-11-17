@@ -603,6 +603,68 @@ describe('the players', () => {
     expect(reduce(used, asked('', T, { result: 'used' }))).toBe(used);
   });
 
+  it('tells a use of the accumulo unseen by a turn before the rest is over, only when it was full', () => {
+    const lit = { accumulo: { ready: true, sure: true } };
+    // Full by the bot's line at T; the next turn 5 minutes later, not 15: it was used in private.
+    const used = run(turnOf('bob', T, lit), turnOf('bob', T + 5 * MIN));
+    expect(playerOf(used, 'bob')).toMatchObject({
+      unseen_uses: 1,
+      accumulo: {
+        count: 1,
+        exact: true,
+        ready: false,
+        used_at: new Date(T + 5 * MIN).toISOString(),
+      },
+    });
+    // Not full: the rest was ended otherwise (an item); the count is not touched.
+    const other = run(
+      asked('bob', T - MIN, { result: 'short', count: 3, max: 20 }),
+      turnOf('bob', T),
+      turnOf('bob', T + 5 * MIN)
+    );
+    expect(playerOf(other, 'bob')).toMatchObject({
+      unseen_uses: 0,
+      accumulo: { count: 5, exact: true },
+    });
+    // A use the account heard explains it already.
+    const heard = run(
+      turnOf('bob', T, lit),
+      asked('bob', T + MIN, { result: 'used' }),
+      turnOf('bob', T + 2 * MIN)
+    );
+    expect(playerOf(heard, 'bob')).toMatchObject({ unseen_uses: 0, accumulo: { count: 1 } });
+  });
+
+  it('charges no accumulo below level 4, as a fight or a level-up says, and from it again', () => {
+    const at = (level: number) => ({
+      fight: {
+        player: { name: 'Bobby', level },
+        enemy: { name: 'un orso', level: 2 },
+        result: 'won',
+      },
+    });
+    const low = run(
+      turnOf('bob', T, at(3)),
+      turnOf('bob', T + 16 * MIN),
+      turnOf('bob', T + 32 * MIN)
+    );
+    expect(playerOf(low, 'bob')?.accumulo).toMatchObject({ locked: 4, count: 0, exact: true });
+    // The level-up to 4: that turn charges nothing, the next does.
+    const up = run(
+      turnOf('bob', T, at(3)),
+      turnOf('bob', T + 16 * MIN, { levelUp: { level: 4, items: [] } }),
+      turnOf('bob', T + 32 * MIN)
+    );
+    expect(playerOf(up, 'bob')?.accumulo).toMatchObject({ locked: null, count: 1 });
+    // Seen at level 4 or more after a lock without the level-up: open again, a floor.
+    const later = run(turnOf('bob', T, at(3)), turnOf('bob', T + 16 * MIN, at(5)));
+    expect(playerOf(later, 'bob')?.accumulo).toMatchObject({
+      locked: null,
+      exact: false,
+      count: 1,
+    });
+  });
+
   it('keeps a player named like an object’s own property', () => {
     const s = run(turnOf('__proto__', T), turnOf('constructor', T));
     expect(Object.keys(s.players)).toEqual(['__proto__', 'constructor']);

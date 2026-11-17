@@ -238,7 +238,10 @@ command naming nobody, so the parser names the player by the message it replies 
   the bot. A "too soon" to a player we held rested tells of one, which is counted, charges their
   accumulo, and leaves its count a floor;
 - **their accumulo**, with the owner's rules (§6): the turns counted, the bot's word (`ready`), and
-  the drift between the two, which a turn unseen does not count as a disagreement.
+  the drift between the two, which a turn unseen does not count as a disagreement. Two more things a
+  turn tells: **below level 4** (known from a fight's line or a level-up) nothing charges it, and
+  **a turn well before the rest was over** while the accumulo was full tells of a use the account
+  did not hear (in private: `unseen_uses`), which empties it.
 
 What it keeps of a player is a floor of what they did, and better as they play in the group. A
 player is known by the username the connector gives; one without a username is not kept (the

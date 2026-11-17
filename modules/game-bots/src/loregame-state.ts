@@ -106,6 +106,9 @@ const player = z.object({
     .describe('In the game'),
   turns: z.number().describe('Turns seen'),
   unseen: z.number().describe('Turns a "too soon" told of, played where the account does not read'),
+  unseen_uses: z
+    .number()
+    .describe('Uses of the accumulo a turn told of, coming before the rest was over'),
   last_turn: date.describe('Last turn seen'),
   rest_until: date.describe('Rests until, as their last turn or "too soon" says'),
   accumulo: accumulo.describe('Accumulo'),
@@ -178,6 +181,7 @@ export function initialPlayer(at: string): Player {
     game: { name: null, level: null },
     turns: 0,
     unseen: 0,
+    unseen_uses: 0,
     last_turn: null,
     rest_until: null,
     accumulo: initialAccumulo(),
@@ -400,6 +404,11 @@ function reduceAccumulo(state: LoreState, e: BusEvent): LoreState {
   return { ...state, owner: { ...state.owner, as_of: asIso(e.t) }, accumulo: a };
 }
 
+/** The level that unlocks the accumulo [M] (its gate: "Devi essere almeno di livello 4!"). */
+const ACCUMULO_LEVEL = 4;
+/** How much sooner than the rest we predicted a turn must come to tell of a use of the accumulo. */
+const EARLY_MS = 2 * 60_000;
+
 /** What a player's event names: whose. */
 const playerEventSchema = z.looseObject({ player: z.string() });
 
@@ -431,17 +440,40 @@ function playerAfterTurn(p: Player, e: BusEvent): Player {
   if (o.place === undefined) return p;
   const restMs = loreRestMs(o as unknown as Outcome);
   const fought = o.fight?.player;
+  const level = o.levelUp?.level ?? fought?.level ?? p.game.level;
+  let accumulo = p.accumulo;
+  // A turn well before the rest we predicted, with the accumulo full: it was used where we did
+  // not hear (their private chat), so it starts again from 0 before this turn. Not full, the rest
+  // was ended otherwise (an item), and the accumulo is not touched.
+  const full =
+    accumulo.ready || (accumulo.exact && accumulo.count >= (accumulo.max ?? ACCUMULO_MAX));
+  const early =
+    full &&
+    p.last_turn !== null &&
+    p.rest_until !== null &&
+    Date.parse(p.rest_until) - e.t > EARLY_MS &&
+    (accumulo.used_at === null || accumulo.used_at < p.last_turn);
+  if (early)
+    accumulo = { ...accumulo, count: 0, exact: true, ready: false, used_at: at, locked: null };
+  // Below level 4 nothing charges it [M]: a level known from a fight or a level-up says so.
+  if (level !== null && level < ACCUMULO_LEVEL && accumulo.locked === null)
+    accumulo = { ...accumulo, locked: ACCUMULO_LEVEL, count: 0, exact: true, ready: false };
+  else if (
+    level !== null &&
+    level >= ACCUMULO_LEVEL &&
+    accumulo.locked !== null &&
+    o.levelUp === undefined
+  )
+    accumulo = { ...accumulo, locked: null, exact: false };
   return {
     ...p,
     as_of: at,
-    game: {
-      name: fought?.name ?? p.game.name,
-      level: o.levelUp?.level ?? fought?.level ?? p.game.level,
-    },
+    game: { name: fought?.name ?? p.game.name, level },
     turns: p.turns + 1,
+    ...(early ? { unseen_uses: p.unseen_uses + 1 } : {}),
     last_turn: at,
     rest_until: restMs === undefined ? p.rest_until : asIso(e.t + restMs),
-    accumulo: afterTurn(p.accumulo, e),
+    accumulo: afterTurn(accumulo, e),
   };
 }
 
