@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { italianWait, parseEpicLorelecBot, parseLoreGameBot } from './replies.ts';
+import {
+  ACCUMULO_MARK,
+  italianWait,
+  LORE_COMMANDS,
+  parseEpicLorelecBot,
+  parseLoreGameBot,
+} from './replies.ts';
 
 /** A turn's lines as the bot sends them: a header, a story and the rest, a blank line before the ending. */
 const HEADER = 'Lore - Il Bosco Inventato ⛅️ [B1]';
@@ -321,6 +327,67 @@ describe('parseLoreGameBot', () => {
       "Cannot read properties of null (reading 'amount')",
     ])
       expect(parseLoreGameBot(text)).toMatchObject({ kind: 'unknown', text });
+  });
+});
+
+describe('the accumulo line of a turn', () => {
+  const GAIN = 'Hai ottenuto lo ZUCCOTTO 🥩 [B1]!';
+
+  it('reads the bot’s line between the story and the rest, with the fight and the gain intact', () => {
+    expect(ACCUMULO_MARK).toBe('🔋 /accumulo pronto!');
+    expect(parseLoreGameBot(turn('', ACCUMULO_MARK, '', GAIN))).toMatchObject({
+      kind: 'gain',
+      item: 'lo ZUCCOTTO 🥩',
+      accumulo: { ready: true, sure: true },
+    });
+    // Before an encounter, no blank line, and a fight lost.
+    const lost = turn(
+      '',
+      ACCUMULO_MARK,
+      ...ENCOUNTER,
+      'un orso di burro 🧈 [L4] sconfigge alice [L2]!',
+      '',
+      'Torni a casa dolorante e a mani vuote...'
+    );
+    expect(parseLoreGameBot(lost)).toMatchObject({
+      kind: 'nothing',
+      reason: 'defeated',
+      accumulo: { ready: true, sure: true },
+      fight: { result: 'lost' },
+    });
+    // Trailing spaces from the chat's rendering do not hide it.
+    expect(parseLoreGameBot(turn('', `${ACCUMULO_MARK}  `, '', GAIN))).toMatchObject({
+      accumulo: { sure: true },
+    });
+  });
+
+  it('says nothing when the line is not there, or is not a line of its own', () => {
+    expect(parseLoreGameBot(turn('', GAIN))).not.toHaveProperty('accumulo');
+    expect(
+      parseLoreGameBot(turn(`Una storia che dice ${ACCUMULO_MARK} a metà riga`, '', GAIN))
+    ).not.toHaveProperty('accumulo');
+    // Not a turn: a reply with no header is not read for it, whatever it quotes.
+    expect(
+      parseLoreGameBot(`Storia\n${ACCUMULO_MARK}\nHai ottenuto un sasso [B1]!`)
+    ).not.toHaveProperty('accumulo');
+  });
+
+  it('is not sure when a story quotes the line: the bot never writes it twice', () => {
+    const quoted = turn(ACCUMULO_MARK, ACCUMULO_MARK, '', ACCUMULO_MARK, '', GAIN);
+    expect(parseLoreGameBot(quoted)).toMatchObject({
+      kind: 'gain',
+      accumulo: { ready: true, sure: false },
+    });
+  });
+
+  it('is lost with the ending of a turn cut off, which says nothing of the accumulo', () => {
+    const cut = [HEADER, '', 'x'.repeat(1010)].join('\n');
+    expect(parseLoreGameBot(cut)).toMatchObject({ kind: 'nothing', reason: 'truncated' });
+    expect(parseLoreGameBot(cut)).not.toHaveProperty('accumulo');
+  });
+
+  it('is held back by a ban like the commands of the game, /acc included', () => {
+    expect(LORE_COMMANDS).toEqual(expect.arrayContaining(['/accumulo', '/acc']));
   });
 });
 

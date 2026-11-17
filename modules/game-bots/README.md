@@ -10,6 +10,8 @@ The turns of the group's game bots, read on the turn plugins of `@megabottron199
 - `src/loregame-state.ts`: the owner's state at @LoreGameBot (its schema, reducer and freshness);
 - `src/bans.ts`: @LoreGameBot's bans, as the parser watches them (`BanWatch`) and an actor checks
   them (`bannedUntil`);
+- `src/accumulo.ts`: @LoreGameBot's accumulo: the bot's answers to `/accumulo` (`parseAccumulo`),
+  whose they are (`AccumuloWatch`) and when an actor may send it (`accumuloReady`);
 - `src/plugins/`: the parser plugins of @LoreGameBot and @EpicLorelecBot (`loregame`,
   `epiclorelec`), and `loregame-state`, the state plugin on @LoreGameBot's turns.
 
@@ -69,6 +71,13 @@ players, the edge from the `telegram-user` node that reads the group must delive
 messages alone, and the parser can then place the owner's bans only). A turn-actor of the shell, if
 the owner runs one beside a parser, needs `{ "command": "/avventura" }`.
 
+**The accumulo.** A turn that finds it full carries the line `🔋 /accumulo pronto!`, which
+`loregame` reads into the outcome of `loregame.turn` (`accumulo: { ready, sure }`; `sure` is false
+when a story quotes the line, which the bot never writes twice), and the bot's answer to the owner's
+`/accumulo` is published as `loregame.accumulo` (docs/game-bots.md §5.2). In the group the answer is
+a message of its own, not a reply, so the parser pairs it with the oldest command waiting: it needs
+the same edge as the bans, delivering every sender.
+
 ## The state: `loregame-state`
 
 The owner's state at @LoreGameBot, kept by MegaBotTron1999's `statePlugin` from what the `loregame`
@@ -88,13 +97,13 @@ on its card; by default `inventory.held` and `owner.as_of`). It survives restart
 cursor in the event log, so each turn is applied once (those the parser published while it was down
 included), and announces each change as `loregame-state.changed`.
 
-It keeps the **bans** of every player the parser heard of, with when each ends (below), and the
-**inventory**: what the owner's turns gained (a drop with its `2x` count, and the items a level-up
-gives), per item its count, rarity, tags, when and by what (`drop` or `level-up`). It is an
-**estimate, a floor**: nothing lists the inventory yet (`/zaino` is paginated, and is read later),
-and a `/usa`, a `/dai` or a generator are not read yet, so a count only rises and `exact` stays
-false. A turn cut off at Telegram's limit may have gained what the reply lost: it changes no count,
-and marks the inventory `uncertain` in `state.freshness`.
+It keeps the **bans** of every player the parser heard of, with when each ends (below), the owner's
+**accumulo** (below), and the **inventory**: what the owner's turns gained (a drop with its `2x`
+count, and the items a level-up gives), per item its count, rarity, tags, when and by what (`drop`
+or `level-up`). It is an **estimate, a floor**: nothing lists the inventory yet (`/zaino` is
+paginated, and is read later), and a `/usa`, a `/dai` or a generator are not read yet, so a count
+only rises and `exact` stays false. A turn cut off at Telegram's limit may have gained what the
+reply lost: it changes no count, and marks the inventory `uncertain` in `state.freshness`.
 
 | Interface                | Answers                                                        |
 | ------------------------ | -------------------------------------------------------------- |
@@ -104,6 +113,7 @@ and marks the inventory `uncertain` in `state.freshness`.
 | `state.held()`           | Every item held, with its count                                |
 | `state.ban({ player? })` | A player's ban (the owner's unless named): `{ until, since }`  |
 | `state.bans()`           | Every banned player, with their ban                            |
+| `state.accumulo()`       | The owner's accumulo: the count, the bot's word, the drift     |
 
 A ban is kept with when it ends, as the bot states it (Rome's clock; a date alone: the end of the
 day), and is over when the bot serves the player again, which it does early at times, or when its
@@ -120,3 +130,24 @@ if (until !== undefined) return; // banned: the account's, whatever the command;
 
 `loregame-state.banned` (`player`, `until`, `owner`) and `loregame-state.unbanned` (`player`,
 `owner`, `reason`: `lifted` or `expired`) announce each change, for any player, from live news.
+
+**The accumulo** is counted and heard at once. The state counts the owner's turns since it was last
+emptied (`count`; `exact` once the bot's own counter, "Il tuo accumulo: 7/20", or a use has set it)
+and keeps the bot's word apart: `ready` is true only when the bot said it is full (a turn's line, or
+a counter at its maximum), never because the count says so, and `max` is the one the bot's counter
+states (20 until then; the Stoccaggio skill lowers it, and is not read yet). Where the two disagree
+it keeps the latest ten in `drift`, and announces each once: `count`, `early`, `late`, `lapsed`,
+`not_ready`, `used_early` (docs/game-bots.md §6 says which is which). The bot's word wins. **An
+actor** sends `/accumulo` when the bot said it is full, never on its own count:
+
+```ts
+import { type AccumuloInterface, accumuloReady } from '@regnotron/game-bots/accumulo.ts';
+
+if (accumuloReady(ctx.use<AccumuloInterface>('state').state.accumulo())) {
+  // full by the bot's word, and not behind a level: send /accumulo
+}
+```
+
+`loregame-state.accumuloReady` (`count`, `max`, `via`: `turn` or `reading`), `accumuloUsed` (`turns`
+since the last use, `exact`) and `accumuloDrift` (`kind`, `counted`, `said`, `max`) announce each
+change from live news.

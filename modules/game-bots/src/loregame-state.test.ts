@@ -21,7 +21,12 @@ const gain = (item: string, extra: Record<string, unknown> = {}) =>
 describe('the loregame state', () => {
   it('starts empty, fits its schema, and applies the parser’s turns', () => {
     expect(stateSchema.safeParse(initialState()).success).toBe(true);
-    expect(CONSUMES).toEqual(['loregame.turn', 'loregame.ban', 'loregame.unban']);
+    expect(CONSUMES).toEqual([
+      'loregame.turn',
+      'loregame.ban',
+      'loregame.unban',
+      'loregame.accumulo',
+    ]);
   });
 
   it('adds a gain, its count one without one, and keeps the exactness it had', () => {
@@ -228,5 +233,275 @@ describe('the loregame state’s bans', () => {
       owner: 'delta',
       bans: 'delta',
     });
+  });
+});
+
+describe('the accumulo', () => {
+  const MIN = 60_000;
+  let at = T;
+  /** A turn of the owner's with its place, as the parser reads one; `mark`: its accumulo line. */
+  const lore = (mark?: 'sure' | 'quoted', extra: Record<string, unknown> = {}): BusEvent =>
+    turn(
+      {
+        kind: 'gain',
+        bot: 'LoreGameBot',
+        item: 'un sasso',
+        rarity: 'B1',
+        tags: [],
+        sure: true,
+        place: { name: 'Il Bosco Inventato', code: 'B1' },
+        ...(mark === undefined ? {} : { accumulo: { ready: true, sure: mark === 'sure' } }),
+        ...extra,
+      },
+      (at += MIN)
+    );
+  /** The bot's answer to the owner's /accumulo. */
+  const answer = (result: string, extra: Record<string, unknown> = {}): BusEvent =>
+    ({
+      type: 'loregame.accumulo',
+      t: (at += MIN),
+      chat: '@LoreGameBot',
+      result,
+      ...extra,
+    }) as unknown as BusEvent;
+  const run = (s: LoreState, ...events: BusEvent[]): LoreState => events.reduce(reduce, s);
+  const kinds = (s: LoreState): string[] => s.accumulo.drift.map((d) => d.kind);
+  /** A state that knows its accumulo holds `count` of `max`, from the bot's own counter. */
+  const known = (count: number, max = 20): LoreState =>
+    run(initialState(), answer('short', { count, max }));
+
+  it('starts with nothing known, and counts a turn, but not a reply that is none', () => {
+    const s0 = initialState();
+    expect(stateSchema.safeParse(s0).success).toBe(true);
+    expect(s0.accumulo).toEqual({
+      as_of: null,
+      count: 0,
+      exact: false,
+      max: null,
+      ready: false,
+      used_at: null,
+      locked: null,
+      drift: [],
+    });
+    const s = run(s0, lore(), lore(), lore('sure', { qty: 2 }));
+    expect(s.accumulo).toMatchObject({ count: 3, exact: false, ready: true });
+    // A "too soon", a fight lost without a place (older forms) and a ban charge nothing.
+    const none = run(
+      s,
+      turn({ kind: 'nothing', bot: 'LoreGameBot', reason: 'cooldown' }, (at += MIN)),
+      turn({ kind: 'banned', bot: 'LoreGameBot', until: T }, (at += MIN))
+    );
+    expect(none.accumulo).toBe(s.accumulo);
+    // A fight lost is a turn all the same.
+    const lost = run(
+      initialState(),
+      lore(undefined, { kind: 'nothing', reason: 'defeated', item: undefined })
+    );
+    expect(lost.accumulo.count).toBe(1);
+  });
+
+  it('takes the bot’s counter for the truth: exact from then on, and the maximum it states', () => {
+    const s = known(7, 19);
+    expect(s.accumulo).toMatchObject({ count: 7, exact: true, max: 19, ready: false });
+    expect(s.owner.as_of).toBe(new Date(at).toISOString());
+    // No drift when the count was only a floor and the bot says more: turns we missed.
+    expect(
+      run(initialState(), lore(), lore(), answer('short', { count: 9, max: 20 })).accumulo.drift
+    ).toEqual([]);
+    // Each turn adds one to it.
+    expect(run(s, lore(), lore()).accumulo).toMatchObject({ count: 9, exact: true });
+  });
+
+  it('reports the bot’s counter when it is not ours: below a floor, or other than an exact count', () => {
+    const floor = run(
+      initialState(),
+      lore(),
+      lore(),
+      lore(),
+      answer('short', { count: 1, max: 20 })
+    );
+    expect(floor.accumulo.drift).toEqual([
+      expect.objectContaining({ kind: 'count', counted: 3, said: 1, max: 20 }),
+    ]);
+    expect(floor.accumulo).toMatchObject({ count: 1, exact: true });
+    // Exact: both ways. Turns we did not hear (another chat) raise it; a use we did not hear lowers it.
+    const more = run(known(5), lore(), answer('short', { count: 9, max: 20 }));
+    expect(more.accumulo.drift).toEqual([
+      expect.objectContaining({ kind: 'count', counted: 6, said: 9 }),
+    ]);
+    const less = run(known(15), lore(), answer('short', { count: 2, max: 20 }));
+    expect(kinds(less)).toEqual(['count']);
+    // Agreeing is no news.
+    expect(run(known(5), lore(), answer('short', { count: 6, max: 20 })).accumulo.drift).toEqual(
+      []
+    );
+  });
+
+  it('is ready on the bot’s word alone: a turn’s line, or a counter at its maximum', () => {
+    // Our count reaching the maximum is not the bot's word: that is a disagreement, not a go.
+    const counted = run(known(18), lore(), lore());
+    expect(counted.accumulo).toMatchObject({ count: 20, ready: false });
+    expect(kinds(counted)).toEqual(['late']);
+    // The turn's line is.
+    const told = run(known(18), lore(), lore('sure'));
+    expect(told.accumulo).toMatchObject({ count: 20, ready: true });
+    expect(told.accumulo.drift).toEqual([]);
+    // The bot's own counter, at its maximum: "already ready".
+    const idle = run(known(3), answer('idle', { count: 20, max: 20 }));
+    expect(idle.accumulo).toMatchObject({ count: 20, exact: true, ready: true });
+    // A line a story quotes (twice or more) is no word.
+    const quoted = run(known(3), lore('quoted'));
+    expect(quoted.accumulo).toMatchObject({ count: 4, ready: false });
+    expect(quoted.accumulo.drift).toEqual([]);
+    // Once full it stays so, line or not on the turns after (they carry it, but no news).
+    expect(run(told, lore('sure'), lore('sure')).accumulo).toMatchObject({
+      count: 22,
+      ready: true,
+    });
+  });
+
+  it('reports the line before our count gets there, and no line when it does', () => {
+    const early = run(known(10), lore('sure'));
+    expect(early.accumulo).toMatchObject({ count: 11, ready: true });
+    expect(early.accumulo.drift).toEqual([
+      expect.objectContaining({ kind: 'early', counted: 11, said: null, max: 20 }),
+    ]);
+    // Only against a count that is exact: a floor has nothing to say against the bot.
+    expect(run(initialState(), lore('sure')).accumulo.drift).toEqual([]);
+    // The maximum the bot stated is the one it is held to.
+    expect(kinds(run(known(17, 19), lore('sure')))).toEqual(['early']);
+    expect(kinds(run(known(18, 19), lore('sure')))).toEqual([]);
+    expect(kinds(run(known(18, 19), lore()))).toEqual(['late']);
+    // A turn cut off lost its ending with the line: it says nothing.
+    const cut = lore(undefined, { kind: 'nothing', reason: 'truncated', item: undefined });
+    expect(run(known(19), cut).accumulo).toMatchObject({ count: 20, ready: false, drift: [] });
+  });
+
+  it('reports a full accumulo that is not, without a use: the line gone, or the bot’s counter lower', () => {
+    const full = run(known(19), lore('sure'));
+    // The next turn has no line: it was used where we did not hear, and this is the first since.
+    const lapsed = run(full, lore());
+    expect(lapsed.accumulo).toMatchObject({ ready: false, count: 1, exact: false });
+    expect(kinds(lapsed)).toEqual(['lapsed']);
+    // Or the bot says "not yet": the line we trusted was a story's.
+    const liar = run(known(3), lore('sure'), answer('short', { count: 4, max: 20 }));
+    expect(liar.accumulo).toMatchObject({ ready: false, count: 4, exact: true });
+    expect(kinds(liar)).toEqual(['early', 'not_ready']);
+    // A quoted line on the turn after tells nothing either way.
+    expect(run(full, lore('quoted')).accumulo).toMatchObject({ ready: true, count: 21 });
+  });
+
+  it('is emptied by a use, which the bot allowed with fewer turns than we count only when it never said', () => {
+    const used = run(known(19), lore('sure'), answer('used'));
+    expect(used.accumulo).toMatchObject({
+      count: 0,
+      exact: true,
+      ready: false,
+      locked: null,
+      used_at: new Date(at).toISOString(),
+    });
+    expect(kinds(used)).toEqual([]);
+    expect(run(used, lore()).accumulo.count).toBe(1);
+    // Used though it never said so, and the count is short of the maximum.
+    const early = run(known(12), answer('used'));
+    expect(early.accumulo).toMatchObject({ count: 0, exact: true });
+    expect(early.accumulo.drift).toEqual([
+      expect.objectContaining({ kind: 'used_early', counted: 12, said: null }),
+    ]);
+    // A floor says nothing against it.
+    expect(run(initialState(), lore(), answer('used')).accumulo.drift).toEqual([]);
+  });
+
+  it('is empty below the level, charges nothing until a turn reaches it, and keeps no stale line', () => {
+    const locked = run(initialState(), lore(), lore(), answer('locked', { level: 4 }));
+    expect(locked.accumulo).toMatchObject({ locked: 4, count: 0, exact: true, ready: false });
+    // Turns under the level charge nothing.
+    expect(run(locked, lore(), lore()).accumulo).toBe(locked.accumulo);
+    const level = (n: number) => lore(undefined, { levelUp: { level: n, items: [] } });
+    expect(run(locked, level(3)).accumulo).toBe(locked.accumulo);
+    // The turn that reaches it opens it, uncharged (it is not known to count), and not exact.
+    const open = run(locked, level(4), lore());
+    expect(open.accumulo).toMatchObject({ locked: null, count: 1, exact: false });
+    // The bot's counter opens it too, and an answer with no level changes nothing.
+    expect(run(locked, answer('short', { count: 0, max: 20 })).accumulo).toMatchObject({
+      locked: null,
+      exact: true,
+    });
+    const fresh = initialState();
+    expect(run(fresh, answer('locked')).accumulo).toBe(fresh.accumulo);
+  });
+
+  it('reports a disagreement once, until something else differs, and keeps the latest ten', () => {
+    // A player whose maximum is 19: the line comes at 19 against the 20 we hold, cycle after cycle.
+    let s = known(18);
+    for (let i = 0; i < 5; i++)
+      s = run(
+        s,
+        lore('sure'),
+        answer('used'),
+        ...Array(18)
+          .fill(0)
+          .map(() => lore())
+      );
+    s = run(s, lore('sure'));
+    expect(kinds(s)).toEqual(['early']);
+    // A different count is news.
+    s = run(
+      s,
+      answer('used'),
+      ...Array(16)
+        .fill(0)
+        .map(() => lore()),
+      lore('sure')
+    );
+    expect(s.accumulo.drift.map((d) => d.counted)).toEqual([19, 17]);
+    // Only the ten latest are kept.
+    let many = known(0);
+    for (let i = 1; i <= 12; i++) many = run(many, answer('short', { count: i * 2, max: 20 }));
+    expect(many.accumulo.drift).toHaveLength(10);
+    expect(many.accumulo.drift.at(0)?.counted).toBe(4);
+    expect(many.accumulo.drift.at(-1)?.said).toBe(24);
+  });
+
+  it('announces when it is full, when it is used and each disagreement, as the cause says', () => {
+    const s0 = known(10);
+    const e1 = lore('sure');
+    const s1 = reduce(s0, e1);
+    expect(announce(s0, s1, e1)).toEqual([
+      { type: 'accumuloReady', payload: { count: 11, max: 20, via: 'turn' } },
+      { type: 'accumuloDrift', payload: { kind: 'early', counted: 11, said: null, max: 20 } },
+    ]);
+    const e2 = lore('sure');
+    expect(announce(s1, reduce(s1, e2), e2)).toEqual([]);
+    const e3 = answer('used');
+    const s3 = reduce(s1, e3);
+    expect(announce(s1, s3, e3)).toEqual([
+      { type: 'accumuloUsed', payload: { turns: 11, exact: true } },
+    ]);
+    const e4 = answer('idle', { count: 19, max: 19 });
+    const s4 = reduce(s3, e4);
+    expect(announce(s3, s4, e4)).toEqual([
+      { type: 'accumuloReady', payload: { count: 19, max: 19, via: 'reading' } },
+      { type: 'accumuloDrift', payload: { kind: 'count', counted: 0, said: 19, max: 19 } },
+    ]);
+  });
+
+  it('refuses an answer or a turn it cannot read, and leaves the rest of the state alone', () => {
+    const s = known(5);
+    const bad = { type: 'loregame.accumulo', t: T, result: 'maybe' } as unknown as BusEvent;
+    expect(reduce(s, bad)).toBe(s);
+    const noMax = {
+      type: 'loregame.accumulo',
+      t: T,
+      result: 'short',
+      count: 4,
+    } as unknown as BusEvent;
+    expect(reduce(s, noMax)).toBe(s);
+    expect(reduce(s, { type: 'loregame.turn', t: T, outcome: 'x' } as unknown as BusEvent)).toBe(s);
+    // It touches no other section.
+    const before = run(initialState(), gain('un sasso'));
+    const after = run(before, answer('used'));
+    expect(after.inventory).toBe(before.inventory);
+    expect(after.bans).toBe(before.bans);
   });
 });

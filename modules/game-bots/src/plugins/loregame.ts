@@ -9,6 +9,11 @@
  * learnt its id) still counts when it reads as a turn's outcome. Its rest: 15 minutes, 30 after a
  * fight lost, or the wait it states.
  *
+ * **The accumulo** (docs/game-bots.md §5.2): a turn that finds it full carries the line
+ * "🔋 /accumulo pronto!", which the outcome of `loregame.turn` has as `accumulo`; and the bot's
+ * answer to the owner's `/accumulo` (in private, or the one that follows the command in the
+ * group) is published as `loregame.accumulo`, for `loregame-state` to count against.
+ *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
  * - To the owner's turn, it is an outcome (`banned`, with its `until`), declared a refusal that
@@ -26,6 +31,7 @@ import {
   type TurnReading,
 } from '@megabottron1999/turns/turn-parser.ts';
 import { z } from 'zod';
+import { AccumuloWatch } from '#src/accumulo.ts';
 import { BanWatch } from '#src/bans.ts';
 import {
   LORE_COMMANDS,
@@ -41,6 +47,8 @@ export const LOREGAME_PARSER = 'loregame';
 /** The events that tell a player's ban started or changed, and ended. */
 export const BAN_EVENT = `${LOREGAME_PARSER}.ban`;
 export const UNBAN_EVENT = `${LOREGAME_PARSER}.unban`;
+/** The event that tells how the bot answered the owner's `/accumulo`. */
+export const ACCUMULO_EVENT = `${LOREGAME_PARSER}.accumulo`;
 /** The store's document of the bans it knows. */
 const BANS_DOC = 'bans';
 
@@ -94,7 +102,22 @@ const unbanEvent = z
     'A banned player served again by @LoreGameBot: their ban is over (it lifts them early)'
   );
 
-/** The parser, with the bans it watches for, beside the turns it reads. */
+const accumuloEvent = z
+  .object({
+    chat: z.string(),
+    result: z
+      .enum(['short', 'idle', 'used', 'locked'])
+      .describe(
+        'Not yet, full but nothing to zero, used (the next /lore has no rest), or under the level'
+      ),
+    count: z.number().optional().describe("The bot's counter: turns since the last use"),
+    max: z.number().optional().describe('How many turns it needs, as the bot states it'),
+    level: z.number().optional().describe('locked: the level it asks'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("How @LoreGameBot answered the owner's /accumulo");
+
+/** The parser, with the bans and the accumulo it watches for, beside the turns it reads. */
 export const loregamePlugin: Plugin = {
   manifest: {
     ...parser.manifest,
@@ -102,6 +125,7 @@ export const loregamePlugin: Plugin = {
       ...parser.manifest.events,
       [BAN_EVENT]: banEvent,
       [UNBAN_EVENT]: unbanEvent,
+      [ACCUMULO_EVENT]: accumuloEvent,
     },
     // The ban comes first: any other outcome of a turn is an `ok`.
     answers: [
@@ -124,23 +148,28 @@ export const loregamePlugin: Plugin = {
       LOREGAMEBOT,
       ctx.store.read<{ bans: [string, number][] }>(BANS_DOC)?.bans
     );
+    const asked = new AccumuloWatch(LOREGAMEBOT);
     chat.onMessage((m) => {
-      const news = watch.hear(m, chat.self());
-      if (news === undefined) return;
       const old = m.playback ? { playback: true as const } : {};
-      if (news.type === 'ban')
-        ctx.bus.publish(
-          BAN_EVENT,
-          { chat: m.chat, player: news.player, until: news.until, owner: news.owner, ...old },
-          m.time
-        );
-      else
-        ctx.bus.publish(
-          UNBAN_EVENT,
-          { chat: m.chat, player: news.player, owner: news.owner, ...old },
-          m.time
-        );
-      ctx.store.write(BANS_DOC, { bans: watch.entries() });
+      const news = watch.hear(m, chat.self());
+      if (news !== undefined) {
+        if (news.type === 'ban')
+          ctx.bus.publish(
+            BAN_EVENT,
+            { chat: m.chat, player: news.player, until: news.until, owner: news.owner, ...old },
+            m.time
+          );
+        else
+          ctx.bus.publish(
+            UNBAN_EVENT,
+            { chat: m.chat, player: news.player, owner: news.owner, ...old },
+            m.time
+          );
+        ctx.store.write(BANS_DOC, { bans: watch.entries() });
+      }
+      const answer = asked.hear(m);
+      if (answer !== undefined)
+        ctx.bus.publish(ACCUMULO_EVENT, { chat: m.chat, ...answer, ...old }, m.time);
     });
     const turns = instance.interface as TurnParserInterface;
     const rest = turns.state.rest;

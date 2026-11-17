@@ -38,11 +38,15 @@ describe('the loregame-state node', () => {
       'loregame-state.changed',
       'loregame-state.banned',
       'loregame-state.unbanned',
+      'loregame-state.accumuloReady',
+      'loregame-state.accumuloUsed',
+      'loregame-state.accumuloDrift',
     ]);
     expect(Object.keys(m.interface.state ?? {})).toEqual([
       'get',
       'freshness',
       'ban',
+      'accumulo',
       'bans',
       'count',
       'held',
@@ -95,7 +99,10 @@ describe('the loregame-state node', () => {
       `${HEADER}\nDurante il tuo cammino compare un orso [L4]!\nIl combattimento inizia...\nun orso [L4] sconfigge alice [L2]!\n\nTorni a casa dolorante e a mani vuote...`
     );
     expect(run.read('held')).toEqual({ 'un sasso': 1 });
-    expect(run.of('loregame-state.changed')).toHaveLength(1);
+    // Each turn charges the accumulo, but only the gain changed the inventory.
+    const sections = (): string[][] =>
+      run.of('loregame-state.changed').map((c) => c['sections'] as string[]);
+    expect(sections().filter((s) => s.includes('inventory'))).toHaveLength(1);
     await run.turn(`${HEADER}\n${'x'.repeat(1024)}`);
     expect(run.read('held')).toEqual({ 'un sasso': 1 });
     expect(run.read('freshness', { section: 'inventory' })).toMatchObject({
@@ -103,9 +110,9 @@ describe('the loregame-state node', () => {
       uncertain: 1,
     });
     expect(run.of('loregame-state.changed').at(-1)).toMatchObject({
-      sections: [],
-      refreshed: ['inventory'],
+      refreshed: expect.arrayContaining(['inventory']),
     });
+    expect(sections().at(-1)).not.toContain('inventory');
     await run.core.stop();
   });
 
@@ -281,5 +288,127 @@ describe('the loregame parser’s bans', () => {
     expect(again.read('bans')).toEqual({});
     expect(again.read('held')).toEqual({ 'un sasso': 1 });
     await again.core.stop();
+  });
+});
+
+// The accumulo: the line a turn carries while it is full, and the bot's answers to /accumulo.
+const MARK = '🔋 /accumulo pronto!';
+const lit = (item: string): string => `${HEADER}\n\n${MARK}\nHai ottenuto ${item}!`;
+const SHORT = (n: number, max: number): string =>
+  `Accumulo non ancora sufficiente!\n\nIl tuo accumulo: ${n}/${max}`;
+const USED =
+  '🔋 IL TUO ACCUMULO SI ATTIVA! Ti senti di nuovo pronto per vivere una nuova storia! /lore';
+const acc = (run: { read: (n: string) => unknown }) =>
+  run.read('accumulo') as Record<string, unknown> & { drift: Record<string, unknown>[] };
+
+describe('the loregame parser’s accumulo', () => {
+  it('declares what the parser publishes, beside the turns', () => {
+    const { events } = parseManifest(loregamePlugin.manifest);
+    expect(Object.keys(events ?? {})).toEqual([
+      'loregame.turn',
+      'loregame.ban',
+      'loregame.unban',
+      'loregame.accumulo',
+    ]);
+  });
+
+  it('counts the turns against the bot’s word: its counter, the line of a full one, a use', async () => {
+    const run = await bootState(path.join(dir, 'f'));
+    await run.owner('/accumulo');
+    await run.bot(SHORT(1, 3));
+    expect(run.of('loregame.accumulo')).toMatchObject([
+      { chat: '@LoreGameBot', result: 'short', count: 1, max: 3 },
+    ]);
+    // It is no turn, and no drift: the parser claims no reply to a command that is not a turn's.
+    expect(run.of('loregame.turn')).toHaveLength(0);
+    expect(acc(run)).toMatchObject({ count: 1, exact: true, max: 3, ready: false, drift: [] });
+    // Two turns; the second finds it full, and says so.
+    await run.turn(gain('un sasso [B1]'));
+    await run.turn(lit('un sasso [B1]'));
+    expect(run.of('loregame.turn').at(-1)).toMatchObject({
+      outcome: { kind: 'gain', accumulo: { ready: true, sure: true } },
+    });
+    expect(acc(run)).toMatchObject({ count: 3, ready: true, drift: [] });
+    expect(run.of('loregame-state.accumuloReady')).toMatchObject([
+      { count: 3, max: 3, via: 'turn' },
+    ]);
+    // Used: the count starts again.
+    await run.owner('/acc');
+    await run.bot(USED);
+    expect(run.of('loregame-state.accumuloUsed')).toMatchObject([{ turns: 3, exact: true }]);
+    expect(acc(run)).toMatchObject({ count: 0, ready: false, locked: null });
+    expect(acc(run).used_at).toBe(new Date(run.clock.now()).toISOString());
+    expect(run.core.drift().find((d) => d.parser === 'loregame')).toMatchObject({ unread: 0 });
+    await run.core.stop();
+  });
+
+  it('reports where our count and the bot’s word part: a full accumulo no turn announced', async () => {
+    const run = await bootState(path.join(dir, 'g'));
+    await run.owner('/accumulo');
+    await run.bot(SHORT(1, 3));
+    for (let i = 0; i < 3; i++) await run.turn(gain('un sasso [B1]'));
+    // Counted 4 against a maximum of 3, and the bot never said it was full.
+    expect(acc(run)).toMatchObject({ count: 4, ready: false });
+    expect(acc(run).drift).toMatchObject([{ kind: 'late', counted: 3, max: 3 }]);
+    expect(run.of('loregame-state.accumuloDrift')).toMatchObject([
+      { kind: 'late', counted: 3, said: null, max: 3 },
+    ]);
+    await run.core.stop();
+  });
+
+  it('answers a level gate only after the command, and empties the accumulo', async () => {
+    const run = await bootState(path.join(dir, 'h'));
+    await run.turn(gain('un sasso [B1]'));
+    expect(acc(run)).toMatchObject({ count: 1, exact: false });
+    await run.bot('Devi essere almeno di livello 4!');
+    expect(run.of('loregame.accumulo')).toHaveLength(0);
+    await run.owner('/accumulo');
+    await run.bot('Devi essere almeno di livello 4!');
+    expect(run.of('loregame.accumulo')).toMatchObject([{ result: 'locked', level: 4 }]);
+    expect(acc(run)).toMatchObject({ locked: 4, count: 0, exact: true });
+    await run.core.stop();
+  });
+
+  it('pairs the group’s answers with the owner’s command among the other players’', async () => {
+    const run = await bootState(path.join(dir, 'i'), { group: true });
+    // Bob asks, then the owner; the bot answers each in order, in messages of its own.
+    await run.group('bob', '/acc');
+    await run.group('alice', '/accumulo@LoreGameBot', { own: true });
+    await run.group('LoreGameBot', SHORT(9, 20));
+    expect(run.of('loregame.accumulo')).toHaveLength(0);
+    await run.group('LoreGameBot', SHORT(4, 20));
+    expect(run.of('loregame.accumulo')).toMatchObject([
+      { chat: '-1001', result: 'short', count: 4, max: 20 },
+    ]);
+    expect(acc(run)).toMatchObject({ count: 4, exact: true });
+    // Another player's alone is no one's of ours.
+    await run.group('carol', '/acc');
+    await run.group('LoreGameBot', USED);
+    expect(run.of('loregame.accumulo')).toHaveLength(1);
+    expect(acc(run)).toMatchObject({ count: 4, used_at: null });
+    await run.core.stop();
+  });
+
+  it('keeps the accumulo across a restart, and adds it to a state kept before there was one', async () => {
+    const dir2 = path.join(dir, 'j');
+    const run = await bootState(dir2);
+    await run.owner('/accumulo');
+    await run.bot(SHORT(2, 3));
+    await run.turn(lit('un sasso [B1]'));
+    await run.core.stop();
+    const again = await bootState(dir2);
+    expect(acc(again)).toMatchObject({ count: 3, exact: true, max: 3, ready: true });
+    await again.core.stop();
+    // The state of 0.5.0: bans, no accumulo, one store version behind.
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    delete kept.state.accumulo;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 1 }));
+    const migrated = await bootState(dir2);
+    expect(acc(migrated)).toMatchObject({ count: 0, exact: false, max: null, ready: false });
+    expect(migrated.read('held')).toEqual({ 'un sasso': 1 });
+    await migrated.core.stop();
   });
 });

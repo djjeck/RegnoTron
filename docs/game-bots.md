@@ -81,6 +81,7 @@ up to 17 Nov 2026. A reply, in order:
 | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
 | `Lore - <place> [<code>]`                                     | The place the turn took place in. The code is in the rarities' notation (`B1`, `M4`, `N1`); a place keeps its code. The name may hold emoji and spaces.                            | all but a "too soon" |
 | `<story>`                                                     | Free text, one line or many, **written by players**: it may hold anything, the bot's own phrases included, so the parser anchors on the end.                                       | all but a "too soon" |
+| `🔋 /accumulo pronto!`                                        | While the player's accumulo is full (§5.2), a line of its own after the story, set off by a blank line. A story may quote it, so the parser counts its copies.                     | some 2,600 turns     |
 | `Durante il tuo cammino compare <enemy> [L<n>]!`              | An encounter: about one turn in nine. The enemy has a level; it may be named like an item, tags and all.                                                                           | 11% of the turns     |
 | `Il combattimento inizia...`                                  | Opens the fight.                                                                                                                                                                   | each encounter       |
 | `⚡️ <player> [L<n>] attiva il potere di <item> ⚡️!`           | One per equipped item whose power fires, before the fight's line.                                                                                                                  | 4% of the fights     |
@@ -134,6 +135,47 @@ a ban is read off any reply of the bot:
   starts, changes or ends (a banned player's hundred replies are one `ban`): `loregame-state` keeps
   them (§6). The parser keeps the bans it knows across restarts.
 
+### 5.2 The accumulo
+
+`/accumulo` (`/acc` is two in three of its uses [M]) is unlocked at level 4. The bot's help says it
+charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest of the next `/lore`.
+
+- **The count** [M] follows the player's turns: over some 3,400 counters the bot gave, the rise
+  since the last one equals the turns the player took in 99% of them. It needs **20 turns**, and
+  fewer with the Stoccaggio skill of `/abilita` (`🔋 Stoccaggio … -N Accumulo massimo necessario`;
+  19, 18 and 17 are in the exports). It does not stop at the maximum: a full accumulo keeps charging
+  until it is used.
+- **The turn's line**, `🔋 /accumulo pronto!`, is there from the turn that fills it, and on the
+  turns after until it is used (97% of them [M]). It came on 15 Feb 2026, when the second 🔋 also
+  left the bot's use message. It is a line like any story line, so it can be quoted: 53 turns carry
+  it 33 or 34 times [M], which the bot never does, and a single copy can be quoted too (the cases
+  the state's `drift` shows). The parser reads the line in a turn that has a place, and says whether
+  it is `sure` (one copy). A turn cut off at Telegram's limit loses it with its ending.
+- **The answers to `/accumulo`** are four, each the whole message:
+
+| Reply                                                                                       | Means                                                        |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `Accumulo non ancora sufficiente!` and `Il tuo accumulo: <n>/<max>`, after a blank line     | Not yet: `n` of the `max` it needs                           |
+| `La lore è già pronta!` and the same counter                                                | Full, but there is no rest to zero: nothing is spent         |
+| `🔋 IL TUO ACCUMULO SI ATTIVA! Ti senti di nuovo pronto per vivere una nuova storia! /lore` | Used: the rest is zeroed, the count starts again from 0      |
+| `Devi essere almeno di livello 4!`                                                          | Under the level; the sentence is shared with other commands' |
+
+- **Whose answer it is.** In private it is the owner's. In the group, since 7 Feb 2026 [M] the bot
+  no longer replies to the command: the answer is a message of its own that follows it, within 10
+  seconds in 99.8% of 5,400 answers. The parser pairs each answer with the oldest command waiting in
+  that chat, the way the bot answers them (a ban it replies to the command with ends that command's
+  wait). It therefore needs, like the bans (§5.1), the group's chat edge to deliver every sender: it
+  cannot tell an answer to the owner from one to another player when it does not hear the other
+  player's command. The level gate counts only as an answer to the command.
+- **`loregame.accumulo`** carries the owner's answers (`result`: `short`, `idle`, `used`, `locked`;
+  `count`, `max`, `level`), as the parser's event; the turn's line is `accumulo` in the outcome of
+  `loregame.turn`. `loregame-state` counts against them (§6).
+
+**Not read yet**: Stoccaggio itself (the maximum is the one the bot's counter states, else the usual
+20), the zeroed rest (a `used` does not shorten `state.rest`, so an actor that uses it waits for the
+answer to its own `/lore`), and the level, which a training or a level-up elsewhere raises without
+the state hearing.
+
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
 
@@ -161,4 +203,18 @@ It is a floor, not the truth, while the turns are all it reads:
   `state.bans()` every one; `loregame-state.banned` and `loregame-state.unbanned` announce each
   change, for any player, from live news alone. **An actor** checks the ban as it wakes, before each
   command, with `bannedUntil` (`src/bans.ts`): a ban is the account's, whatever the command.
+- **The accumulo** (§5.2): the turns taken since it was last emptied (`count`), counted here, and
+  the bot's own word on it. `count` is an estimate, `exact` once the bot's counter or a use has set
+  it, and not charged below the level the bot's gate names. **`ready` is the bot's word alone**: a
+  turn's line (one copy), or a counter at its maximum, until a use or a counter below it; our count
+  reaching the maximum is not a go, so an actor that wants `/accumulo` waits for it
+  (`accumuloReady`, `src/accumulo.ts`). Where the two disagree it keeps `drift` (the latest ten) and
+  announces each as `loregame-state.accumuloDrift`, once until something else differs: `count` (the
+  bot's counter is not ours), `early` (the line before our count reaches the maximum, as when the
+  maximum is lower, or a story quotes it), `late` (our count reached it and there is no line),
+  `lapsed` (it was full and the line is gone with no use seen), `not_ready` (a counter below the
+  maximum while we held it full) and `used_early` (used with no line, short of the maximum). A floor
+  says nothing against the bot, so `early`, `late` and `used_early` need an exact count. The bot's
+  word wins: the state follows it, and does not learn the maximum from a line. `state.accumulo()` is
+  the section; `loregame-state.accumuloReady` and `accumuloUsed` announce the rest.
 - **Items and players are named by players**, anything, `__proto__` included.

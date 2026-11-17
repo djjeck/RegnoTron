@@ -16,6 +16,10 @@
  *   item the owner holds), `state.held()` (every item held, with its count), `state.ban({ player? })`
  *   (a player's ban, the owner's unless named; `bannedUntil` in `src/bans.ts` is the actor's
  *   helper over it) and `state.bans()` (every banned player).
+ * - **The accumulo** (`state.accumulo()`, `accumuloReady` in `src/accumulo.ts` is the actor's
+ *   check): the turns counted since it was last emptied, the bot's word that it is full (`ready`),
+ *   and the `drift` between the two. `loregame-state.accumuloReady`, `accumuloUsed` and
+ *   `accumuloDrift` announce each change from live news.
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -29,11 +33,14 @@ import { type Plugin } from '@megabottron1999/core';
 import { statePlugin } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
 import {
+  type Accumulo,
+  accumuloOf,
   announce,
   banOf,
   CONSUMES,
   freshness,
   held,
+  initialAccumulo,
   initialState,
   LOREGAME_STATE,
   type LoreState,
@@ -54,7 +61,7 @@ type Kept = LoreState & Record<string, unknown>;
 const base = statePlugin<Kept>({
   id: LOREGAME_STATE,
   description:
-    "The owner's state at @LoreGameBot: the inventory the turns gained, and the players' bans",
+    "The owner's state at @LoreGameBot: the inventory the turns gained, the accumulo, and the players' bans",
   schema: stateSchema,
   initial: initialState() as Kept,
   consumes: CONSUMES,
@@ -77,10 +84,31 @@ const base = statePlugin<Kept>({
           .describe('Served again by the bot, or its end passed'),
       })
       .describe("A player's ban ended"),
+    accumuloReady: z
+      .object({
+        count: z.number().describe('Turns we counted'),
+        max: z.number().nullable().describe('Turns it needs, as the bot said'),
+        via: z.enum(['turn', 'reading']).describe("A turn's line, or the bot's own counter"),
+      })
+      .describe('The bot said the accumulo is full: it can be used'),
+    accumuloUsed: z
+      .object({
+        turns: z.number().describe('Turns counted since the last use'),
+        exact: z.boolean().describe('The count was set by the bot, not only counted'),
+      })
+      .describe('The accumulo was used: the next /lore has no rest'),
+    accumuloDrift: z
+      .object({
+        kind: z.enum(['count', 'early', 'late', 'lapsed', 'not_ready', 'used_early']),
+        counted: z.number(),
+        said: z.number().nullable(),
+        max: z.number(),
+      })
+      .describe("Our count and the bot's word disagree about the accumulo"),
   },
   announce,
-  // 0.4.0 kept no bans: the section is added, empty.
   migrations: [
+    // 0.4.0 kept no bans: the section is added, empty.
     (store: Store) => {
       const kept = store.read<{ state?: Record<string, unknown> }>('state');
       if (kept?.state === undefined) return;
@@ -90,6 +118,15 @@ const base = statePlugin<Kept>({
         state: { ...kept.state, owner: { name: null, ...owner }, bans: kept.state['bans'] ?? {} },
       });
     },
+    // 0.5.0 kept no accumulo: the section is added, with nothing known (the count starts now).
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined) return;
+      store.write('state', {
+        ...kept,
+        state: { ...kept.state, accumulo: kept.state['accumulo'] ?? initialAccumulo() },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -97,6 +134,20 @@ const base = statePlugin<Kept>({
       input: z.object({ player: z.string().optional() }),
       output: z.object({ until: z.string().nullable(), since: z.string() }).nullable(),
       run: (s, input: { player?: string }) => banOf(s, input.player),
+    },
+    accumulo: {
+      help: "The owner's accumulo: the turns counted, the bot's word that it is full (`ready`), and where the two disagreed",
+      output: z.looseObject({
+        as_of: z.string().nullable(),
+        count: z.number(),
+        exact: z.boolean(),
+        max: z.number().nullable(),
+        ready: z.boolean(),
+        used_at: z.string().nullable(),
+        locked: z.number().nullable(),
+        drift: z.array(z.looseObject({ kind: z.string(), at: z.string() })),
+      }),
+      run: (s): Accumulo => accumuloOf(s),
     },
     bans: {
       help: 'Every banned player, with when their ban ends and when it was told',

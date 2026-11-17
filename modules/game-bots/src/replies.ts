@@ -64,6 +64,7 @@ export const LORE_COMMANDS: readonly string[] = [
   '/give',
   '/abilita',
   '/accumulo',
+  '/acc',
   '/generaoggetto',
   '/generastoria',
   '/generaguardiano',
@@ -111,11 +112,28 @@ export interface LoreLevelUp {
   other: string[];
 }
 
+/**
+ * The line a turn carries while the player's accumulo is full: "🔋 /accumulo pronto!", after the
+ * story and before the encounter or the gain (docs/game-bots.md §5.2).
+ */
+export const ACCUMULO_MARK = '🔋 /accumulo pronto!';
+
+/**
+ * What a turn says of the accumulo: that it is full. `sure` is false when the line is there more
+ * than once, which the bot never writes: a story quotes it (players write them), and then the
+ * bot's own line, if it added one, cannot be told from the copies.
+ */
+export interface LoreAccumulo {
+  ready: true;
+  sure: boolean;
+}
+
 /** What a @LoreGameBot turn says besides its outcome. */
 export interface LoreDetails {
   place?: LorePlace;
   fight?: LoreFight;
   levelUp?: LoreLevelUp;
+  accumulo?: LoreAccumulo;
 }
 
 export type Outcome =
@@ -241,6 +259,12 @@ function levelUpOf(level: number, list: string): LoreLevelUp {
   return up;
 }
 
+/** The accumulo line of a turn, if it has one: its copies are counted, a story may quote it. */
+function accumuloOf(text: string): LoreAccumulo | undefined {
+  const copies = text.split('\n').filter((l) => l.trim() === ACCUMULO_MARK).length;
+  return copies === 0 ? undefined : { ready: true, sure: copies === 1 };
+}
+
 const PLACE = /^Lore - (.+?) \[([A-Z]+\d*\+?)\]$/u;
 const ENCOUNTER = /^Durante il tuo cammino compare (.+) \[L(\d+)\]!$/u;
 const LEARNED = String.raw`(?: Hai imparato qualcosa di nuovo\.\.\. \(\+(\d+)\))?`;
@@ -346,10 +370,12 @@ export function parseLoreGameBot(raw: string): Outcome {
   const text = up === null ? whole : whole.slice(0, up.at).trimEnd();
   const place = PLACE.exec(text.split('\n')[0] as string);
   const fight = fightOf(text);
+  const accumulo = place === null ? undefined : accumuloOf(text);
   const details: LoreDetails = {
     ...(place === null ? {} : { place: { name: place[1] as string, code: place[2] as string } }),
     ...(fight === undefined ? {} : { fight }),
     ...(up === null ? {} : { levelUp: levelUpOf(up.level, up.list) }),
+    ...(accumulo === undefined ? {} : { accumulo }),
   };
   // A level-up it cannot cut off would end up inside the gain's item.
   const at = up === null && whole.includes(LEVEL_UP_AT) ? -1 : text.lastIndexOf('Hai ottenuto ');
