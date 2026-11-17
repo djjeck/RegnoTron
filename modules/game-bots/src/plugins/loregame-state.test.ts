@@ -47,6 +47,7 @@ describe('the loregame-state node', () => {
       'freshness',
       'ban',
       'accumulo',
+      'player',
       'bans',
       'count',
       'held',
@@ -314,6 +315,8 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.ban',
       'loregame.unban',
       'loregame.accumulo',
+      'loregame.playerTurn',
+      'loregame.playerAccumulo',
     ]);
   });
 
@@ -533,5 +536,50 @@ describe('the accumulo, for a shell player', () => {
     await play(run, 'Qualcosa che il bot non ha mai scritto.');
     expect(run.core.drift().find((d) => d.parser === 'loregame')).toMatchObject({ unread: 1 });
     await run.core.stop();
+  });
+});
+
+describe('every player, as the group shows them', () => {
+  it('keeps the players of the group and the owner, by username, from their turns and answers', async () => {
+    const run = await bootState(path.join(dir, 'p'), { group: true });
+    const bobs = await run.group('bob', '/lore@LoreGameBot');
+    await run.group('LoreGameBot', lit('un sasso [B1]'), { replyTo: bobs });
+    const mine = await run.group('alice', '/l', { own: true });
+    await run.group('LoreGameBot', gain('una perla [B1]'), { replyTo: mine });
+    await run.group('bob', '/acc');
+    await run.group('LoreGameBot', USED);
+    expect(run.of('loregame.playerTurn')).toMatchObject([
+      { player: 'bob', owner: false, outcome: { kind: 'gain' } },
+      { player: 'alice', owner: true, outcome: { kind: 'gain' } },
+    ]);
+    expect(run.of('loregame.playerAccumulo')).toMatchObject([
+      { player: 'bob', owner: false, result: 'used' },
+    ]);
+    expect(run.read('player', { name: 'bob' })).toMatchObject({
+      turns: 1,
+      accumulo: { ready: false, count: 0, exact: true },
+    });
+    expect(run.read('player', { name: 'alice' })).toMatchObject({ turns: 1 });
+    expect(run.read('player', { name: 'nobody' })).toBeNull();
+    // Bob's drop is not the owner's.
+    expect(run.read('held')).toEqual({ 'una perla': 1 });
+    await run.core.stop();
+  });
+
+  it('adds the players to a state kept before there were any', async () => {
+    const dir2 = path.join(dir, 'q');
+    const run = await bootState(dir2);
+    await run.turn(gain('un sasso [B1]'));
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    delete kept.state.players;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 2 }));
+    const again = await bootState(dir2);
+    expect(again.read('get', { path: 'players' })).toEqual({});
+    expect(again.read('held')).toEqual({ 'un sasso': 1 });
+    await again.core.stop();
   });
 });

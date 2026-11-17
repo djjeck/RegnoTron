@@ -8,6 +8,7 @@ import {
   held,
   initialState,
   type LoreState,
+  playerOf,
   reduce,
   stateSchema,
 } from './loregame-state.ts';
@@ -26,6 +27,8 @@ describe('the loregame state', () => {
       'loregame.ban',
       'loregame.unban',
       'loregame.accumulo',
+      'loregame.playerTurn',
+      'loregame.playerAccumulo',
     ]);
   });
 
@@ -503,5 +506,107 @@ describe('the accumulo', () => {
     const after = run(before, answer('used'));
     expect(after.inventory).toBe(before.inventory);
     expect(after.bans).toBe(before.bans);
+  });
+});
+
+describe('the players', () => {
+  const MIN = 60_000;
+  const PLACE = { name: 'Il Bosco Inventato', code: 'B1' };
+  const played = (player: string, outcome: Record<string, unknown>, t: number): BusEvent =>
+    ({
+      type: 'loregame.playerTurn',
+      t,
+      chat: '-1001',
+      player,
+      owner: false,
+      outcome: { bot: 'LoreGameBot', ...outcome },
+    }) as unknown as BusEvent;
+  const turnOf = (player: string, t: number, extra: Record<string, unknown> = {}) =>
+    played(
+      player,
+      { kind: 'gain', item: 'un sasso', rarity: 'B1', tags: [], place: PLACE, ...extra },
+      t
+    );
+  const soon = (player: string, t: number, retryMs: number) =>
+    played(player, { kind: 'nothing', reason: 'cooldown', retryMs }, t);
+  const asked = (player: string, t: number, reply: Record<string, unknown>): BusEvent =>
+    ({
+      type: 'loregame.playerAccumulo',
+      t,
+      chat: '-1001',
+      player,
+      owner: false,
+      ...reply,
+    }) as unknown as BusEvent;
+  const run = (...events: BusEvent[]): LoreState => events.reduce(reduce, initialState());
+
+  it('keeps each player’s turns, rest, name and level in the game, apart from the owner’s inventory', () => {
+    const fight = {
+      player: { name: 'Bobby', level: 5 },
+      enemy: { name: 'un orso', level: 4 },
+      result: 'won',
+    };
+    const s = run(
+      turnOf('bob', T, { fight }),
+      turnOf('bob', T + 16 * MIN, { levelUp: { level: 6, items: [] } }),
+      played('carol', { kind: 'nothing', reason: 'defeated', place: PLACE }, T + MIN)
+    );
+    expect(playerOf(s, 'bob')).toMatchObject({
+      game: { name: 'Bobby', level: 6 },
+      turns: 2,
+      unseen: 0,
+      last_turn: new Date(T + 16 * MIN).toISOString(),
+      rest_until: new Date(T + 31 * MIN).toISOString(),
+    });
+    // A fight lost: 30 minutes.
+    expect(playerOf(s, 'carol')?.rest_until).toBe(new Date(T + 31 * MIN).toISOString());
+    expect(playerOf(s, 'dave')).toBeNull();
+    // Their drops are not the owner's.
+    expect(s.inventory.items).toEqual({});
+  });
+
+  it('tells a turn played where the account does not read, by a "too soon" to a rested player', () => {
+    // Seen at T, rested at T+15; at T+40 the bot says too soon: a turn at about T+30 we missed.
+    const s = run(turnOf('bob', T), soon('bob', T + 40 * MIN, 5 * MIN));
+    expect(playerOf(s, 'bob')).toMatchObject({
+      turns: 1,
+      unseen: 1,
+      rest_until: new Date(T + 45 * MIN).toISOString(),
+      accumulo: { count: 2, exact: false },
+    });
+    // A "too soon" within the rest we predicted tells of nothing missed.
+    const within = run(turnOf('bob', T), soon('bob', T + 5 * MIN, 10 * MIN));
+    expect(playerOf(within, 'bob')).toMatchObject({ unseen: 0, accumulo: { count: 1 } });
+    // Nor does one for a player never seen to play: nothing to compare.
+    expect(playerOf(run(soon('bob', T, 5 * MIN)), 'bob')).toMatchObject({ unseen: 0, turns: 0 });
+  });
+
+  it('keeps each player’s accumulo with the owner’s rules: the bot’s counter, its line, a use', () => {
+    const lit = { accumulo: { ready: true, sure: true } };
+    const s = run(
+      asked('bob', T, { result: 'short', count: 18, max: 20 }),
+      turnOf('bob', T + MIN),
+      turnOf('bob', T + 17 * MIN, lit)
+    );
+    expect(playerOf(s, 'bob')?.accumulo).toMatchObject({
+      count: 20,
+      exact: true,
+      ready: true,
+      drift: [],
+    });
+    const used = reduce(s, asked('bob', T + 18 * MIN, { result: 'used' }));
+    expect(playerOf(used, 'bob')?.accumulo).toMatchObject({ count: 0, ready: false });
+    // The owner's own accumulo is not theirs.
+    expect(used.accumulo).toEqual(initialState().accumulo);
+    // An answer it cannot read changes nothing, and a nameless one is no one's.
+    expect(reduce(used, asked('bob', T, { result: 'maybe' }))).toBe(used);
+    expect(reduce(used, asked('', T, { result: 'used' }))).toBe(used);
+  });
+
+  it('keeps a player named like an object’s own property', () => {
+    const s = run(turnOf('__proto__', T), turnOf('constructor', T));
+    expect(Object.keys(s.players)).toEqual(['__proto__', 'constructor']);
+    expect(playerOf(s, '__proto__')?.turns).toBe(1);
+    expect(playerOf(s, 'toString')).toBeNull();
   });
 });

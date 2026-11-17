@@ -20,6 +20,10 @@
  *   check): the turns counted since it was last emptied, the bot's word that it is full (`ready`),
  *   and the `drift` between the two. `loregame-state.accumuloReady`, `accumuloUsed` and
  *   `accumuloDrift` announce each change from live news.
+ * - **The players** (`state.player({ name })`): every player's turns the account reads, the
+ *   owner's included, kept by username: their name and level in the game, their turns seen, those a
+ *   "too soon" told of (played in their private chat, which the account does not read), their rest
+ *   and their accumulo, each a floor of what they did (src/players.ts).
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -45,6 +49,7 @@ import {
   LOREGAME_STATE,
   type LoreState,
   PINS,
+  playerOf,
   reduce,
   stateSchema,
 } from '#src/loregame-state.ts';
@@ -61,7 +66,7 @@ type Kept = LoreState & Record<string, unknown>;
 const base = statePlugin<Kept>({
   id: LOREGAME_STATE,
   description:
-    "The owner's state at @LoreGameBot: the inventory the turns gained, the accumulo, and the players' bans",
+    "The owner's state at @LoreGameBot: the inventory the turns gained, the accumulo, the players' bans, and every player's turns, rest and accumulo",
   schema: stateSchema,
   initial: initialState() as Kept,
   consumes: CONSUMES,
@@ -127,6 +132,15 @@ const base = statePlugin<Kept>({
         state: { ...kept.state, accumulo: kept.state['accumulo'] ?? initialAccumulo() },
       });
     },
+    // 0.9.0 kept no players: the section is added, empty (each is known from their next turn).
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined) return;
+      store.write('state', {
+        ...kept,
+        state: { ...kept.state, players: kept.state['players'] ?? {} },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -148,6 +162,12 @@ const base = statePlugin<Kept>({
         drift: z.array(z.looseObject({ kind: z.string(), at: z.string() })),
       }),
       run: (s): Accumulo => accumuloOf(s),
+    },
+    player: {
+      help: 'A player as the turns and answers the account reads tell (by username): their name and level in the game, their turns seen and unseen, their rest, their accumulo; none if never heard of',
+      input: z.object({ name: z.string() }),
+      output: z.looseObject({ turns: z.number(), unseen: z.number() }).nullable(),
+      run: (s, input: { name: string }) => playerOf(s, input.name),
     },
     bans: {
       help: 'Every banned player, with when their ban ends and when it was told',

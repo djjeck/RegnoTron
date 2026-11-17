@@ -37,14 +37,29 @@ import { type BusEvent } from '@megabottron1999/core';
 import { type Announcement, type Mark } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
 import { ACCUMULO_MAX } from '#src/accumulo.ts';
-import { ACCUMULO_EVENT, BAN_EVENT, LOREGAME_PARSER, UNBAN_EVENT } from '#src/plugins/loregame.ts';
+import {
+  ACCUMULO_EVENT,
+  BAN_EVENT,
+  LOREGAME_PARSER,
+  PLAYER_ACCUMULO_EVENT,
+  PLAYER_TURN_EVENT,
+  UNBAN_EVENT,
+} from '#src/plugins/loregame.ts';
+import { loreRestMs, type Outcome } from '#src/replies.ts';
 
 /** The plugin's id, and the namespace of its events (`loregame-state.changed`). */
 export const LOREGAME_STATE = 'loregame-state';
 
-/** The parser's events it applies: the owner's turns. */
+/** The parser's events it applies: the owner's turns, the bans, the accumulo, every player's. */
 const TURN_EVENT = `${LOREGAME_PARSER}.turn`;
-export const CONSUMES: readonly string[] = [TURN_EVENT, BAN_EVENT, UNBAN_EVENT, ACCUMULO_EVENT];
+export const CONSUMES: readonly string[] = [
+  TURN_EVENT,
+  BAN_EVENT,
+  UNBAN_EVENT,
+  ACCUMULO_EVENT,
+  PLAYER_TURN_EVENT,
+  PLAYER_ACCUMULO_EVENT,
+];
 
 /** The paths of the state its node's panel draws first, and its card's line. */
 export const PINS = ['inventory.held', 'owner.as_of'];
@@ -80,6 +95,22 @@ const accumulo = z.object({
   drift: z.array(drift).describe('Latest disagreements'),
 });
 
+/** A player as the state sees them: what their turns and answers in the chats it reads say. */
+const player = z.object({
+  as_of: z.string().describe('Latest change'),
+  game: z
+    .object({
+      name: z.string().nullable().describe('Their name in the game, as a fight names them'),
+      level: z.number().nullable().describe('Their level, as a fight or a level-up says'),
+    })
+    .describe('In the game'),
+  turns: z.number().describe('Turns seen'),
+  unseen: z.number().describe('Turns a "too soon" told of, played where the account does not read'),
+  last_turn: date.describe('Last turn seen'),
+  rest_until: date.describe('Rests until, as their last turn or "too soon" says'),
+  accumulo: accumulo.describe('Accumulo'),
+});
+
 const holding = z.object({
   qty: z.number().describe('Count'),
   exact: z.boolean().describe('Exact'),
@@ -99,6 +130,7 @@ export const stateSchema = z.object({
     .describe('Owner'),
   bans: z.record(z.string(), ban).describe('Banned players'),
   accumulo: accumulo.describe('Accumulo'),
+  players: z.record(z.string(), player).describe('Players'),
   inventory: z
     .object({
       held: z.number().describe('Items held'),
@@ -111,6 +143,7 @@ export type Holding = z.infer<typeof holding>;
 export type Ban = z.infer<typeof ban>;
 export type Accumulo = z.infer<typeof accumulo>;
 export type Drift = z.infer<typeof drift>;
+export type Player = z.infer<typeof player>;
 export type LoreState = z.infer<typeof stateSchema>;
 
 /** The accumulo of a fresh instance: nothing known, none counted. */
@@ -133,7 +166,21 @@ export function initialState(): LoreState {
     owner: { as_of: null, name: null },
     bans: {},
     accumulo: initialAccumulo(),
+    players: {},
     inventory: { held: 0, items: {} },
+  };
+}
+
+/** A player first heard of at `at`: nothing known yet. */
+export function initialPlayer(at: string): Player {
+  return {
+    as_of: at,
+    game: { name: null, level: null },
+    turns: 0,
+    unseen: 0,
+    last_turn: null,
+    rest_until: null,
+    accumulo: initialAccumulo(),
   };
 }
 
@@ -163,6 +210,10 @@ const outcomeSchema = z.looseObject({
   levelUp: z.looseObject({ level: z.number().optional(), items: z.array(reward) }).optional(),
   place: z.looseObject({}).optional(),
   accumulo: z.object({ ready: z.boolean(), sure: z.boolean() }).optional(),
+  fight: z
+    .looseObject({ player: z.object({ name: z.string(), level: z.number() }).optional() })
+    .optional(),
+  retryMs: z.number().optional(),
 });
 
 function outcomeOf(e: BusEvent): z.infer<typeof outcomeSchema> | undefined {
@@ -349,10 +400,75 @@ function reduceAccumulo(state: LoreState, e: BusEvent): LoreState {
   return { ...state, owner: { ...state.owner, as_of: asIso(e.t) }, accumulo: a };
 }
 
+/** What a player's event names: whose. */
+const playerEventSchema = z.looseObject({ player: z.string() });
+
+/**
+ * A player after a turn of theirs, or a "too soon": a turn counted, their rest, their name and
+ * level in the game, their accumulo charged; a "too soon" while we held them rested tells of a turn
+ * played where the account does not read (their private chat), which charged their accumulo and
+ * leaves its count a floor.
+ */
+function playerAfterTurn(p: Player, e: BusEvent): Player {
+  const o = outcomeOf(e);
+  if (o === undefined) return p;
+  const at = asIso(e.t);
+  if (o.kind === 'nothing' && o.reason === 'cooldown') {
+    const rested = p.rest_until === null || Date.parse(p.rest_until) <= e.t;
+    const missed = rested && p.last_turn !== null;
+    return {
+      ...p,
+      as_of: at,
+      ...(o.retryMs === undefined ? {} : { rest_until: asIso(e.t + o.retryMs) }),
+      ...(missed
+        ? {
+            unseen: p.unseen + 1,
+            accumulo: { ...p.accumulo, count: p.accumulo.count + 1, exact: false },
+          }
+        : {}),
+    };
+  }
+  if (o.place === undefined) return p;
+  const restMs = loreRestMs(o as unknown as Outcome);
+  const fought = o.fight?.player;
+  return {
+    ...p,
+    as_of: at,
+    game: {
+      name: fought?.name ?? p.game.name,
+      level: o.levelUp?.level ?? fought?.level ?? p.game.level,
+    },
+    turns: p.turns + 1,
+    last_turn: at,
+    rest_until: restMs === undefined ? p.rest_until : asIso(e.t + restMs),
+    accumulo: afterTurn(p.accumulo, e),
+  };
+}
+
+/** The state after an event, as to the players: any player's turn or `/accumulo` answer. */
+function reducePlayers(state: LoreState, e: BusEvent): LoreState {
+  if (e.type !== PLAYER_TURN_EVENT && e.type !== PLAYER_ACCUMULO_EVENT) return state;
+  const said = playerEventSchema.safeParse(e);
+  if (!said.success || said.data.player === '') return state;
+  const name = said.data.player;
+  const at = asIso(e.t);
+  const known = Object.hasOwn(state.players, name);
+  const before = known ? (state.players[name] as Player) : initialPlayer(at);
+  let after = before;
+  if (e.type === PLAYER_TURN_EVENT) after = playerAfterTurn(before, e);
+  else {
+    const a = afterReply(before.accumulo, e);
+    if (a !== before.accumulo) after = { ...before, as_of: at, accumulo: a };
+  }
+  if (after === before && known) return state;
+  return { ...state, players: { ...state.players, [name]: after } };
+}
+
 /** The next state: an event's gains added to the inventory, a ban set or ended (pure). */
 export function reduce(state: LoreState, e: BusEvent): LoreState {
-  const withBans = reduceAccumulo(reduceBans(state, e), e);
-  const gains = gainsOf(e);
+  const withBans = reducePlayers(reduceAccumulo(reduceBans(state, e), e), e);
+  // The inventory is the owner's: their turns alone, not another player's.
+  const gains = e.type === TURN_EVENT ? gainsOf(e) : [];
   if (gains.length === 0) return withBans;
   const at = asIso(e.t);
   let items = withBans.inventory.items;
@@ -429,6 +545,10 @@ function announceAccumulo(before: Accumulo, after: Accumulo, e: BusEvent): Annou
   return told;
 }
 
+/** A player as the state keeps them, by username; none if never heard of. */
+export const playerOf = (s: LoreState, name: string): Player | null =>
+  Object.hasOwn(s.players, name) ? (s.players[name] as Player) : null;
+
 /** The accumulo as the state keeps it, for an actor to read before it sends `/accumulo`. */
 export const accumuloOf = (s: LoreState): Accumulo => s.accumulo;
 
@@ -446,7 +566,7 @@ export function freshness(e: BusEvent, changed: readonly string[]): Partial<Reco
   const marks: Partial<Record<string, Mark>> = Object.fromEntries(
     changed.map((c): [string, Mark] => [c, 'delta'])
   );
-  const o = outcomeOf(e);
+  const o = e.type === TURN_EVENT ? outcomeOf(e) : undefined;
   if (o?.kind === 'nothing' && o.reason === 'truncated') marks['inventory'] = 'uncertain';
   return marks;
 }

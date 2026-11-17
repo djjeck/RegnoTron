@@ -42,15 +42,14 @@ import {
   parseAccumulo,
 } from '#src/accumulo.ts';
 import { BanWatch } from '#src/bans.ts';
+import { PlayerWatch } from '#src/players.ts';
 import {
   LORE_COMMANDS,
-  LORE_DEFEAT_REST_MS,
   type LoreAccumulo,
   LOREGAMEBOT,
-  type Outcome,
+  loreRestMs,
   parseLoreGameBot,
   TURN_COMMANDS,
-  TURN_REST_MS,
 } from '#src/replies.ts';
 
 export const LOREGAME_PARSER = 'loregame';
@@ -59,23 +58,13 @@ export const BAN_EVENT = `${LOREGAME_PARSER}.ban`;
 export const UNBAN_EVENT = `${LOREGAME_PARSER}.unban`;
 /** The event that tells how the bot answered the owner's `/accumulo`. */
 export const ACCUMULO_EVENT = `${LOREGAME_PARSER}.accumulo`;
+/** The events of every player's turns and `/accumulo`, the owner's included (§6.1). */
+export const PLAYER_TURN_EVENT = `${LOREGAME_PARSER}.playerTurn`;
+export const PLAYER_ACCUMULO_EVENT = `${LOREGAME_PARSER}.playerAccumulo`;
 /** The store's document of the bans it knows. */
 const BANS_DOC = 'bans';
 /** The store's document of the owner's last `/accumulo` the bot answered with no to a new one. */
 const ACCUMULO_DOC = 'accumulo';
-
-/** The rest a turn's outcome starts. */
-function restOf(o: Outcome): number | undefined {
-  if (o.kind === 'gain') return TURN_REST_MS;
-  if (o.kind !== 'nothing') return undefined;
-  if (o.reason === 'defeated') return LORE_DEFEAT_REST_MS;
-  if (o.reason === 'lost') return TURN_REST_MS;
-  // The ending is cut off, but a fight lost shows in the line before it.
-  if (o.reason === 'truncated')
-    return o.fight?.result === 'lost' ? LORE_DEFEAT_REST_MS : TURN_REST_MS;
-  if (o.reason === 'cooldown') return o.retryMs;
-  return undefined;
-}
 
 const parser: Plugin = turnParserPlugin({
   id: LOREGAME_PARSER,
@@ -105,7 +94,7 @@ const parser: Plugin = turnParserPlugin({
     if (!m.answers && !(m.private && m.replies)) return undefined;
     const outcome = parseLoreGameBot(m.text);
     if (outcome.kind === 'unknown') return m.answers ? { unread: true } : undefined;
-    const restMs = restOf(outcome);
+    const restMs = loreRestMs(outcome);
     // The bot's own line (one copy: a story may quote it) says the accumulo is full.
     const full = (outcome as { accumulo?: LoreAccumulo }).accumulo?.sure === true;
     return {
@@ -154,6 +143,21 @@ const accumuloEvent = z
   })
   .describe("How @LoreGameBot answered the owner's /accumulo");
 
+const playerTurnEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    outcome: z
+      .looseObject({ kind: z.string(), bot: z.string() })
+      .describe("The turn as the parser reads it (src/replies.ts's Outcome), or a 'too soon'"),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("A player's turn, as @LoreGameBot answered it: any player's the account reads");
+const playerAccumuloEvent = accumuloEvent
+  .extend({ player, owner: z.boolean().describe('The player is the owner of the account') })
+  .describe("How @LoreGameBot answered a player's /accumulo: any player's the account reads");
+
 /** The parser, with the bans and the accumulo it watches for, beside the turns it reads. */
 export const loregamePlugin: Plugin = {
   manifest: {
@@ -163,6 +167,8 @@ export const loregamePlugin: Plugin = {
       [BAN_EVENT]: banEvent,
       [UNBAN_EVENT]: unbanEvent,
       [ACCUMULO_EVENT]: accumuloEvent,
+      [PLAYER_TURN_EVENT]: playerTurnEvent,
+      [PLAYER_ACCUMULO_EVENT]: playerAccumuloEvent,
     },
     // The ban comes first: any other outcome of a turn is an `ok`.
     answers: [
@@ -186,6 +192,7 @@ export const loregamePlugin: Plugin = {
       ctx.store.read<{ bans: [string, number][] }>(BANS_DOC)?.bans
     );
     const asked = new AccumuloWatch(LOREGAMEBOT);
+    const players = new PlayerWatch(LOREGAMEBOT);
     /**
      * The owner's last /accumulo the bot answered with a use or a no, in any chat, by hand or not:
      * the shell's parser pairs only a reply to the command it knows, and the bot replies to none
@@ -210,7 +217,18 @@ export const loregamePlugin: Plugin = {
           );
         ctx.store.write(BANS_DOC, { bans: watch.entries() });
       }
-      const answer = asked.hear(m);
+      const self = chat.self();
+      const turn = players.hear(m, self);
+      if (turn !== undefined)
+        ctx.bus.publish(PLAYER_TURN_EVENT, { chat: m.chat, ...turn, ...old }, m.time);
+      const any = asked.answer(m, self);
+      if (any !== undefined && any.player !== '')
+        ctx.bus.publish(
+          PLAYER_ACCUMULO_EVENT,
+          { chat: m.chat, player: any.player, owner: any.owner, ...any.reply, ...old },
+          m.time
+        );
+      const answer = any?.owner === true ? any.reply : undefined;
       if (answer !== undefined) {
         ctx.bus.publish(ACCUMULO_EVENT, { chat: m.chat, ...answer, ...old }, m.time);
         // "Already ready" spends nothing and says it is full: it holds nothing back.

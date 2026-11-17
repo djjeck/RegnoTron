@@ -130,6 +130,7 @@ reply lost: it changes no count, and marks the inventory `uncertain` in `state.f
 | `state.ban({ player? })` | A player's ban (the owner's unless named): `{ until, since }`  |
 | `state.bans()`           | Every banned player, with their ban                            |
 | `state.accumulo()`       | The owner's accumulo: the count, the bot's word, the drift     |
+| `state.player({ name })` | A player by username: game name, level, turns, rest, accumulo  |
 
 A ban is kept with when it ends, as the bot states it (Rome's clock; a date alone: the end of the
 day), and is over when the bot serves the player again, which it does early at times, or when its
@@ -163,6 +164,12 @@ if (accumuloReady(ctx.use<AccumuloInterface>('state').state.accumulo())) {
   // full by the bot's word, and not behind a level: send /accumulo
 }
 ```
+
+**Every player** whose turns the account reads is kept too, by username (`players`, the owner's
+included; docs/game-bots.md §6.1): their name and level in the game, their turns seen and those a
+"too soon" told of (played in their private chat, which the account does not read), their rest and
+their accumulo. The parser publishes them as `loregame.playerTurn` and `loregame.playerAccumulo`,
+which needs the group edge to deliver every sender, as the bans do.
 
 `loregame-state.accumuloReady` (`count`, `max`, `via`: `turn` or `reading`), `accumuloUsed` (`turns`
 since the last use, `exact`) and `accumuloDrift` (`kind`, `counted`, `said`, `max`) announce each

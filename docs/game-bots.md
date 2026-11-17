@@ -222,3 +222,24 @@ It is a floor, not the truth, while the turns are all it reads:
   word wins: the state follows it, and does not learn the maximum from a line. `state.accumulo()` is
   the section; `loregame-state.accumuloReady` and `accumuloUsed` announce the rest.
 - **Items and players are named by players**, anything, `__proto__` included.
+
+### 6.1 Every player
+
+The state also keeps **every player** whose turns the account reads (`players`, by username; the
+owner's included), from two events of the parser for any player, `loregame.playerTurn` (a turn, or a
+"too soon") and `loregame.playerAccumulo` (an answer to `/accumulo`): the bot replies to a turn
+command naming nobody, so the parser names the player by the message it replies to, and pairs an
+`/accumulo` answer as it does the owner's (§5.2). Per player:
+
+- **in the game:** their name and level, as a fight's line and a level-up say;
+- **turns seen**, the last one's time, and their **rest** (15 minutes, 30 after a fight lost, a "too
+  soon"'s wait, §2);
+- **unseen turns:** players also play where the account does not read, in their private chat with
+  the bot. A "too soon" to a player we held rested tells of one, which is counted, charges their
+  accumulo, and leaves its count a floor;
+- **their accumulo**, with the owner's rules (§6): the turns counted, the bot's word (`ready`), and
+  the drift between the two, which a turn unseen does not count as a disagreement.
+
+What it keeps of a player is a floor of what they did, and better as they play in the group. A
+player is known by the username the connector gives; one without a username is not kept (the
+connector gives `''`). Their items are not kept yet.

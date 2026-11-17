@@ -87,15 +87,23 @@ export function isAccumuloCommand(text: string, bot: string): boolean {
 interface Asked {
   chat: string;
   id: string | undefined;
-  /** The owner's: its answer is the one to keep. */
+  /** Who asked: the owner (theirs is the one `hear` keeps), or a player by username. */
   owner: boolean;
+  player: string;
   time: number;
 }
 
+/** A player's answer to `/accumulo`: whose, and what the bot said. */
+export interface PlayerAccumulo {
+  player: string;
+  owner: boolean;
+  reply: AccumuloReply;
+}
+
 /**
- * The owner's `/accumulo` answers, out of everything the parser hears. It keeps the commands that
- * wait for an answer (any player's in the group, as it hears them) and gives each answer to the
- * command it belongs to: the one it replies to, else the oldest waiting in that chat.
+ * The `/accumulo` answers, out of everything the parser hears. It keeps the commands that wait for
+ * an answer (any player's in the group, as it hears them) and gives each answer to the command it
+ * belongs to: the one it replies to, else the oldest waiting in that chat.
  */
 export class AccumuloWatch {
   private readonly bot: string;
@@ -107,18 +115,35 @@ export class AccumuloWatch {
 
   /** The owner's answer, if `m` is the bot's answer to the owner's accumulo command. */
   hear(m: Heard): AccumuloReply | undefined {
+    const a = this.answer(m, undefined);
+    return a?.owner === true ? a.reply : undefined;
+  }
+
+  /**
+   * Any player's answer, if `m` is the bot's answer to a player's accumulo command: the owner's
+   * named `self` (their username once the account knows it), a player without a username no
+   * one's.
+   */
+  answer(m: Heard, self: string | undefined): PlayerAccumulo | undefined {
     this.asked = this.asked.filter((a) => m.time - a.time <= ANSWER_WINDOW_MS);
     const inPrivate = isPrivate(m);
     if (m.own === true || m.sender.toLowerCase() !== this.bot) {
-      if (isAccumuloCommand(m.text, this.bot))
+      if (isAccumuloCommand(m.text, this.bot)) {
+        const owner = m.own === true || inPrivate;
         this.asked.push({
           chat: m.chat,
           id: m.id,
-          owner: m.own === true || inPrivate,
+          owner,
+          player: owner ? '' : m.sender,
           time: m.time,
         });
+      }
       return undefined;
     }
+    const whose = (command: Asked, reply: AccumuloReply): PlayerAccumulo | undefined => {
+      const player = command.owner ? (self ?? '') : command.player;
+      return player === '' && !command.owner ? undefined : { player, owner: command.owner, reply };
+    };
     // A reply to a command waiting ends its wait, whatever it says (a ban, a gate).
     const to =
       m.replyTo === undefined
@@ -127,7 +152,7 @@ export class AccumuloWatch {
     const reply = parseAccumulo(m.text);
     if (to >= 0) {
       const [command] = this.asked.splice(to, 1) as [Asked];
-      return reply !== undefined && command.owner ? reply : undefined;
+      return reply === undefined ? undefined : whose(command, reply);
     }
     if (reply === undefined) return undefined;
     if (m.replyTo === undefined) {
@@ -135,13 +160,15 @@ export class AccumuloWatch {
       const next = this.asked.findIndex((a) => a.chat === m.chat);
       if (next >= 0) {
         const [command] = this.asked.splice(next, 1) as [Asked];
-        return command.owner ? reply : undefined;
+        return whose(command, reply);
       }
     }
     // No command known to be waiting: in private it is the owner's all the same (a command sent
     // before the parser started, or from elsewhere), when it says what it is; the level gate is
     // any command's. In the group it is no one's.
-    return inPrivate && reply.result !== 'locked' ? reply : undefined;
+    return inPrivate && reply.result !== 'locked'
+      ? { player: self ?? '', owner: true, reply }
+      : undefined;
   }
 }
 

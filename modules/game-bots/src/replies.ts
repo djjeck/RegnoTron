@@ -357,6 +357,22 @@ function banEnd(m: RegExpExecArray): number | undefined {
   return h > 23 || mi > 59 || s > 59 ? undefined : romeMs(Date.UTC(year, month - 1, day, h, mi, s));
 }
 
+/**
+ * The rest a turn's outcome starts, in ms (docs/game-bots.md §2): 15 minutes after a turn, 30 after
+ * a fight lost, a "too soon"'s wait; none for anything else (a ban, a "calm down").
+ */
+export function loreRestMs(o: Outcome): number | undefined {
+  if (o.kind === 'gain') return TURN_REST_MS;
+  if (o.kind !== 'nothing') return undefined;
+  if (o.reason === 'defeated') return LORE_DEFEAT_REST_MS;
+  if (o.reason === 'lost') return TURN_REST_MS;
+  // The ending is cut off, but a fight lost shows in the line before it.
+  if (o.reason === 'truncated')
+    return o.fight?.result === 'lost' ? LORE_DEFEAT_REST_MS : TURN_REST_MS;
+  if (o.reason === 'cooldown') return o.retryMs;
+  return undefined;
+}
+
 /** An @LoreGameBot reply to the owner's `/avventura`, `/lore` or `/l`. */
 export function parseLoreGameBot(raw: string): Outcome {
   const whole = raw.normalize('NFC');
