@@ -124,6 +124,7 @@ export const rests: Check = {
     let early = 0;
     let earlyAfterUse = 0;
     let earlyUnseen = 0;
+    let earlyDouble = 0;
     for (const s of r.steps) {
       if (s.event.type !== 'loregame.playerTurn') continue;
       const name = s.event['player'] as string;
@@ -149,14 +150,11 @@ export const rests: Check = {
         early++;
         // A use of the accumulo the bot answered in a chat the account reads, since that turn.
         const used = p?.accumulo.used_at ?? null;
-        if (
-          used !== null &&
-          p?.last_turn !== null &&
-          p !== undefined &&
-          used >= (p?.last_turn ?? '')
-        )
+        const after = playerOf(s.after, name);
+        if (used !== null && p !== null && p.last_turn !== null && used >= p.last_turn)
           earlyAfterUse++;
-        else if ((playerOf(s.after, name)?.unseen_uses ?? 0) > (p?.unseen_uses ?? 0)) earlyUnseen++;
+        else if ((after?.double_turns ?? 0) > (p?.double_turns ?? 0)) earlyDouble++;
+        else if ((after?.unseen_uses ?? 0) > (p?.unseen_uses ?? 0)) earlyUnseen++;
       }
     }
     const agree = verdicts.filter((v) => v === 'agrees').length;
@@ -167,11 +165,12 @@ export const rests: Check = {
         ['agree with the rest predicted (±2 min)', pct(agree, verdicts.length)],
         ['by verdict', tally(verdicts)],
         ['turns seen before the predicted rest ended', String(early)],
+        ['… a double turn (within a minute of the last)', String(earlyDouble)],
         ['… after a use of the accumulo seen', String(earlyAfterUse)],
         ['… telling of a use unseen (played in private)', String(earlyUnseen)],
         [
           '… not a use (the accumulo was not full: an item, or a rest the model lacks)',
-          String(early - earlyAfterUse - earlyUnseen),
+          String(early - earlyDouble - earlyAfterUse - earlyUnseen),
         ],
       ],
     };

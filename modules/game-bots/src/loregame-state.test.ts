@@ -635,6 +635,30 @@ describe('the players', () => {
     expect(playerOf(heard, 'bob')).toMatchObject({ unseen_uses: 0, accumulo: { count: 1 } });
   });
 
+  it('takes a turn within a minute of the last for a double turn the bot gave, not a use', () => {
+    const lit = { accumulo: { ready: true, sure: true } };
+    const cmd = (e: BusEvent, command: string): BusEvent => ({ ...e, command }) as BusEvent;
+    // Full, then /avventura and a /lore 20 seconds later: both turns, the accumulo untouched.
+    const s = run(
+      cmd(turnOf('bob', T, lit), '/avventura'),
+      cmd(turnOf('bob', T + 20_000), '/lore')
+    );
+    expect(playerOf(s, 'bob')).toMatchObject({
+      double_turns: 1,
+      unseen_uses: 0,
+      last_command: '/lore',
+      turns: 2,
+      rest_until: new Date(T + 20_000 + 15 * MIN).toISOString(),
+    });
+    // A use the account heard explains a quick turn first.
+    const used = run(
+      turnOf('bob', T, lit),
+      asked('bob', T + 10_000, { result: 'used' }),
+      turnOf('bob', T + 30_000)
+    );
+    expect(playerOf(used, 'bob')).toMatchObject({ double_turns: 0, accumulo: { count: 1 } });
+  });
+
   it('charges no accumulo below level 4, as a fight or a level-up says, and from it again', () => {
     const at = (level: number) => ({
       fight: {

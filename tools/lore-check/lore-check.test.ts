@@ -104,12 +104,17 @@ describe('the lore check', () => {
         say(0, 'LoreGameBot', 'Accumulo non ancora sufficiente!\n\nIl tuo accumulo: 3/20'),
         ...asked(1, 'dave', '/lore', TURN),
         ...asked(4, 'dave', '/lore', TURN),
+        // Erin: /avventura, then /lore at once: the bot gives both.
+        ...asked(10, 'erin', '/avventura', TURN),
+        { ...say(10, 'erin', '/lore'), time: T0 + 10 * MIN + 20_000, id: 'erin-lore' },
+        { ...say(10, 'LoreGameBot', TURN), time: T0 + 10 * MIN + 21_000, replyTo: 'erin-lore' },
       ],
       { self: 'alice' }
     );
     const rests = CHECKS.find((c) => c.id === 'rests')?.run(run);
     const row = (label: string) => rests?.rows.find(([k]) => k.startsWith(label))?.[1];
-    expect(row('turns seen before the predicted rest ended')).toBe('3');
+    expect(row('turns seen before the predicted rest ended')).toBe('4');
+    expect(row('… a double turn')).toBe('1');
     expect(row('… after a use of the accumulo seen')).toBe('1');
     expect(row('… telling of a use unseen')).toBe('1');
     expect(row('… not a use')).toBe('1');

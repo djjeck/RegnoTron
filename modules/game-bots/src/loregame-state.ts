@@ -109,7 +109,11 @@ const player = z.object({
   unseen_uses: z
     .number()
     .describe('Uses of the accumulo a turn told of, coming before the rest was over'),
+  double_turns: z
+    .number()
+    .describe('A turn within a minute of the last, which the bot answered as a turn'),
   last_turn: date.describe('Last turn seen'),
+  last_command: z.string().nullable().describe('The turn command of the last turn seen'),
   rest_until: date.describe('Rests until, as their last turn or "too soon" says'),
   accumulo: accumulo.describe('Accumulo'),
 });
@@ -182,7 +186,9 @@ export function initialPlayer(at: string): Player {
     turns: 0,
     unseen: 0,
     unseen_uses: 0,
+    double_turns: 0,
     last_turn: null,
+    last_command: null,
     rest_until: null,
     accumulo: initialAccumulo(),
   };
@@ -406,6 +412,8 @@ function reduceAccumulo(state: LoreState, e: BusEvent): LoreState {
 
 /** The level that unlocks the accumulo [M] (its gate: "Devi essere almeno di livello 4!"). */
 const ACCUMULO_LEVEL = 4;
+/** How soon after a turn another may be answered as a turn of its own [M]: within a minute. */
+const DOUBLE_MS = 60_000;
 /** How much sooner than the rest we predicted a turn must come to tell of a use of the accumulo. */
 const EARLY_MS = 2 * 60_000;
 
@@ -445,9 +453,17 @@ function playerAfterTurn(p: Player, e: BusEvent): Player {
   // A turn well before the rest we predicted, with the accumulo full: it was used where we did
   // not hear (their private chat), so it starts again from 0 before this turn. Not full, the rest
   // was ended otherwise (an item), and the accumulo is not touched.
+  const command = typeof e['command'] === 'string' ? e['command'] : null;
+  // A turn within a minute of the last: the bot answers it as a turn at times [M] (most often a
+  // /lore after an /avventura; docs/game-bots.md §2), so it tells of no use.
+  // (A use the account heard since explains it first.)
+  const usedSince =
+    accumulo.used_at !== null && p.last_turn !== null && accumulo.used_at >= p.last_turn;
+  const double = !usedSince && p.last_turn !== null && e.t - Date.parse(p.last_turn) <= DOUBLE_MS;
   const full =
     accumulo.ready || (accumulo.exact && accumulo.count >= (accumulo.max ?? ACCUMULO_MAX));
   const early =
+    !double &&
     full &&
     p.last_turn !== null &&
     p.rest_until !== null &&
@@ -471,7 +487,9 @@ function playerAfterTurn(p: Player, e: BusEvent): Player {
     game: { name: fought?.name ?? p.game.name, level },
     turns: p.turns + 1,
     ...(early ? { unseen_uses: p.unseen_uses + 1 } : {}),
+    ...(double ? { double_turns: p.double_turns + 1 } : {}),
     last_turn: at,
+    last_command: command ?? p.last_command,
     rest_until: restMs === undefined ? p.rest_until : asIso(e.t + restMs),
     accumulo: afterTurn(accumulo, e),
   };

@@ -33,6 +33,13 @@ form (NFC).
 
 - **15 minutes** after a turn, for each of the three [M].
 - **@LoreGameBot: 30 minutes after a fight lost** [M] (about 4% of its turns).
+- **@LoreGameBot: a second turn within a minute** [M]: a turn command sent within a minute of a turn
+  is answered at times as a turn of its own, not a "too soon": most often a `/lore` after an
+  `/avventura` (226 of 236 within a minute, Oct–Nov 2026), less often the same command again; never
+  a `/avventura` after a `/lore` in the exports. After a minute the rest holds (33 of 34). The bot
+  answers within a second, so it is not a race of two commands; nor is it the bot catching up after
+  a disconnection (its delayed answers explain at most 6 of them). The rest then runs from the
+  second turn.
 - A turn sent too soon gets the bot's "too soon", with the wait left, which the parsers read:
   - @InventoryBot:
     `Troppo presto, devi riposare ancora per 9 minuti e 29 secondi prima di poterti avventurare…`
@@ -244,14 +251,14 @@ command naming nobody, so the parser names the player by the message it replies 
   the drift between the two, which a turn unseen does not count as a disagreement. Two more things a
   turn tells: **below level 4** (known from a fight's line or a level-up) nothing charges it, and
   **a turn well before the rest was over** while the accumulo was full tells of a use the account
-  did not hear (in private: `unseen_uses`), which empties it.
+  did not hear (in private: `unseen_uses`), which empties it, unless it came within a minute of the
+  last turn, which the bot answers as a turn at times (§2: `double_turns`).
 
 Measured [M] with `npm run lore-check` (tools/lore-check/README.md) on the exports of Oct–Nov 2026,
 every player of the group: the counter the bot gives agrees with the state's in 97% of its readings,
-and a "too soon" with the rest predicted in 99%. **Not explained yet** [?]: some players' turns come
-well before their rest is over (most often with no rest at all) while their accumulo cannot have
-been used (under level 4, or far from full): 131 of the 8,071 turns seen (1.6%). Nothing in the
-group explains them; it happens where the account does not read, and is left untouched in the state.
+and a "too soon" with the rest predicted in 99%. Every turn seen before the rest was over is
+explained: after a use of the accumulo the account heard, a second turn within a minute (§2), or,
+rarely, a use in private.
 
 What it keeps of a player is a floor of what they did, and better as they play in the group. A
 player is known by the username the connector gives; one without a username is not kept (the
