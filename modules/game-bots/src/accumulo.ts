@@ -17,8 +17,14 @@
  * them (measured over 5,400 answers: 99.8% within 10 seconds, and the counter then follows the
  * player's own turns in 99% of the readings).
  */
-import { isPrivate } from '@megabottron1999/turns/turn-parser.ts';
+import {
+  type CommandMechanics,
+  isPrivate,
+  type TurnOutcome,
+  type TurnReading,
+} from '@megabottron1999/turns/turn-parser.ts';
 import { type Heard } from '#src/bans.ts';
+import { LOREGAMEBOT, TURN_REST_MS } from '#src/replies.ts';
 
 /** The commands of the accumulo, as a player types them (`/acc` is the one they use most). */
 export const ACCUMULO_COMMANDS: readonly string[] = ['/accumulo', '/acc'];
@@ -164,4 +170,39 @@ export const ACCUMULO_MEMBERS = ['state.accumulo'];
  */
 export function accumuloReady(view: AccumuloView): boolean {
   return view.ready && view.locked === null;
+}
+
+/** The command a shell player plays, as the parser declares it (its first word). */
+export const ACCUMULO = '/accumulo';
+
+/**
+ * Its mechanics, for the shell's player (MegaBotTron1999's bot-os.md D132, D137): it waits for the
+ * bot's word that it is full (`unlock`, named by the parser's reading of a turn that carries the
+ * line, never matched on the text, which a story may quote), and its success ends the rest of the
+ * next `/lore` (`effects`). From that effect the player derives its policy: played only while
+ * `/lore` rests, which is when it gains a turn.
+ */
+export const ACCUMULO_MECHANICS: CommandMechanics = {
+  unlock: {},
+  effects: [{ command: '/lore', clear: true }],
+};
+
+/** How long the level gate holds `/accumulo` back: nothing tells when the owner levels up. */
+export const LOCKED_RETRY_MS = 6 * 60 * 60_000;
+
+/**
+ * What the bot's answer to the owner's `/accumulo` is to the shell's parser: a use is the success
+ * (the accumulo spent, and the rest of the next `/lore` ended, its mechanics' effect); any other
+ * answer is a "too soon" (`nothing`, `cooldown`), no success, holding `/accumulo` back as long as
+ * it can say: "not yet" for the turns still needed at the bot's rest each, the level gate for
+ * `LOCKED_RETRY_MS`, "already ready" (full, nothing to zero, nothing spent) not at all.
+ */
+export function accumuloReading(a: AccumuloReply): Exclude<TurnReading, undefined> {
+  const outcome = (o: Record<string, unknown>): TurnOutcome =>
+    ({ bot: LOREGAMEBOT, ...o }) as TurnOutcome;
+  if (a.result === 'used') return { outcome: outcome({ kind: 'accumulo', result: 'used' }) };
+  const tooSoon = outcome({ kind: 'nothing', reason: 'cooldown', ...a });
+  if (a.result === 'idle') return { outcome: tooSoon };
+  if (a.result === 'locked') return { outcome: tooSoon, restMs: LOCKED_RETRY_MS };
+  return { outcome: tooSoon, restMs: Math.max(a.max - a.count, 1) * TURN_REST_MS };
 }

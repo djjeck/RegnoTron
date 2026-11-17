@@ -78,6 +78,22 @@ when a story quotes the line, which the bot never writes twice), and the bot's a
 a message of its own, not a reply, so the parser pairs it with the oldest command waiting: it needs
 the same edge as the bans, delivering every sender.
 
+**Playing it: the shell's `player`.** The parser declares `/accumulo` among its bot's commands (its
+spec's `commands`, MegaBotTron1999's bot-os.md D132, D137), so the `player` bound to the `loregame`
+node lists it beside the turns, ticked by default, with its mechanics:
+
+- **unlocked by the bot's word:** a turn with the bot's own line (one copy) makes it ready; never
+  our count, and never a line a story quotes;
+- **its use ends the rest of the next `/lore`:** the player therefore plays it only while `/lore`
+  rests, which is when it gains a turn, and the parser and the outbox let the `/lore` go at once;
+- **its answers** are `loregame.answer` (`command: "/accumulo"`): a use is the success; "not yet"
+  holds it for the turns the bot's counter says it still needs, at 15 minutes each, the level gate
+  for 6 hours, "already ready" (nothing spent) not at all; a ban, like every command, until it ends;
+- **a use by hand** counts too, in private or in the group, `/acc` included, which the shell alone
+  would not pair: it is not ready again until the next turn's line.
+
+Nothing else is to configure: the player's checklist offers it, and its chat-out edge follows.
+
 ## The state: `loregame-state`
 
 The owner's state at @LoreGameBot, kept by MegaBotTron1999's `statePlugin` from what the `loregame`

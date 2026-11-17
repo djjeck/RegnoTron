@@ -153,7 +153,7 @@ describe('the loregame parser’s bans', () => {
       T0
     );
     expect(banned?.answer).toMatchObject({ status: 'refused', reason: 'banned', retryAt: BAN_END });
-    expect(banned?.commands).toEqual(['/avventura', '/lore', '/l', '/accumulo', '/acc']);
+    expect(banned?.commands).toEqual(['/avventura', '/lore', '/l']);
     expect(banned?.holds).toEqual(expect.arrayContaining(['/lore', '/vai', '/usa', '/zaino']));
     // What else a turn brings is still the ok it was.
     const ok = readAnswer(
@@ -310,6 +310,7 @@ describe('the loregame parser’s accumulo', () => {
     const { events } = parseManifest(loregamePlugin.manifest);
     expect(Object.keys(events ?? {})).toEqual([
       'loregame.turn',
+      'loregame.answer',
       'loregame.ban',
       'loregame.unban',
       'loregame.accumulo',
@@ -414,5 +415,123 @@ describe('the loregame parser’s accumulo', () => {
     expect(acc(migrated)).toMatchObject({ count: 0, exact: false, max: null, ready: false });
     expect(migrated.read('held')).toEqual({ 'un sasso': 1 });
     await migrated.core.stop();
+  });
+});
+
+describe('the accumulo, for a shell player', () => {
+  const ready = (run: { ready: () => Record<string, { ready: boolean; why?: string }> }) =>
+    run.ready()['/accumulo'];
+  /** The player's send of /accumulo, as it tells the parser, and the bot's reply to it. */
+  const play = async (run: Awaited<ReturnType<typeof bootState>>, reply: string): Promise<void> => {
+    const id = 'sent-' + String(run.clock.now());
+    const r = await run.core.controls.act('loregame', 'sent', {
+      chat: '@LoreGameBot',
+      id,
+      t: run.clock.now(),
+      command: '/accumulo',
+    });
+    expect(r).not.toHaveProperty('error');
+    await run.bot(reply, { replyTo: id });
+  };
+
+  it('is declared to the player: unlocked by the bot’s word, ending /lore’s rest when used', () => {
+    const m = parseManifest(loregamePlugin.manifest);
+    expect(m.botCommands).toEqual([
+      { command: '/avventura', turn: true },
+      { command: '/lore', turn: true },
+      { command: '/l', turn: true },
+      { command: '/accumulo', unlock: {}, effects: [{ command: '/lore', clear: true }] },
+    ]);
+  });
+
+  it('is ready once a turn says it is full, and its use ends the rest of the next /lore', async () => {
+    const run = await bootState(path.join(dir, 'k'));
+    expect(ready(run)).toMatchObject({ ready: false, why: 'waits for an unlock' });
+    // A turn without the line, then one with a story quoting it: neither is the bot's word.
+    await run.owner('/lore');
+    await run.bot(gain('un sasso [B1]'));
+    run.clock.advance(16 * MIN);
+    await run.owner('/lore');
+    await run.bot(`${HEADER}\n${MARK}\n${MARK}\n\n${MARK}\nHai ottenuto un sasso [B1]!`);
+    expect(ready(run)).toMatchObject({ ready: false });
+    run.clock.advance(16 * MIN);
+    // The bot's own line: ready, while /lore rests (which is when the player plays it).
+    await run.owner('/lore');
+    await run.bot(lit('un sasso [B1]'));
+    expect(ready(run)).toMatchObject({ ready: true });
+    expect(run.ready()['/lore']).toMatchObject({ ready: false });
+    // Used: spent, and /lore may go at once.
+    await play(run, USED);
+    expect(ready(run)).toMatchObject({ ready: false });
+    expect(run.ready()['/lore']).toMatchObject({ ready: true });
+    expect(run.rest()).toBeUndefined();
+    expect(run.of('loregame.answer')).toMatchObject([
+      { command: '/accumulo', outcome: { kind: 'accumulo', result: 'used' } },
+    ]);
+    expect(run.core.drift().find((d) => d.parser === 'loregame')).toMatchObject({ unread: 0 });
+    await run.core.stop();
+  });
+
+  it('holds back a "not yet" for the turns still needed, and takes "already ready" as no use', async () => {
+    const run = await bootState(path.join(dir, 'l'));
+    await run.owner('/lore');
+    await run.bot(lit('un sasso [B1]'));
+    // Not yet (a line we trusted): held for 3 turns at the bot's rest, and spends nothing.
+    await play(run, SHORT(17, 20));
+    expect(ready(run)).toMatchObject({ ready: false });
+    expect(run.ready()['/lore']).toMatchObject({ ready: false });
+    expect(run.of('loregame.answer').at(-1)).toMatchObject({
+      outcome: { kind: 'nothing', reason: 'cooldown', result: 'short', count: 17, max: 20 },
+      retryAt: run.clock.now() + 45 * MIN,
+    });
+    // Full again by a turn's line, and the rest over: the bot says "already ready".
+    run.clock.advance(46 * MIN);
+    await run.owner('/lore');
+    await run.bot(lit('un sasso [B1]'));
+    run.clock.advance(16 * MIN);
+    await play(run, 'La lore è già pronta!\n\nIl tuo accumulo: 20/20');
+    // Still full: nothing was spent.
+    expect(ready(run)).toMatchObject({ ready: true });
+    await run.core.stop();
+  });
+
+  it('is spent by the owner’s own use, by hand, in the group, which the shell cannot pair', async () => {
+    const run = await bootState(path.join(dir, 'm'), { group: true });
+    await run.group('alice', '/lore', { own: true });
+    const turn = run.of('loregame.turn').length;
+    const mine = await run.group('alice', '/l', { own: true });
+    await run.group('LoreGameBot', lit('un sasso [B1]'), { replyTo: mine });
+    expect(run.of('loregame.turn')).toHaveLength(turn + 1);
+    expect(ready(run)).toMatchObject({ ready: true });
+    // The bot answers /acc in a message of its own; only the parser's watch knows it is the owner's.
+    await run.group('alice', '/acc', { own: true });
+    await run.group('LoreGameBot', USED);
+    expect(ready(run)).toMatchObject({ ready: false, why: 'used since the bot said it was full' });
+    // Kept across a restart.
+    await run.core.stop();
+    const again = await bootState(path.join(dir, 'm'), { group: true });
+    expect(ready(again)).toMatchObject({ ready: false });
+    // The next line makes it ready again.
+    again.clock.advance(16 * MIN);
+    const next = await again.group('alice', '/lore', { own: true });
+    await again.group('LoreGameBot', lit('un sasso [B1]'), { replyTo: next });
+    expect(ready(again)).toMatchObject({ ready: true });
+    await again.core.stop();
+  });
+
+  it('is held, as every command, while the owner is banned, and a ban answering it uses nothing', async () => {
+    const run = await bootState(path.join(dir, 'n'));
+    await run.owner('/lore');
+    await run.bot(lit('un sasso [B1]'));
+    await play(run, BAN);
+    expect(ready(run)).toMatchObject({ ready: false, why: 'the owner is banned' });
+    expect(run.of('loregame.answer').at(-1)).toMatchObject({
+      outcome: { kind: 'nothing', reason: 'cooldown', banned: BAN_END },
+    });
+    // An answer it cannot read is drift, as a turn's.
+    run.clock.advance(7 * 60 * MIN);
+    await play(run, 'Qualcosa che il bot non ha mai scritto.');
+    expect(run.core.drift().find((d) => d.parser === 'loregame')).toMatchObject({ unread: 1 });
+    await run.core.stop();
   });
 });

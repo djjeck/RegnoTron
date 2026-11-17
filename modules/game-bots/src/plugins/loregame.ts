@@ -9,8 +9,9 @@
  * learnt its id) still counts when it reads as a turn's outcome. Its rest: 15 minutes, 30 after a
  * fight lost, or the wait it states.
  *
- * **The accumulo** (docs/game-bots.md §5.2; `loregame-accumulo` plays it): a turn that finds it
- * full carries the line
+ * **The accumulo** (docs/game-bots.md §5.2), a command a shell player plays: the parser declares
+ * `/accumulo` with its mechanics (unlocked by the bot's word, its use ending `/lore`'s rest), and
+ * a turn that finds it full carries the line
  * "🔋 /accumulo pronto!", which the outcome of `loregame.turn` has as `accumulo`; and the bot's
  * answer to the owner's `/accumulo` (in private, or the one that follows the command in the
  * group) is published as `loregame.accumulo`, for `loregame-state` to count against.
@@ -27,16 +28,24 @@
  */
 import { type Plugin } from '@megabottron1999/core';
 import {
+  type TurnOutcome,
   type TurnParserInterface,
   turnParserPlugin,
   type TurnReading,
 } from '@megabottron1999/turns/turn-parser.ts';
 import { z } from 'zod';
-import { ACCUMULO_COMMANDS, AccumuloWatch } from '#src/accumulo.ts';
+import {
+  ACCUMULO,
+  ACCUMULO_MECHANICS,
+  accumuloReading,
+  AccumuloWatch,
+  parseAccumulo,
+} from '#src/accumulo.ts';
 import { BanWatch } from '#src/bans.ts';
 import {
   LORE_COMMANDS,
   LORE_DEFEAT_REST_MS,
+  type LoreAccumulo,
   LOREGAMEBOT,
   type Outcome,
   parseLoreGameBot,
@@ -52,6 +61,8 @@ export const UNBAN_EVENT = `${LOREGAME_PARSER}.unban`;
 export const ACCUMULO_EVENT = `${LOREGAME_PARSER}.accumulo`;
 /** The store's document of the bans it knows. */
 const BANS_DOC = 'bans';
+/** The store's document of the owner's last `/accumulo` the bot answered with no to a new one. */
+const ACCUMULO_DOC = 'accumulo';
 
 /** The rest a turn's outcome starts. */
 function restOf(o: Outcome): number | undefined {
@@ -71,12 +82,37 @@ const parser: Plugin = turnParserPlugin({
   bot: LOREGAMEBOT,
   description: "@LoreGameBot's answers to the owner's turns: the items, the fights, and its rest",
   turnCommands: TURN_COMMANDS[LOREGAMEBOT],
+  // The bot's other commands a shell player may play, with their mechanics (D132, D137).
+  commands: { [ACCUMULO]: ACCUMULO_MECHANICS },
   read: (m): TurnReading => {
+    if (m.command === ACCUMULO) {
+      // The answer to the owner's /accumulo: used (the success), or a "too soon" of some kind.
+      const said = parseAccumulo(m.text);
+      if (said !== undefined) return accumuloReading(said);
+      const outcome = parseLoreGameBot(m.text);
+      // Banned: nothing spent; the ban holds every command (`state.ready`, below).
+      if (outcome.kind === 'banned')
+        return {
+          outcome: {
+            kind: 'nothing',
+            bot: LOREGAMEBOT,
+            reason: 'cooldown',
+            banned: outcome.until,
+          } as TurnOutcome,
+        };
+      return { unread: true };
+    }
     if (!m.answers && !(m.private && m.replies)) return undefined;
     const outcome = parseLoreGameBot(m.text);
     if (outcome.kind === 'unknown') return m.answers ? { unread: true } : undefined;
     const restMs = restOf(outcome);
-    return restMs === undefined ? { outcome } : { outcome, restMs };
+    // The bot's own line (one copy: a story may quote it) says the accumulo is full.
+    const full = (outcome as { accumulo?: LoreAccumulo }).accumulo?.sure === true;
+    return {
+      outcome,
+      ...(restMs === undefined ? {} : { restMs }),
+      ...(full ? { unlocks: [ACCUMULO] } : {}),
+    };
   },
 });
 
@@ -118,26 +154,6 @@ const accumuloEvent = z
   })
   .describe("How @LoreGameBot answered the owner's /accumulo");
 
-/**
- * What the bot's answer to `/accumulo` tells a node that sent it (MegaBotTron1999's bot-os.md D98):
- * used is the `ok`; the rest are refusals, each for its reason, none with a time to retry (the
- * accumulo fills with turns, not with time).
- */
-const ACCUMULO_ANSWERS = (
-  [
-    ['used', 'ok', 'used'],
-    ['idle', 'refused', 'idle'],
-    ['short', 'refused', 'not_ready'],
-    ['locked', 'refused', 'locked'],
-  ] as const
-).map(([result, status, reason]) => ({
-  event: ACCUMULO_EVENT,
-  commands: [...ACCUMULO_COMMANDS],
-  when: { result },
-  status,
-  reason,
-}));
-
 /** The parser, with the bans and the accumulo it watches for, beside the turns it reads. */
 export const loregamePlugin: Plugin = {
   manifest: {
@@ -152,7 +168,7 @@ export const loregamePlugin: Plugin = {
     answers: [
       {
         event: `${LOREGAME_PARSER}.turn`,
-        commands: [...TURN_COMMANDS[LOREGAMEBOT], ...ACCUMULO_COMMANDS],
+        commands: [...TURN_COMMANDS[LOREGAMEBOT]],
         when: { 'outcome.kind': 'banned' },
         status: 'refused',
         reason: 'banned',
@@ -160,7 +176,6 @@ export const loregamePlugin: Plugin = {
         holds: [...LORE_COMMANDS],
       },
       ...(parser.manifest.answers ?? []),
-      ...ACCUMULO_ANSWERS,
     ],
   },
   create: async (ctx) => {
@@ -171,6 +186,12 @@ export const loregamePlugin: Plugin = {
       ctx.store.read<{ bans: [string, number][] }>(BANS_DOC)?.bans
     );
     const asked = new AccumuloWatch(LOREGAMEBOT);
+    /**
+     * The owner's last /accumulo the bot answered with a use or a no, in any chat, by hand or not:
+     * the shell's parser pairs only a reply to the command it knows, and the bot replies to none
+     * in the group, nor does the parser know `/acc`.
+     */
+    let spent = ctx.store.read<{ spent?: { t: number; result: string } }>(ACCUMULO_DOC)?.spent;
     chat.onMessage((m) => {
       const old = m.playback ? { playback: true as const } : {};
       const news = watch.hear(m, chat.self());
@@ -190,8 +211,14 @@ export const loregamePlugin: Plugin = {
         ctx.store.write(BANS_DOC, { bans: watch.entries() });
       }
       const answer = asked.hear(m);
-      if (answer !== undefined)
+      if (answer !== undefined) {
         ctx.bus.publish(ACCUMULO_EVENT, { chat: m.chat, ...answer, ...old }, m.time);
+        // "Already ready" spends nothing and says it is full: it holds nothing back.
+        if (answer.result !== 'idle') {
+          spent = { t: m.time, result: answer.result };
+          ctx.store.write(ACCUMULO_DOC, { spent });
+        }
+      }
     });
     const turns = instance.interface as TurnParserInterface;
     const { rest, ready } = turns.state;
@@ -216,6 +243,20 @@ export const loregamePlugin: Plugin = {
           // shell's player asks this before each command).
           ready: () => {
             const base = ready();
+            // Spent, or refused, since the bot last said it was full: not ready, whatever the
+            // shell's parser paired (a use by hand, `/acc`, an answer in the group).
+            const acc = base[ACCUMULO];
+            if (acc?.ready === true && spent !== undefined && spent.t >= (acc.since ?? -Infinity)) {
+              const { since: _, ...seen } = acc;
+              base[ACCUMULO] = {
+                ...seen,
+                ready: false,
+                why:
+                  spent.result === 'used'
+                    ? 'used since the bot said it was full'
+                    : 'the bot said it is not full',
+              };
+            }
             const until = banned();
             if (until === undefined) return base;
             return Object.fromEntries(
