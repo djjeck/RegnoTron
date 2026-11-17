@@ -47,10 +47,10 @@ Every plugin is built from its node's config alone.
 is an edge from the owner's `telegram-user` node that reads the private chat with the bot
 (`@LoreGameBot`, …), and the game's group too when the owner's turns there should count. They have
 no config: each spec names its bot's turn commands (`turnCommands`, from `TURN_COMMANDS`:
-`/avventura`, @LoreGameBot's `/lore` and @EpicLorelecBot's `/rompimiilcazzo` too), a fact of the
-game rather than of a deployment (MegaBotTron1999's bot-os.md D70). A node saved with a `commands`
-config, as they had before, still runs: the key is ignored, and may be removed from the graph. Each
-publishes `<id>.turn`, which the editor lists with its description, and which, through
+`/avventura`, @LoreGameBot's `/lore` and `/l`, and @EpicLorelecBot's `/rompimiilcazzo` too), a fact
+of the game rather than of a deployment (MegaBotTron1999's bot-os.md D70). A node saved with a
+`commands` config, as they had before, still runs: the key is ignored, and may be removed from the
+graph. Each publishes `<id>.turn`, which the editor lists with its description, and which, through
 `turnParserPlugin`, answers its turn commands (the shell's bot-os.md D98: a "too soon" refused with
 its `retryAt`, any other outcome `ok`). A turn-actor of the shell, if the owner runs one beside a
 parser, needs `{ "command": "/avventura" }`.

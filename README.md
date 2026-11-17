@@ -61,7 +61,7 @@ nodes. Modules run with the shell's full rights, unsandboxed: install only what 
   input reads the game's group and the private chat with the bot (`bot`, its username). A
   `norelec-state` node, bound to its events, keeps the game's record for scripts to query.
 - The game bots' parsers need no config: each counts its bot's own turn commands, which its spec
-  names (`/avventura`, @LoreGameBot's `/lore` and @EpicLorelecBot's `/rompimiilcazzo` too:
+  names (`/avventura`, @LoreGameBot's `/lore` and `/l`, and @EpicLorelecBot's `/rompimiilcazzo` too:
   `TURN_COMMANDS` in `modules/game-bots/src/replies.ts`), since which commands are turns is the
   game's (the shell's bot-os.md D70). A parser node saved with a `commands` config, as before, still
   runs; the key is ignored and may be removed. An edge that also reads the game's group has them

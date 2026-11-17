@@ -85,4 +85,20 @@ describe('the loregame parser', () => {
     p.hear({ ...lore, chat: '@LoreGameBot', text: 'Un messaggio qualunque' });
     expect(p.outcomes()).toEqual(['gain', 'unknown']);
   });
+
+  it('counts /l, the short alias, as a turn too, in the group and in private', async () => {
+    const p = await run(loregamePlugin, {}, GROUP);
+    const lore = { sender: 'LoreGameBot' };
+    const hand = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/l@LoreGameBot' });
+    p.hear({ ...lore, chat: GROUP, replyTo: hand, text: "Hai ottenuto un'ampolla di nebbia [C]!" });
+    p.hear({ chat: '@LoreGameBot', sender: 'alice', own: true, text: '/l' });
+    p.hear({
+      ...lore,
+      chat: '@LoreGameBot',
+      text: 'Non è passato abbastanza tempo! Riprova fra 40 minuti.',
+    });
+    expect(p.outcomes()).toEqual(['gain', 'nothing']);
+    // The longer wait is the one that stands.
+    expect(p.iface.rest()).toMatchObject({ until: T0 + 40 * MIN, why: 'it said too soon' });
+  });
 });
