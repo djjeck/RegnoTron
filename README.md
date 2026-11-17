@@ -85,6 +85,11 @@ nvm use && npm ci
 npm run validate   # tests with coverage, types, lint, formatting
 ```
 
+`npm run lore-check -- <export folders> …` replays exports of @LoreGameBot (the private chat and the
+group) through the real `loregame` and `loregame-state` nodes, and reports how much the grammar read
+and whether the state agrees with the bot: [tools/lore-check/README.md](tools/lore-check/README.md).
+The exports and the report stay local.
+
 To take newer shell code, move the submodule to a newer tag of MegaBotTron1999 and commit the new
 pin with the lockfile.
 `node vendor/MegaBotTron1999/packages/core/tools/modules.ts modules/norelec modules/norelec-tools modules/game-bots`

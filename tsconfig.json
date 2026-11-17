@@ -21,6 +21,6 @@
   },
   // The modules and the root's checks. The shell (vendor/) is type-checked by its own repository;
   // what the modules import from it is checked here through those imports.
-  "include": ["modules", "test", "vitest.config.ts"],
+  "include": ["modules", "test", "tools", "vitest.config.ts"],
   "exclude": ["**/node_modules"]
 }

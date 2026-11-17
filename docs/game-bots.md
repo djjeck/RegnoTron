@@ -243,6 +243,13 @@ command naming nobody, so the parser names the player by the message it replies 
   **a turn well before the rest was over** while the accumulo was full tells of a use the account
   did not hear (in private: `unseen_uses`), which empties it.
 
+Measured [M] with `npm run lore-check` (tools/lore-check/README.md) on the exports of Oct–Nov 2026,
+every player of the group: the counter the bot gives agrees with the state's in 97% of its readings,
+and a "too soon" with the rest predicted in 99%. **Not explained yet** [?]: some players' turns come
+well before their rest is over (most often with no rest at all) while their accumulo cannot have
+been used (under level 4, or far from full): 131 of the 8,071 turns seen (1.6%). Nothing in the
+group explains them; it happens where the account does not read, and is left untouched in the state.
+
 What it keeps of a player is a floor of what they did, and better as they play in the group. A
 player is known by the username the connector gives; one without a username is not kept (the
 connector gives `''`). Their items are not kept yet.

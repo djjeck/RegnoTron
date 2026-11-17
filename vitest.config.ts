@@ -16,12 +16,13 @@ const PER_MODULE = { statements: 90, branches: 90, functions: 90, lines: 90 };
 export default defineConfig({
   test: {
     // The modules' tests and the root's checks; the shell's own tests run in its repository.
-    include: ['modules/*/src/**/*.test.ts', 'test/**/*.test.ts'],
+    include: ['modules/*/src/**/*.test.ts', 'test/**/*.test.ts', 'tools/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      include: modules().map((m) => `${m}/src/**/*.ts`),
-      exclude: ['**/*.test.ts'],
+      include: [...modules().map((m) => `${m}/src/**/*.ts`), 'tools/**/*.ts'],
+      // A tool's command line reads the disk and prints: its logic is tested, not its I/O.
+      exclude: ['**/*.test.ts', 'tools/**/cli.ts'],
       // The rule holds for the whole and for each module (CLAUDE.md), so that a module's own
       // tests keep it covered.
       thresholds: {
