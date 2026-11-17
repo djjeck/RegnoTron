@@ -444,6 +444,7 @@ describe('the accumulo, for a shell player', () => {
       { command: '/lore', turn: true },
       { command: '/l', turn: true },
       { command: '/accumulo', unlock: {}, effects: [{ command: '/lore', clear: true }] },
+      { command: '/acc', unlock: {}, effects: [{ command: '/lore', clear: true }] },
     ]);
   });
 
@@ -472,6 +473,37 @@ describe('the accumulo, for a shell player', () => {
       { command: '/accumulo', outcome: { kind: 'accumulo', result: 'used' } },
     ]);
     expect(run.core.drift().find((d) => d.parser === 'loregame')).toMatchObject({ unread: 0 });
+    await run.core.stop();
+  });
+
+  it('offers /acc beside /accumulo, one accumulo: a use of either holds both', async () => {
+    const run = await bootState(path.join(dir, 'o'));
+    await run.owner('/lore');
+    await run.bot(lit('un sasso [B1]'));
+    expect(run.ready()['/accumulo']).toMatchObject({ ready: true });
+    expect(run.ready()['/acc']).toMatchObject({ ready: true });
+    // The player sends /acc this time.
+    const id = 'sent-acc';
+    await run.core.controls.act('loregame', 'sent', {
+      chat: '@LoreGameBot',
+      id,
+      t: run.clock.now(),
+      command: '/acc',
+    });
+    await run.bot(USED, { replyTo: id });
+    expect(run.of('loregame.answer').at(-1)).toMatchObject({ command: '/acc' });
+    expect(run.ready()['/acc']).toMatchObject({ ready: false });
+    expect(run.ready()['/accumulo']).toMatchObject({
+      ready: false,
+      why: 'used since the bot said it was full',
+    });
+    expect(run.ready()['/lore']).toMatchObject({ ready: true });
+    // The next line makes both ready again.
+    run.clock.advance(MIN);
+    await run.owner('/lore');
+    await run.bot(lit('un sasso [B1]'));
+    expect(run.ready()['/accumulo']).toMatchObject({ ready: true });
+    expect(run.ready()['/acc']).toMatchObject({ ready: true });
     await run.core.stop();
   });
 

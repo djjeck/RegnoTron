@@ -170,12 +170,13 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
 - **`loregame.accumulo`** carries the owner's answers (`result`: `short`, `idle`, `used`, `locked`;
   `count`, `max`, `level`), as the parser's event; the turn's line is `accumulo` in the outcome of
   `loregame.turn`. `loregame-state` counts against them (§6).
-- **Played by the shell's `player`**: the parser declares `/accumulo` with its mechanics (D132,
-  D137): unlocked by the bot's own line on a turn (not a pattern on the text, which a quoted story
-  would match), and its use clearing the turns' rest, so the player plays it only while `/lore`
-  rests. A use is the success; "not yet" holds it for the turns still needed (15 minutes each), the
-  gate for 6 hours, "already ready" not at all. The owner's own use, by hand or in the group (where
-  the shell cannot pair it), holds it until the next line.
+- **Played by the shell's `player`**: the parser declares `/accumulo` and `/acc` (one accumulo: a
+  use of either holds both) with its mechanics (D132, D137): unlocked by the bot's own line on a
+  turn (not a pattern on the text, which a quoted story would match), and its use clearing the
+  turns' rest, so the player plays it only while `/lore` rests. A use is the success; "not yet"
+  holds it for the turns still needed (15 minutes each), the gate for 6 hours, "already ready" not
+  at all. The owner's own use, by hand or in the group (where the shell cannot pair it), holds it
+  until the next line.
 
 **Not read yet**: Stoccaggio itself (the maximum is the one the bot's counter states, else the usual
 20), and the level, which a training or a level-up elsewhere raises without the state hearing.

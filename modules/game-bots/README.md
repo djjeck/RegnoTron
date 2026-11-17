@@ -78,9 +78,10 @@ when a story quotes the line, which the bot never writes twice), and the bot's a
 a message of its own, not a reply, so the parser pairs it with the oldest command waiting: it needs
 the same edge as the bans, delivering every sender.
 
-**Playing it: the shell's `player`.** The parser declares `/accumulo` among its bot's commands (its
-spec's `commands`, MegaBotTron1999's bot-os.md D132, D137), so the `player` bound to the `loregame`
-node lists it beside the turns, ticked by default, with its mechanics:
+**Playing it: the shell's `player`.** The parser declares `/accumulo` and `/acc` (the bot takes
+both; two rows, one accumulo: a use of either holds both) among its bot's commands (its spec's
+`commands`, MegaBotTron1999's bot-os.md D132, D137), so the `player` bound to the `loregame` node
+lists it beside the turns, ticked by default, with its mechanics:
 
 - **unlocked by the bot's word:** a turn with the bot's own line (one copy) makes it ready; never
   our count, and never a line a story quotes;

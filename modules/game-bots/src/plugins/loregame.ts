@@ -35,7 +35,7 @@ import {
 } from '@megabottron1999/turns/turn-parser.ts';
 import { z } from 'zod';
 import {
-  ACCUMULO,
+  ACCUMULO_COMMANDS,
   ACCUMULO_MECHANICS,
   accumuloReading,
   AccumuloWatch,
@@ -72,9 +72,11 @@ const parser: Plugin = turnParserPlugin({
   description: "@LoreGameBot's answers to the owner's turns: the items, the fights, and its rest",
   turnCommands: TURN_COMMANDS[LOREGAMEBOT],
   // The bot's other commands a shell player may play, with their mechanics (D132, D137).
-  commands: { [ACCUMULO]: ACCUMULO_MECHANICS },
+  // `/accumulo` and `/acc`, as the bot takes both: two rows of the player's checklist, one state
+  // (a use of either holds both, below).
+  commands: Object.fromEntries(ACCUMULO_COMMANDS.map((c) => [c, ACCUMULO_MECHANICS])),
   read: (m): TurnReading => {
-    if (m.command === ACCUMULO) {
+    if (m.command !== undefined && ACCUMULO_COMMANDS.includes(m.command)) {
       // The answer to the owner's /accumulo: used (the success), or a "too soon" of some kind.
       const said = parseAccumulo(m.text);
       if (said !== undefined) return accumuloReading(said);
@@ -100,7 +102,7 @@ const parser: Plugin = turnParserPlugin({
     return {
       outcome,
       ...(restMs === undefined ? {} : { restMs }),
-      ...(full ? { unlocks: [ACCUMULO] } : {}),
+      ...(full ? { unlocks: [...ACCUMULO_COMMANDS] } : {}),
     };
   },
 });
@@ -262,11 +264,13 @@ export const loregamePlugin: Plugin = {
           ready: () => {
             const base = ready();
             // Spent, or refused, since the bot last said it was full: not ready, whatever the
-            // shell's parser paired (a use by hand, `/acc`, an answer in the group).
-            const acc = base[ACCUMULO];
-            if (acc?.ready === true && spent !== undefined && spent.t >= (acc.since ?? -Infinity)) {
+            // shell's parser paired (a use by hand, the other spelling, an answer in the group).
+            for (const c of ACCUMULO_COMMANDS) {
+              const acc = base[c];
+              if (acc?.ready !== true || spent === undefined || spent.t < (acc.since ?? -Infinity))
+                continue;
               const { since: _, ...seen } = acc;
-              base[ACCUMULO] = {
+              base[c] = {
                 ...seen,
                 ready: false,
                 why:
