@@ -29,10 +29,11 @@
  * - **The players** (`state.player({ name })`): every player's turns the account reads, the
  *   owner's included, kept by username: their name and level in the game, their turns seen, those a
  *   "too soon" told of (played in their private chat, which the account does not read), their rest,
- *   their accumulo, their trainings, their XP and level-ups, and their last profile
- *   (`state.profile({ player?, stat? })`: whole, or one stat by its dotted path), each a floor of
- *   what they did
- *   (src/players.ts).
+ *   their accumulo, their trainings, their XP and level-ups, their last profile
+ *   (`state.profile({ player?, stat? })`: whole, or one stat by its dotted path), and their stats
+ *   now (`state.stat({ player?, stat })`: the profile's, moved by each command read since, each with
+ *   whether it is still exact), each a floor of what they did (src/players.ts, src/stats.ts). A
+ *   profile that says otherwise of a stat held exactly is announced as `loregame-state.statsDrift`.
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -67,7 +68,9 @@ import {
   profileOf,
   reduce,
   stateSchema,
+  statOf,
 } from '#src/loregame-state.ts';
+import { statsOf } from '#src/stats.ts';
 
 /** What a migration works on: a staged copy of the plugin's store. */
 interface Store {
@@ -125,6 +128,15 @@ const base = statePlugin<Kept>({
         exact: z.boolean().describe('The count was set by the bot, not only counted'),
       })
       .describe('The accumulo was used: the next /lore has no rest'),
+    statsDrift: z
+      .object({
+        player: z.string(),
+        owner: z.boolean(),
+        stat: z.string(),
+        expected: z.unknown().describe('What the state held, exactly'),
+        said: z.unknown().describe('What the profile said'),
+      })
+      .describe("A player's profile says otherwise of a stat the state held exactly"),
     accumuloDrift: z
       .object({
         kind: z.enum(['count', 'early', 'late', 'lapsed', 'not_ready', 'used_early']),
@@ -231,6 +243,29 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.23.0 holds each player's stats now, seeded by their profile (its XP total moved into
+    // them), and their mismatches: added, the XP's total and exactness dropped from `xp`.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const players = kept?.state?.['players'] as
+        Record<string, Record<string, unknown>> | undefined;
+      if (kept?.state === undefined || players === undefined) return;
+      const migrated = Object.entries(players).map(([name, p]) => {
+        const { total, exact, ...xp } = (p['xp'] ?? {}) as Record<string, unknown>;
+        const profile = p['profile'] as Record<string, unknown> | null | undefined;
+        const stats =
+          profile === null || profile === undefined
+            ? {}
+            : statsOf(profile, String(profile['as_of']));
+        if (typeof total === 'number' && Object.hasOwn(stats, 'xp'))
+          stats['xp'] = { value: total, exact: exact === true, as_of: String(profile?.['as_of']) };
+        return [name, { stats, stats_drift: [], ...p, xp }];
+      });
+      store.write('state', {
+        ...kept,
+        state: { ...kept.state, players: Object.fromEntries(migrated) },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -258,6 +293,12 @@ const base = statePlugin<Kept>({
       input: z.object({ name: z.string() }),
       output: z.looseObject({ turns: z.number(), unseen: z.number() }).nullable(),
       run: (s, input: { name: string }) => playerOf(s, input.name),
+    },
+    stat: {
+      help: "A player's stat now (the owner's unless named), by its dotted path (xp, level, episode, coins, location, skills.Stoccaggio): its value, whether every change since their last profile was seen, and when it changed; none before a profile",
+      input: z.object({ player: z.string().optional(), stat: z.string() }),
+      output: z.object({ value: z.unknown(), exact: z.boolean(), as_of: z.string() }).nullable(),
+      run: (s, input: { player?: string; stat: string }) => statOf(s, input.stat, input.player),
     },
     profile: {
       help: "A player's last profile (/info), the owner's unless named: whole, or one stat by its dotted path (level, xp, coins, skills.Stoccaggio, equipment.weapon.level); none if not known",

@@ -728,11 +728,8 @@ describe('the players', () => {
       trained(T + 50 * MIN, 15, 2),
       levelUp(5, [], { t: T + 50 * MIN, player: 'bob' })
     );
-    // Each turn 1, a win's "+N" besides, a loss 2 less; a training its "+N", not its extra. No
-    // profile yet: no total.
+    // Each turn 1, a win's "+N" besides, a loss 2 less; a training its "+N", not its extra.
     expect(playerOf(s, 'bob')?.xp).toEqual({
-      total: null,
-      exact: false,
       seen: 5 + 6 + 1 - 1 + 15,
       since_level: 0,
       level_ups: [
@@ -743,8 +740,8 @@ describe('the players', () => {
     expect(playerOf(s, 'bob')?.game.level).toBe(5);
   });
 
-  it('moves a profile’s XP by each turn and training seen, and says when it no longer knows', () => {
-    const profile = (t: number, xp: number, level: number): BusEvent =>
+  it('moves the stats a profile seeds by each command read since, and says what no longer holds', () => {
+    const profile = (t: number, o: Record<string, unknown> = {}): BusEvent =>
       ({
         type: 'loregame.profile',
         t,
@@ -752,20 +749,21 @@ describe('the players', () => {
         player: 'bob',
         owner: false,
         company: null,
-        level,
-        xp,
+        level: 4,
+        xp: 500,
         progress: null,
         alignment: 'Bene',
         episode: 100,
         recipes: 0,
-        coins: 0,
+        coins: 50,
         obsession: null,
         equipment: { armour: null, amulet: null, weapon: null },
-        skills: {},
-        effects: [],
+        skills: { Ricercato: 1 },
+        effects: [{ name: 'Neutralizzato', leftMs: 30 * MIN }],
         titles: [],
-        location: null,
+        location: { name: 'Altrove', code: 'M1' },
         unread: [],
+        ...o,
       }) as unknown as BusEvent;
     const fight = (result: string, learned?: number) => ({
       fight: {
@@ -786,38 +784,107 @@ describe('the players', () => {
       learned: 15,
       extra: 2,
     } as unknown as BusEvent;
-    const xp = (...events: BusEvent[]) => playerOf(run(...events), 'bob')?.xp;
-    const known = profile(T, 500, 4);
-    // A turn 1, a win 1 and its "+N", a loss 1 less, a training its "+N" and not its extra.
-    expect(
-      xp(
-        known,
-        turnOf('bob', T + MIN),
-        turnOf('bob', T + 20 * MIN, fight('won', 5)),
-        turnOf('bob', T + 40 * MIN, fight('lost')),
-        trained
-      )
-    ).toMatchObject({ total: 500 + 1 + 6 - 1 + 15, exact: true });
-    // A draw: not known to give the same.
-    expect(xp(known, turnOf('bob', T + MIN, fight('draw')))).toMatchObject({
-      total: 501,
-      exact: false,
+    const stats = (...events: BusEvent[]) => playerOf(run(...events), 'bob')?.stats ?? {};
+    const known = profile(T);
+    // Before a profile, nothing to move.
+    expect(stats(turnOf('bob', T))).toEqual({});
+    // A turn 1, a win 1 and its "+N", a loss 1 less, a training its "+N" and not its extra; an
+    // episode each turn; the place of the last.
+    const moved = stats(
+      known,
+      turnOf('bob', T + MIN),
+      turnOf('bob', T + 20 * MIN, fight('won', 5)),
+      turnOf('bob', T + 40 * MIN, fight('lost')),
+      trained
+    );
+    expect(moved['xp']).toEqual({
+      value: 500 + 1 + 6 - 1 + 15,
+      exact: true,
+      as_of: new Date(T + 70 * MIN).toISOString(),
     });
-    // A turn unseen, told by a "too soon" when we held them rested.
-    expect(xp(known, turnOf('bob', T + MIN), soon('bob', T + 40 * MIN, 5 * MIN))).toMatchObject({
-      total: 501,
-      exact: false,
-    });
-    // A level-up beyond what we hold: they hold its threshold at least.
-    expect(xp(known, levelUp(5, [], { t: T + MIN, player: 'bob' }))).toMatchObject({
-      total: 848,
-      exact: false,
-    });
-    // The next profile says it all again.
-    expect(xp(known, soon('bob', T + 40 * MIN, MIN), profile(T + HOUR, 600, 4))).toMatchObject({
-      total: 600,
+    expect(moved['episode']).toMatchObject({ value: 103, exact: true });
+    expect(moved['location']).toMatchObject({
+      value: { name: 'Il Bosco Inventato', code: 'B1' },
       exact: true,
     });
+    // Untouched by any command read: as the profile said, exact.
+    expect(moved['skills']).toEqual({
+      value: { Ricercato: 1 },
+      exact: true,
+      as_of: new Date(T).toISOString(),
+    });
+    // A draw: not known to give the same.
+    expect(stats(known, turnOf('bob', T + MIN, fight('draw')))['xp']).toMatchObject({
+      value: 501,
+      exact: false,
+    });
+    // A turn unseen, told by a "too soon" when we held them rested: one more episode at least.
+    const unseen = stats(known, turnOf('bob', T + MIN), soon('bob', T + 40 * MIN, 5 * MIN));
+    expect(unseen['xp']).toMatchObject({ value: 501, exact: false });
+    expect(unseen['episode']).toMatchObject({ value: 102, exact: false });
+    // A level-up: the bot's level, its coins; XP short of its threshold raised to it, not exact.
+    const up = stats(known, levelUp(5, [], { t: T + MIN, player: 'bob' }));
+    expect(up['level']).toMatchObject({ value: 5, exact: true });
+    expect(up['coins']).toMatchObject({ value: 90, exact: true });
+    expect(up['xp']).toMatchObject({ value: 848, exact: false });
+    // XP that makes the next level makes the level, before its level-up is read.
+    expect(stats(profile(T, { xp: 847 }), turnOf('bob', T + MIN))['level']).toMatchObject({
+      value: 5,
+    });
+  });
+
+  it('tells each stat held exactly that the next profile says otherwise, then follows it', () => {
+    const at = (t: number, o: Record<string, unknown> = {}): BusEvent =>
+      ({
+        type: 'loregame.profile',
+        t,
+        chat: '-1001',
+        player: 'bob',
+        owner: false,
+        company: null,
+        level: 4,
+        xp: 500,
+        progress: null,
+        alignment: 'Bene',
+        episode: 100,
+        recipes: 0,
+        coins: 50,
+        obsession: null,
+        equipment: { armour: null, amulet: null, weapon: null },
+        skills: {},
+        effects: [{ name: 'Neutralizzato', leftMs: 30 * MIN }],
+        titles: [],
+        location: { name: 'Il Bosco Inventato', code: 'B1' },
+        unread: [],
+        ...o,
+      }) as unknown as BusEvent;
+    // Two turns seen; the next profile: 3 episodes more (a turn unseen), coins spent, a weapon
+    // equipped; the effect ended as it said.
+    const s = run(
+      at(T),
+      turnOf('bob', T + MIN),
+      turnOf('bob', T + 20 * MIN),
+      at(T + HOUR, {
+        xp: 503,
+        episode: 103,
+        coins: 10,
+        effects: [],
+        equipment: { armour: null, amulet: null, weapon: { item: 'una spatola', level: null } },
+      })
+    );
+    const bob = playerOf(s, 'bob');
+    expect(bob?.stats_drift.map((d) => d.stat)).toEqual(['xp', 'episode', 'coins', 'equipment']);
+    expect(bob?.stats_drift[0]).toEqual({
+      stat: 'xp',
+      expected: 502,
+      said: 503,
+      at: new Date(T + HOUR).toISOString(),
+    });
+    // Seeded again from it, exact.
+    expect(bob?.stats['episode']).toMatchObject({ value: 103, exact: true });
+    // A stat no longer held exactly is not a mismatch; nor an effect still running, nor one ended.
+    const quiet = run(at(T), soon('bob', T + MIN, MIN), at(T + 10 * MIN));
+    expect(playerOf(quiet, 'bob')?.stats_drift).toEqual([]);
   });
 
   it('keeps a player named like an object’s own property', () => {

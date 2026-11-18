@@ -385,16 +385,29 @@ training answer as it does the owner's (§5.2, §5.3, §5.4). Per player:
 - **their trainings** (§5.3): those seen, the last one, and until when the next waits (a day after
   it, or a "too soon"'s wait); a "too soon" whose wait ends well after the one predicted tells of a
   training in private (`unseen`);
-- **their XP** (§5.4): the XP they hold (`total`: their last profile's, moved by each turn and
-  training seen since, by the rule of §5.4), `exact` while nothing since is known to be missing (a
-  turn unseen, a draw, a turn cut off; a level-up beyond the total raises it to that level's
-  threshold, not exact); what the account saw them gain (`seen`), how much since their last level-up
-  seen (`since_level`), and their latest ten level-ups with the XP seen before each. Their turns in
-  private, which a "too soon" does not tell of, leave a total short: the next profile sets it again;
-- **their profile** (§5.5), the last one the account read, each line a stat of its own (`profile`:
-  `level`, `xp`, `coins`, `skills`, `equipment`, …), the effects with when they end; it sets their
-  level and their XP. `state.profile({ player?, stat? })` answers it whole, or one stat by its
-  dotted path (`skills.Stoccaggio`, `equipment.weapon.level`), the owner's unless named.
+- **their XP** (§5.4): what the account saw them gain (`seen`), how much since their last level-up
+  seen (`since_level`), and their latest ten level-ups with the XP seen before each;
+- **their profile** (§5.5), the last one the account read, as the bot gave it, each line a stat of
+  its own (`profile`: `level`, `xp`, `coins`, `skills`, `equipment`, …), the effects with when they
+  end; it sets their level. `state.profile({ player?, stat? })` answers it whole, or one stat by its
+  dotted path (`skills.Stoccaggio`, `equipment.weapon.level`), the owner's unless named;
+- **their stats now** (`stats`): the last profile's, each moved by the commands the parser reads
+  since, with whether it is still `exact` and when it changed (`as_of`). A turn moves `xp` (§5.4),
+  `episode` (one more) and `location` (its place: the profile's location was the last turn's place
+  in all 31 of the owner's [M]), and the `level` the XP makes; a training moves `xp`; a level-up
+  sets `level`, adds its coins to `coins`, and raises `xp` to its threshold if short (not exact). A
+  stat stops being exact when a change to it is not known whole: a turn told of by a "too soon"
+  alone (`xp`, `episode`, `location`, `level`), a draw, a turn cut off. A stat no command read moves
+  (the equipment, the skills, the company, …) stays as the profile said, exact. Before a profile
+  there are none. `state.stat({ player?, stat })` answers one, by its dotted path, with its `exact`
+  and `as_of`;
+- **their stats' mismatches** (`stats_drift`, the latest ten): each stat held exactly that the next
+  profile says otherwise (`stat`, `expected`, `said`, when), announced live as
+  `loregame-state.statsDrift`; then the profile seeds the stats again. An effect is compared by
+  whether it still holds, not by its end (told to the second). A mismatch tells of a command the
+  parser does not read yet (the coins of the shop and the market, `/abilita`, `/equipaggia`, …), or
+  of a rule the state has wrong. It is the state's own record, not the shell's drift (bot-os.md P5),
+  which counts a parser's unread messages and would pause the players over it.
 
 Measured [M] with `npm run lore-check` (tools/lore-check/README.md) on the exports of Oct–Nov 2026,
 every player of the group: the counter the bot gives agrees with the state's in 97% of its readings,

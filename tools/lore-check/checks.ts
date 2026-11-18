@@ -326,6 +326,8 @@ export const profiles: Check = {
     const xp: string[] = [];
     const episodes: string[] = [];
     let unknown = 0;
+    const drifted: string[] = [];
+    const ownDrift: string[] = [];
     let levels = 0;
     let unread = 0;
     const last = new Map<string, { episode: number; turns: number; unseen: number }>();
@@ -341,13 +343,18 @@ export const profiles: Check = {
           said.episode - before.episode - (p.turns - before.turns) - (p.unseen - before.unseen);
         episodes.push(turns === 0 ? 'agrees' : `off by ${turns > 0 ? '+' : ''}${turns}`);
         // Every turn seen: the XP rule alone.
-        if (turns === 0 && p.xp.total !== null) {
-          const off = said.xp - p.xp.total;
-          if (!p.xp.exact) unknown++;
+        const held = Object.hasOwn(p.stats, 'xp') ? p.stats['xp'] : undefined;
+        if (turns === 0 && held !== undefined) {
+          const off = said.xp - Number(held.value);
+          if (!held.exact) unknown++;
           else xp.push(off === 0 ? 'agrees' : `off by ${off > 0 ? '+' : ''}${off}`);
         }
       }
       const after = playerOf(s.after, name);
+      // The stats held exactly that this profile said otherwise (the state's own check).
+      const at = new Date(s.event.t).toISOString();
+      for (const d of after?.stats_drift ?? [])
+        if (d.at === at) (s.event['owner'] === true ? ownDrift : drifted).push(d.stat);
       if (after !== null)
         last.set(name, { episode: said.episode, turns: after.turns, unseen: after.unseen });
     }
@@ -363,6 +370,8 @@ export const profiles: Check = {
         ['with every turn seen, XP against the state’s', agree(xp)],
         ['… by verdict', tally(xp)],
         ['… an outcome whose XP is not known (a draw, a turn cut off)', String(unknown)],
+        ['stats held exactly that the next profile said otherwise: the owner’s', tally(ownDrift)],
+        ['… the other players’ (their turns in private among them)', tally(drifted)],
       ],
     };
   },

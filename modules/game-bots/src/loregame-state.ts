@@ -75,8 +75,17 @@ import {
   TRAINING_EVENT,
   UNBAN_EVENT,
 } from '#src/plugins/loregame.ts';
-import { xpForLevel } from '#src/profile.ts';
+import { levelForXp, xpForLevel } from '#src/profile.ts';
 import { loreRestMs, type Outcome } from '#src/replies.ts';
+import {
+  mismatches,
+  move,
+  set,
+  type StatDrift,
+  type Stats,
+  STATS_DRIFT_KEPT,
+  statsOf,
+} from '#src/stats.ts';
 import { TRAINING, TRAINING_COOLDOWN_MIN, TRAINING_MECHANICS } from '#src/training.ts';
 
 /** The plugin's id, and the namespace of its events (`loregame-state.changed`). */
@@ -271,15 +280,6 @@ const player = z.object({
     .describe('Training'),
   xp: z
     .object({
-      total: z
-        .number()
-        .nullable()
-        .describe(
-          'The XP they hold: their last profile’s, moved by each turn and training seen since (none before a profile)'
-        ),
-      exact: z
-        .boolean()
-        .describe('Every change since the profile was seen: no turn unseen, no outcome unknown'),
       seen: z.number().describe('XP seen gained, net (turns, fights, trainings)'),
       since_level: z
         .number()
@@ -330,6 +330,28 @@ const player = z.object({
     })
     .nullable()
     .describe('Their last profile (/info), as the bot gave it'),
+  stats: z
+    .record(
+      z.string(),
+      z.object({
+        value: z.unknown(),
+        exact: z.boolean().describe('Every change since the profile was seen'),
+        as_of: z.string().describe('Changed'),
+      })
+    )
+    .describe(
+      'Their stats now: the last profile’s, moved by each command read since (none before a profile)'
+    ),
+  stats_drift: z
+    .array(
+      z.object({
+        stat: z.string(),
+        expected: z.unknown(),
+        said: z.unknown(),
+        at: z.string().describe('Told'),
+      })
+    )
+    .describe('The latest stats held exactly that the next profile said otherwise'),
 });
 
 /** The level-ups kept per player, newest last. */
@@ -411,12 +433,14 @@ export function initialPlayer(at: string): Player {
     training: initialTraining(),
     xp: initialXp(),
     profile: null,
+    stats: {},
+    stats_drift: [],
   };
 }
 
 /** A player's XP, nothing seen. */
 export function initialXp(): Player['xp'] {
-  return { total: null, exact: false, seen: 0, since_level: null, level_ups: [] };
+  return { seen: 0, since_level: null, level_ups: [] };
 }
 
 /** A player's training, nothing known. */
@@ -497,6 +521,7 @@ const profileSchema = z.looseObject({
 
 /** What a level-up event says (the parser's `loregame.levelUp`). */
 const levelUpSchema = z.looseObject({
+  coins: z.number().optional(),
   player: z.string(),
   owner: z.boolean(),
   level: z.number(),
@@ -737,8 +762,12 @@ function playerAfterTurn(p: Player, e: BusEvent): Player {
         ? {
             unseen: p.unseen + 1,
             accumulo: { ...p.accumulo, count: p.accumulo.count + 1, exact: false },
-            // A turn unseen moved their XP by what we cannot tell.
-            xp: { ...p.xp, exact: false },
+            // A turn unseen (one at least): what it moved, we cannot tell.
+            stats: ['xp', 'episode', 'location', 'level'].reduce(
+              (st, stat) =>
+                move(st, stat, (v) => (stat === 'episode' ? Number(v) + 1 : v), false, at),
+              p.stats
+            ),
           }
         : {}),
     };
@@ -786,8 +815,33 @@ function playerAfterTurn(p: Player, e: BusEvent): Player {
     last_command: command ?? p.last_command,
     rest_until: restMs === undefined ? p.rest_until : asIso(e.t + restMs),
     accumulo: afterTurn(accumulo, e),
-    xp: gained(p.xp, ...turnXp(o)),
+    xp: gained(p.xp, turnXp(o)[0]),
+    stats: afterTurnStats(p.stats, o, at),
   };
+}
+
+/**
+ * A player's stats after a turn of theirs: its XP (§5.4), one more episode, the place it was in
+ * (where the profile says they are: the last turn's place in all 31 of the owner's [M]), and the
+ * level the XP makes, when it is exact.
+ */
+function afterTurnStats(stats: Stats, o: z.infer<typeof outcomeSchema>, at: string): Stats {
+  const [n, known] = turnXp(o);
+  let next = move(stats, 'xp', (v) => Number(v) + n, known, at);
+  next = move(next, 'episode', (v) => Number(v) + 1, true, at);
+  const place = o.place as { name?: unknown; code?: unknown } | undefined;
+  if (typeof place?.name === 'string' && typeof place.code === 'string')
+    next = set(next, 'location', { name: place.name, code: place.code }, true, at);
+  return levelled(next, at);
+}
+
+/** The level the XP makes, when the XP is exact and makes more than the level held. */
+function levelled(stats: Stats, at: string): Stats {
+  const xp = Object.hasOwn(stats, 'xp') ? stats['xp'] : undefined;
+  const level = Object.hasOwn(stats, 'level') ? stats['level'] : undefined;
+  if (xp?.exact !== true || level === undefined) return stats;
+  const made = levelForXp(Number(xp.value));
+  return made > Number(level.value) ? set(stats, 'level', made, level.exact, at) : stats;
 }
 
 /**
@@ -803,16 +857,11 @@ function turnXp(o: z.infer<typeof outcomeSchema>): [number, boolean] {
   return [1, false];
 }
 
-/**
- * XP gained (`n`, a loss if negative): the total held, the XP seen, and since the last level-up;
- * `known` false when the change is not known to be all of it.
- */
-function gained(xp: Player['xp'], n: number, known = true): Player['xp'] {
-  if (n === 0 && known) return xp;
+/** XP gained (`n`, a loss if negative): the XP seen, and since the last level-up. */
+function gained(xp: Player['xp'], n: number): Player['xp'] {
+  if (n === 0) return xp;
   return {
     ...xp,
-    total: xp.total === null ? null : xp.total + n,
-    exact: xp.exact && known,
     seen: xp.seen + n,
     since_level: xp.since_level === null ? null : xp.since_level + n,
   };
@@ -820,8 +869,9 @@ function gained(xp: Player['xp'], n: number, known = true): Player['xp'] {
 
 /**
  * A player after their profile: the profile kept, each stat as it says, the effects' time left as
- * when they end; their level and their XP set from it (exact); their accumulo opened or closed at
- * the level its gate names.
+ * when they end; their stats checked against it (each held exactly and said otherwise, a mismatch
+ * kept in `stats_drift`) and seeded from it again, exact; their level set from it, and their
+ * accumulo opened or closed at the level its gate names.
  */
 function playerAfterProfile(p: Player, e: BusEvent): Player {
   const r = profileSchema.safeParse(e);
@@ -832,33 +882,38 @@ function playerAfterProfile(p: Player, e: BusEvent): Player {
     d.level < ACCUMULO_LEVEL && p.accumulo.locked === null
       ? { ...p.accumulo, locked: ACCUMULO_LEVEL, count: 0, exact: true, ready: false }
       : afterLevelUp(p.accumulo, d.level, e.t);
+  const profile: NonNullable<Player['profile']> = {
+    as_of: at,
+    company: d.company,
+    level: d.level,
+    xp: d.xp,
+    progress: d.progress,
+    alignment: d.alignment,
+    episode: d.episode,
+    recipes: d.recipes,
+    coins: d.coins,
+    obsession: d.obsession,
+    equipment: d.equipment,
+    skills: d.skills,
+    effects: d.effects.map((f) => ({
+      name: f.name,
+      until: f.leftMs === null ? null : asIso(e.t + f.leftMs),
+    })),
+    titles: d.titles,
+    location: d.location,
+    unread: d.unread,
+  };
+  const stats = statsOf(profile, at);
+  const found: StatDrift[] = mismatches(p.stats, stats, e.t, at);
   return {
     ...p,
     as_of: at,
     game: { ...p.game, level: d.level },
     accumulo,
-    xp: { ...p.xp, total: d.xp, exact: true },
-    profile: {
-      as_of: at,
-      company: d.company,
-      level: d.level,
-      xp: d.xp,
-      progress: d.progress,
-      alignment: d.alignment,
-      episode: d.episode,
-      recipes: d.recipes,
-      coins: d.coins,
-      obsession: d.obsession,
-      equipment: d.equipment,
-      skills: d.skills,
-      effects: d.effects.map((f) => ({
-        name: f.name,
-        until: f.leftMs === null ? null : asIso(e.t + f.leftMs),
-      })),
-      titles: d.titles,
-      location: d.location,
-      unread: d.unread,
-    },
+    profile,
+    stats,
+    stats_drift:
+      found.length === 0 ? p.stats_drift : [...p.stats_drift, ...found].slice(-STATS_DRIFT_KEPT),
   };
 }
 
@@ -871,16 +926,21 @@ function playerAfterLevelUp(p: Player, e: BusEvent): Player {
   if (!u.success) return p;
   const at = asIso(e.t);
   const { level } = u.data;
-  // A level-up says they hold its threshold at least [M]: a total short of it missed a gain.
-  const short = p.xp.total !== null && p.xp.total < xpForLevel(level);
+  // The bot's word on the level; its coins; and they hold its threshold at least [M]: XP short of
+  // it missed a gain.
+  let stats = set(p.stats, 'level', level, true, at);
+  stats = move(stats, 'coins', (v) => Number(v) + (u.data.coins ?? 0), true, at);
+  const xp = Object.hasOwn(stats, 'xp') ? stats['xp'] : undefined;
+  if (xp !== undefined && Number(xp.value) < xpForLevel(level))
+    stats = set(stats, 'xp', xpForLevel(level), false, at);
   return {
     ...p,
     as_of: at,
     game: { ...p.game, level },
     accumulo: afterLevelUp(p.accumulo, level, e.t),
+    stats,
     xp: {
       ...p.xp,
-      ...(short ? { total: xpForLevel(level), exact: false } : {}),
       since_level: 0,
       level_ups: [...p.xp.level_ups, { level, at, xp: p.xp.since_level }].slice(-LEVEL_UPS_KEPT),
     },
@@ -906,6 +966,10 @@ function playerAfterTraining(p: Player, e: BusEvent): Player {
       as_of: at,
       // The "+N" is XP; the extra a skill adds is not [M] (docs/game-bots.md §5.3).
       xp: gained(p.xp, t.data.learned ?? 0),
+      stats: levelled(
+        move(p.stats, 'xp', (v) => Number(v) + (t.data.learned ?? 0), true, at),
+        at
+      ),
       training: {
         ...was,
         seen: was.seen + 1,
@@ -1020,7 +1084,37 @@ export function announce(before: LoreState, after: LoreState, e: BusEvent): Anno
           },
         ]
   );
-  return [...set, ...ended, ...announceAccumulo(before.accumulo, after.accumulo, e)];
+  return [
+    ...set,
+    ...ended,
+    ...announceAccumulo(before.accumulo, after.accumulo, e),
+    ...announceStats(before, after, e),
+  ];
+}
+
+/** Each stat a profile said otherwise of, for its player. */
+function announceStats(before: LoreState, after: LoreState, e: BusEvent): Announcement[] {
+  const name = e['player'];
+  if (e.type !== PROFILE_EVENT || typeof name !== 'string') return [];
+  // A profile's mismatches carry its time; one already told (a profile at the same second) is not
+  // told again.
+  const at = asIso(e.t);
+  const told = new Set(
+    (playerOf(before, name)?.stats_drift ?? []).filter((d) => d.at === at).map((d) => d.stat)
+  );
+  const fresh = (playerOf(after, name)?.stats_drift ?? []).filter(
+    (d) => d.at === at && !told.has(d.stat)
+  );
+  return fresh.map((d) => ({
+    type: 'statsDrift',
+    payload: {
+      player: name,
+      owner: e['owner'] === true,
+      stat: d.stat,
+      expected: d.expected,
+      said: d.said,
+    },
+  }));
 }
 
 /** What a change of the accumulo tells: it is full, it was used, and each new disagreement. */
@@ -1070,6 +1164,29 @@ export function profileOf(s: LoreState, player?: string, stat?: string): unknown
     at = (at as Record<string, unknown>)[key];
   }
   return at ?? null;
+}
+
+/**
+ * A player's stat now (the owner's unless named), by its dotted path (`xp`, `coins`,
+ * `skills.Stoccaggio`): its value there, whether it is exact, and when it changed; null before a
+ * profile, or for a stat it does not hold. Own properties only.
+ */
+export function statOf(
+  s: LoreState,
+  stat: string,
+  player?: string
+): { value: unknown; exact: boolean; as_of: string } | null {
+  const name = player ?? s.owner.name;
+  const stats = name === null ? undefined : playerOf(s, name)?.stats;
+  const [head, ...path] = stat.split('.');
+  if (stats === undefined || head === undefined || !Object.hasOwn(stats, head)) return null;
+  const held = stats[head] as { value: unknown; exact: boolean; as_of: string };
+  let at: unknown = held.value;
+  for (const key of path) {
+    if (typeof at !== 'object' || at === null || !Object.hasOwn(at, key)) return null;
+    at = (at as Record<string, unknown>)[key];
+  }
+  return { value: at ?? null, exact: held.exact, as_of: held.as_of };
 }
 
 /** The accumulo as the state keeps it, for an actor to read before it sends `/accumulo`. */

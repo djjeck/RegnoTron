@@ -192,20 +192,21 @@ not read yet, so a count only rises and `exact` stays false. A turn cut off at T
 have gained what the reply lost: it changes no count, and marks the inventory `uncertain` in
 `state.freshness`.
 
-| Interface                           | Answers                                                                        |
-| ----------------------------------- | ------------------------------------------------------------------------------ |
-| `state.get({ path? })`              | The state, or the value at a dotted path (`inventory.items`)                   |
-| `state.freshness`                   | How fresh each section is: its last snapshot, the deltas since                 |
-| `state.count({ name })`             | How many of an item the owner holds, as the state estimates it                 |
-| `state.held()`                      | Every item held, with its count                                                |
-| `state.ban({ player? })`            | A player's ban (the owner's unless named): `{ until, since }`                  |
-| `state.bans()`                      | Every banned player, with their ban                                            |
-| `state.accumulo()`                  | The owner's accumulo: the count, the bot's word, the drift                     |
-| `state.player({ name })`            | A player by username: level, turns, rest, accumulo, training, XP               |
-| `state.profile({ player?, stat? })` | A player's last profile (the owner's unless named), or one stat by dotted path |
-| `state.ready()`                     | Each of the bot's commands' readiness, for a shell player (D141)               |
-| `state.commands()`                  | The bot's commands with their aliases and mechanics                            |
-| `state.bot()`                       | The bot's username, `LoreGameBot`                                              |
+| Interface                           | Answers                                                                            |
+| ----------------------------------- | ---------------------------------------------------------------------------------- |
+| `state.get({ path? })`              | The state, or the value at a dotted path (`inventory.items`)                       |
+| `state.freshness`                   | How fresh each section is: its last snapshot, the deltas since                     |
+| `state.count({ name })`             | How many of an item the owner holds, as the state estimates it                     |
+| `state.held()`                      | Every item held, with its count                                                    |
+| `state.ban({ player? })`            | A player's ban (the owner's unless named): `{ until, since }`                      |
+| `state.bans()`                      | Every banned player, with their ban                                                |
+| `state.accumulo()`                  | The owner's accumulo: the count, the bot's word, the drift                         |
+| `state.player({ name })`            | A player by username: level, turns, rest, accumulo, training, XP                   |
+| `state.profile({ player?, stat? })` | A player's last profile (the owner's unless named), or one stat by dotted path     |
+| `state.stat({ player?, stat })`     | A player's stat now (`xp`, `coins`, `location.code`, …): `{ value, exact, as_of }` |
+| `state.ready()`                     | Each of the bot's commands' readiness, for a shell player (D141)                   |
+| `state.commands()`                  | The bot's commands with their aliases and mechanics                                |
+| `state.bot()`                       | The bot's username, `LoreGameBot`                                                  |
 
 A ban is kept with when it ends, as the bot states it (Rome's clock; a date alone: the end of the
 day), and is over when the bot serves the player again, which it does early at times, or when its
@@ -244,12 +245,15 @@ if (accumuloReady(ctx.use<AccumuloInterface>('state').state.accumulo())) {
 included; docs/game-bots.md §6.1): their name and level in the game, their turns seen and those a
 "too soon" told of (played in their private chat, which the account does not read), their rest,
 their accumulo and their trainings (`training`: those seen, those a "too soon" told of, the last,
-and until when the next waits), their XP (`xp`: the total they hold, from their last profile and the
-turns and trainings seen since, whether it is exact, the XP seen, since their last level-up, and
-their latest level-ups with the XP seen before each) and their last profile (`profile`: each line a
-stat, queried alone with `state.profile`). The parser publishes them as `loregame.playerTurn`,
-`loregame.playerAccumulo`, `loregame.training`, `loregame.levelUp` and `loregame.profile`, which
-needs the group edge to deliver every sender, as the bans do.
+and until when the next waits), their XP seen (`xp`: since their last level-up, and their latest
+level-ups with the XP seen before each), their last profile (`profile`: as the bot gave it, each
+line a stat, queried alone with `state.profile`) and their **stats now** (`stats`: the profile's,
+moved by each command read since, each with whether it is still exact and when it changed, queried
+with `state.stat`). A new profile is checked against the stats held exactly: each it says otherwise
+is kept in `stats_drift` and announced as `loregame-state.statsDrift` (`player`, `owner`, `stat`,
+`expected`, `said`), then seeds them again (docs/game-bots.md §6.1). The parser publishes them as
+`loregame.playerTurn`, `loregame.playerAccumulo`, `loregame.training`, `loregame.levelUp` and
+`loregame.profile`, which needs the group edge to deliver every sender, as the bans do.
 
 `loregame-state.accumuloReady` (`count`, `max`, `via`: `turn` or `reading`), `accumuloUsed` (`turns`
 since the last use, `exact`) and `accumuloDrift` (`kind`, `counted`, `said`, `max`) announce each

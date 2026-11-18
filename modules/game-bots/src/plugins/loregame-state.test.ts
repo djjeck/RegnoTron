@@ -44,6 +44,7 @@ describe('the loregame-state node', () => {
       'loregame-state.unbanned',
       'loregame-state.accumuloReady',
       'loregame-state.accumuloUsed',
+      'loregame-state.statsDrift',
       'loregame-state.accumuloDrift',
     ]);
     expect(Object.keys(m.interface.state ?? {})).toEqual([
@@ -52,6 +53,7 @@ describe('the loregame-state node', () => {
       'ban',
       'accumulo',
       'player',
+      'stat',
       'profile',
       'bans',
       'count',
@@ -968,7 +970,7 @@ describe('a profile, any player’s', () => {
     expect(run.read('profile', { player: 'nobody' })).toBeNull();
     expect(run.read('player', { name: 'bob' })).toMatchObject({
       game: { level: 3 },
-      xp: { total: 233, exact: true },
+      stats: { xp: { value: 233, exact: true }, level: { value: 3, exact: true } },
       accumulo: { locked: 4 },
     });
     // Unnamed, the owner's: theirs, in private, names the account.
@@ -982,7 +984,7 @@ describe('a profile, any player’s', () => {
     const turn = await run.group('alice', '/lore', { own: true });
     await run.group('LoreGameBot', gain('un sasso [B1]'), { replyTo: turn });
     expect(run.read('player', { name: 'alice' })).toMatchObject({
-      xp: { total: 501, exact: true },
+      stats: { xp: { value: 501, exact: true }, episode: { value: 1201, exact: true } },
     });
     await run.core.stop();
   });
@@ -1005,8 +1007,82 @@ describe('a profile, any player’s', () => {
     expect(again.read('player', { name: 'bob' })).toMatchObject({
       turns: 1,
       profile: null,
-      xp: { total: null, exact: false, seen: 1 },
+      stats: {},
+      stats_drift: [],
+      xp: { seen: 1 },
     });
+    await again.core.stop();
+  });
+});
+
+describe('a player’s stats, now', () => {
+  const PROFILE = (episode: number, coins: number) =>
+    [
+      '👤 alice',
+      '',
+      '👥 Nessuna azienda',
+      '',
+      'Livello 4 (500 ⚔️)',
+      '▓░░░░░░░░░ 6.20%',
+      '',
+      'Il Bene 😇',
+      `Episodio ${episode}`,
+      '0 Ricette completate',
+      `${coins} ₭`,
+      '',
+      'Armatura 🛡 - (vuoto)',
+      'Amuleto 🩺 - (vuoto)',
+      'Arma 🗡 - (vuoto)',
+      '',
+      '',
+      'Attualmente in Altrove [M1]',
+    ].join('\n');
+
+  it('answers each stat now, moved by the turns since the profile, and tells a mismatch', async () => {
+    const run = await bootState(path.join(dir, 'w1'), { group: true });
+    await run.owner('/me');
+    await run.bot(PROFILE(100, 50));
+    run.clock.advance(MIN);
+    const turn = await run.group('alice', '/lore', { own: true });
+    await run.group('LoreGameBot', gain('un sasso [B1]'), { replyTo: turn });
+    expect(run.read('stat', { stat: 'xp' })).toMatchObject({ value: 501, exact: true });
+    expect(run.read('stat', { stat: 'episode' })).toMatchObject({ value: 101, exact: true });
+    expect(run.read('stat', { stat: 'location.code' })).toMatchObject({ value: 'B1' });
+    expect(run.read('stat', { stat: 'nothing' })).toBeNull();
+    expect(run.read('stat', { player: 'nobody', stat: 'xp' })).toBeNull();
+    // The profile, as the bot gave it, stays as it was.
+    expect(run.read('profile', { stat: 'xp' })).toBe(500);
+    // The next: coins spent where the parser does not read.
+    await run.owner('/me');
+    await run.bot(PROFILE(101, 10));
+    expect(run.of('loregame-state.statsDrift')).toMatchObject([
+      { player: 'alice', owner: true, stat: 'xp', expected: 501, said: 500 },
+      { player: 'alice', owner: true, stat: 'coins', expected: 50, said: 10 },
+      { player: 'alice', owner: true, stat: 'location', said: { name: 'Altrove', code: 'M1' } },
+    ]);
+    expect(run.read('stat', { stat: 'coins' })).toMatchObject({ value: 10, exact: true });
+    await run.core.stop();
+  });
+
+  it('seeds the stats of a state kept before there were any from its profiles (0.22.0)', async () => {
+    const dir2 = path.join(dir, 'w2');
+    const run = await bootState(dir2);
+    await run.owner('/me');
+    await run.bot(PROFILE(100, 50));
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    const alice = kept.state.players.alice;
+    delete alice.stats;
+    delete alice.stats_drift;
+    alice.xp = { ...alice.xp, total: 507, exact: false };
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 7 }));
+    const again = await bootState(dir2);
+    expect(again.read('stat', { stat: 'xp' })).toMatchObject({ value: 507, exact: false });
+    expect(again.read('stat', { stat: 'coins' })).toMatchObject({ value: 50, exact: true });
+    expect(again.read('player', { name: 'alice' })).not.toHaveProperty('xp.total');
     await again.core.stop();
   });
 });
