@@ -153,9 +153,11 @@ line read, one it cannot read kept in `unread`.
 
 **Skills and equipment.** The `/abilita` menu and the answers to `/equipaggia` that change or list
 the equipment are published as `loregame.skills` and `loregame.equipment`, each the player's whose
-command it replies to (docs/game-bots.md §5.6, §5.7). A point spent with the menu's buttons is not
-heard (the connector hears no edits): the next menu or profile tells it, and the state takes it for
-a purchase.
+command it replies to (docs/game-bots.md §5.6, §5.7). A point spent with the menu's buttons makes
+the bot edit the menu: the parser asks for edits (MegaBotTron1999's D144), reads those of a menu
+replying to `/abilita` alone, and publishes each as the player's menu now (`edited: true`); the
+state takes the level raised and the point gone for a purchase. On a shell before D144, or for an
+edit missed, the next menu or profile tells it the same way.
 
 **Level-ups.** Any message of the bot's that ends in a level-up, whatever brought it, is published
 as `loregame.levelUp` for the player it is about (docs/game-bots.md §5.4): the owner's in private,

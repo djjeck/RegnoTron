@@ -1238,3 +1238,106 @@ describe('skills and equipment, as /abilita and /equipaggia answer', () => {
     await again.core.stop();
   });
 });
+
+describe('the skills menu, as its buttons change it (D144)', () => {
+  // A simulation: the bot's edits are as its menus read (docs/game-bots.md §5.6), not yet seen live.
+  const PROFILE = (skills: string) =>
+    [
+      '👤 alice',
+      '',
+      '👥 Nessuna azienda',
+      '',
+      'Livello 4 (840 ⚔️)',
+      '▓▓▓▓▓▓▓▓▓░ 97.84%',
+      '',
+      'Il Bene 😇',
+      'Episodio 700',
+      '0 Ricette completate',
+      '50 ₭',
+      '',
+      'Armatura 🛡 - (vuoto)',
+      'Amuleto 🩺 - (vuoto)',
+      'Arma 🗡 - (vuoto)',
+      '',
+      skills,
+      '',
+      '',
+      'Attualmente in Altrove [M1]',
+    ].join('\n');
+  const MENU = (stoccaggio: number, points: number) =>
+    [
+      '🎒 Sciacallaggio II (2/5) +10% Probabilità di trovare oggetti rari',
+      `🔋 Stoccaggio ${stoccaggio === 0 ? 'Ø' : 'I'} (${stoccaggio}/5) -${stoccaggio} Accumulo massimo necessario`,
+      "💪🏻 Calistenico I (1/5) +2 Forza extra dall'allenamento",
+      '',
+      `Punti disponibili: ${points}`,
+    ].join('\n');
+  const WON = (learned: number, levelUp = '') =>
+    [
+      'Lore - Il Bosco Inventato ⛅️ [B1]',
+      '',
+      'Una storia.',
+      'Durante il tuo cammino compare un orso [L3]!',
+      'Il combattimento inizia...',
+      `Alice [L4] sconfigge un orso [L3]! Hai imparato qualcosa di nuovo... (+${learned})`,
+      `Hai ottenuto un sasso [B1]!${levelUp}`,
+    ].join('\n');
+  const UP =
+    '\n\n🎉 Congratulazioni, hai raggiunto il livello 5! 🎉\nOttieni:\n> 50 monete\n> 1 punto /abilita';
+
+  it('follows a point spent at the level-up, exactly, and reads no other edit', async () => {
+    const run = await bootState(path.join(dir, 'y1'), { group: true });
+    const mine = async (command: string, answer: string) => {
+      const id = await run.group('alice', command, { own: true });
+      return { id, answer: await run.group('LoreGameBot', answer, { replyTo: id }) };
+    };
+    await run.owner('/me');
+    await run.bot(PROFILE('🎒 Sciacallaggio II\n💪🏻 Calistenico I'));
+    await mine('/abilita', MENU(0, 0));
+    // The turn that reaches 848: level 5, a point.
+    run.clock.advance(MIN);
+    const turn = await mine('/lore', WON(7, UP));
+    expect(run.read('stat', { stat: 'level' })).toMatchObject({ value: 5, exact: true });
+    expect(run.read('stat', { stat: 'skill_points' })).toMatchObject({ value: 1, exact: true });
+    // The menu, then Stoccaggio pressed: the bot edits the menu.
+    run.clock.advance(MIN);
+    const menu = await mine('/abilita', MENU(0, 1));
+    const said = run.clock.now();
+    run.clock.advance(5000);
+    await run.edit(menu.answer, MENU(1, 0), { replyTo: menu.id, time: said });
+    expect(run.of('loregame.skills').at(-1)).toMatchObject({
+      player: 'alice',
+      edited: true,
+      points: 0,
+      t: run.clock.now(),
+    });
+    expect(run.read('stat', { stat: 'skills' })).toMatchObject({
+      value: { Sciacallaggio: 2, Stoccaggio: 1, Calistenico: 1 },
+      exact: true,
+    });
+    expect(run.read('stat', { stat: 'skill_points' })).toMatchObject({ value: 0, exact: true });
+    // A purchase, not a mismatch; the same menu again (its buttons taken off) changes nothing.
+    await run.edit(menu.answer, MENU(1, 0), { replyTo: menu.id, time: said });
+    expect(run.of('loregame-state.statsDrift')).toEqual([]);
+    // No other edit is read: a turn the bot edits is not a second turn, nor a menu answering
+    // another command a menu.
+    const turns = run.of('loregame.turn').length + run.of('loregame.playerTurn').length;
+    await run.edit(turn.answer, WON(7, UP), { replyTo: turn.id, time: said });
+    const other = await mine('/info', 'Un attimo...');
+    await run.edit(other.answer, MENU(0, 9), { replyTo: other.id, time: said });
+    expect(run.of('loregame.turn').length + run.of('loregame.playerTurn').length).toBe(turns);
+    expect(run.read('stat', { stat: 'skill_points' })).toMatchObject({ value: 0 });
+    // The next profile agrees.
+    await run.owner('/me');
+    await run.bot(
+      PROFILE('🎒 Sciacallaggio II\n🔋 Stoccaggio I\n💪🏻 Calistenico I')
+        .replace('Livello 4 (840 ⚔️)', 'Livello 5 (848 ⚔️)')
+        .replace('▓▓▓▓▓▓▓▓▓░ 97.84%', '░░░░░░░░░░ 0.00%')
+        .replace('Episodio 700', 'Episodio 701')
+        .replace('50 ₭', '100 ₭')
+        .replace('Altrove [M1]', 'Il Bosco Inventato ⛅️ [B1]')
+    );
+    expect(run.of('loregame-state.statsDrift')).toEqual([]);
+    await run.core.stop();
+  });
+});

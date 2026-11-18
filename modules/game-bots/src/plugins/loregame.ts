@@ -35,7 +35,8 @@
  *
  * **Skills and equipment** (docs/game-bots.md §5.6, §5.7): the `/abilita` menu and the answers to
  * `/equipaggia` that change or list the equipment, each the player's whose command it replies to,
- * as `loregame.skills` and `loregame.equipment`.
+ * as `loregame.skills` and `loregame.equipment`. The menu is followed as its buttons change it: the
+ * parser asks for edits (MegaBotTron1999's D144), of the menu alone.
  *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
@@ -48,7 +49,7 @@
  *   them, and holds every command of the owner's readiness while the owner is banned, so that the
  *   shell's player, which asks the state before each command, sends nothing.
  */
-import { type Plugin } from '@megabottron1999/core';
+import { type Inbound, type Plugin } from '@megabottron1999/core';
 import {
   isPrivate,
   type SentCommand,
@@ -298,6 +299,10 @@ const skillsEvent = z
       )
       .describe('Every skill the menu lists, those at no level too'),
     points: z.number().describe('"Punti disponibili": the points left to spend'),
+    edited: z
+      .literal(true)
+      .optional()
+      .describe('The menu as a button pressed changed it (an edit, MegaBotTron1999 D144)'),
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe(
@@ -415,6 +420,21 @@ export const loregamePlugin: Plugin = {
     );
     const asked = new AccumuloWatch(LOREGAMEBOT);
     const players = new PlayerWatch(LOREGAMEBOT);
+    /**
+     * Whose answer `m` is when it is the bot's to a command `word` (the skills menu, an answer to
+     * /equipaggia): the player's whose message it replies to, if that message was the command; in
+     * private, the owner's. None for one replying to anything else.
+     */
+    const answerTo = (
+      m: Inbound,
+      word: string,
+      self: string | undefined
+    ): { player: string; owner: boolean } | undefined => {
+      const w = m.replyTo === undefined ? undefined : players.whose(m.chat, m.replyTo, self);
+      if (w !== undefined)
+        return w.word === word ? { player: w.player, owner: w.owner } : undefined;
+      return isPrivate(m) ? { player: self ?? '', owner: true } : undefined;
+    };
     const trained = new TrainingWatch(LOREGAMEBOT);
     chat.onMessage((m) => {
       const old = m.playback ? { playback: true as const } : {};
@@ -513,12 +533,7 @@ export const loregamePlugin: Plugin = {
         // The skills menu and the answers to /equipaggia name nobody: they reply to the player's
         // command, which they are about only if it was that command (a refusal like "Non possiedi
         // l'oggetto!" is other commands' too, and is not read).
-        const to = (word: string): { player: string; owner: boolean } | undefined => {
-          const w = m.replyTo === undefined ? undefined : players.whose(m.chat, m.replyTo, self);
-          if (w !== undefined)
-            return w.word === word ? { player: w.player, owner: w.owner } : undefined;
-          return isPrivate(m) ? { player: self ?? '', owner: true } : undefined;
-        };
+        const to = (word: string) => answerTo(m, word, self);
         const menu = parseSkillMenu(m.text);
         const menuOf = menu === undefined ? undefined : to(SKILLS_COMMAND);
         if (menu !== undefined && menuOf !== undefined)
@@ -528,6 +543,21 @@ export const loregamePlugin: Plugin = {
         if (equip !== undefined && equipOf !== undefined)
           ctx.bus.publish(EQUIPMENT_EVENT, { chat: m.chat, ...equipOf, ...equip, ...old }, m.time);
       }
+    });
+    // The skills menu, as its buttons change it (D144): the bot edits the menu at each point spent.
+    // An edit of a menu replying to a player's /abilita is that player's menu now, published at the
+    // edit's time; every other edit is ignored, as the game ignores them (a command edited is not
+    // played again). A shell before D144 offers no edits: the next menu or profile tells instead.
+    chat.onEdit?.((m) => {
+      if (m.own === true || m.sender.toLowerCase() !== LOREGAMEBOT.toLowerCase()) return;
+      const menu = parseSkillMenu(m.text);
+      const of = menu === undefined ? undefined : answerTo(m, SKILLS_COMMAND, chat.self());
+      if (menu === undefined || of === undefined) return;
+      ctx.bus.publish(
+        SKILLS_EVENT,
+        { chat: m.chat, ...of, ...menu, edited: true, ...(m.playback ? { playback: true } : {}) },
+        m.edited ?? m.time
+      );
     });
     const turns = instance.interface as TurnParserInterface;
     return {

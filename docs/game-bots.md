@@ -334,16 +334,19 @@ accumulo needs** (§5.2), **Calistenico +2 to what each training gives** (§5.3,
 is no level. A level-up gives the points (§5).
 
 **A point is spent with the menu's buttons**, which the bot answers by editing the menu: no message
-of its own, and the account's connector hears no edits, nor anything of a button pressed
-(MegaBotTron1999's `telegram-user` reads new messages alone). So the state learns of a purchase from
-the next menu or profile: a skill raised, as many levels as the points fell (a menu), or no more
+of its own, and nothing of the button pressed reaches the account. The parser follows the menu
+through its edits (MegaBotTron1999's D144: a plugin asks for edits, which nothing else reads, as the
+game ignores a command edited): each edit of a menu replying to a player's `/abilita` is that
+player's menu now, at the edit's time [?] (built on a simulation: no edit was recorded, the exports
+showing each message as it was last edited, so the menus they hold are the ones after the purchase).
+Every other edit is ignored. A skill raised, as many levels as the points fell (a menu), or no more
 than the points held (a profile, which does not show them, and then has them spent), is a purchase,
-not a mismatch (§6.1). The exports show each message as it was last edited, so the menus they hold
-are the ones after the purchase.
+not a mismatch (§6.1): what the state does with an edit, and with a menu or profile when an edit was
+missed (a shell before D144, the instance down).
 
 **`loregame.skills`** carries every menu the parser reads, the player's whose `/abilita` it replies
 to (in private, the owner's): each skill (`name`, `level`, `max`, `effect`: `value`, `unit`, `what`)
-and `points`.
+and `points`; `edited` for a menu as a button changed it.
 
 ### 5.7 `/equipaggia`
 

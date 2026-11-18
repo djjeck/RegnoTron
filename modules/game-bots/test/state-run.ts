@@ -124,6 +124,26 @@ export async function bootState(
     return id;
   };
   /**
+   * An edit of a message of the bot's (MegaBotTron1999's D144: a button pressed changes it): its
+   * `id`, its text now, the message it replies to, when it was said (`time`); edited now.
+   */
+  const edit = async (
+    id: string,
+    text: string,
+    m: { chat?: string; replyTo?: string; time: number }
+  ): Promise<void> => {
+    account.hearEdit({
+      chat: m.chat ?? GROUP,
+      sender: 'LoreGameBot',
+      time: m.time,
+      id,
+      text,
+      ...(m.replyTo === undefined ? {} : { replyTo: m.replyTo }),
+      edited: clock.now(),
+    });
+    await settle();
+  };
+  /**
    * Each command's readiness, as the state tells a shell player (`state.ready`, MegaBotTron1999's
    * D141).
    */
@@ -140,5 +160,20 @@ export async function bootState(
       : { until: lore.until, why: lore.why ?? '' };
   };
   const of = (type: string): BusEvent[] => records.filter((r) => r.type === type);
-  return { core, clock, log, account, bot, owner, turn, read, of, settle, group, rest, ready };
+  return {
+    core,
+    clock,
+    log,
+    account,
+    bot,
+    owner,
+    turn,
+    read,
+    of,
+    settle,
+    group,
+    edit,
+    rest,
+    ready,
+  };
 }
