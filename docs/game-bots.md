@@ -21,8 +21,16 @@ player's own.
 | Bot             | Turn command                      | What a turn's answer looks like                                                                                                                                                                                                                                      |
 | --------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | @InventoryBot   | `/avventura`                      | One random item in a random sentence, naming the player: `@alice, … un ombrello sgonfio [C]!` (a rarity code in brackets, sometimes tags after it). Rarely the day's lucky adventure: `Complimenti @alice, questa e' l'avventura FORTUNATA del giorno! Hai vinto: …` |
-| @LoreGameBot    | `/avventura`, `/lore` or `/l`     | A story, replying to the command, that ends in an item (`Hai ottenuto un'ancora di burro [B1]!`), in a fight lost (`Torni a casa dolorante e a mani vuote...`) or in the item lost (`L'oggetto si perde nello scontro...`)                                           |
-| @EpicLorelecBot | `/avventura` or `/rompimiilcazzo` | A running count of the player's "rotture": `Complimenti 78, <display name>, mi hai rotto il cazzo 53 volte!` (the count may be negative, and lines of the day's event may come first)                                                                                |
+| @LoreGameBot    | `/lore`, `/avventura` or `/l`     | A story, replying to the command, that ends in an item (`Hai ottenuto un'ancora di burro [B1]!`), in a fight lost (`Torni a casa dolorante e a mani vuote...`) or in the item lost (`L'oggetto si perde nello scontro...`)                                           |
+| @EpicLorelecBot | `/rompimiilcazzo` or `/avventura` | A running count of the player's "rotture": `Complimenti 78, <display name>, mi hai rotto il cazzo 53 volte!` (the count may be negative, and lines of the day's event may come first)                                                                                |
+
+Each parser names its bot's turn by the bot's own command, the others its aliases, in the order of
+the table (`TURN_COMMANDS`, `modules/game-bots/src/replies.ts`; MegaBotTron1999's bot-os.md D140):
+the bot's own command first, the shared `/avventura` after it, abbreviations last. Any of them, bare
+or addressed, is the turn. The order is the owner's preference, which the shell's `player` follows
+when two forms play as many turns: in the group the bare `/avventura` still wins whenever it plays
+several bots' turns at once, and a bot ready alone gets its own command (`/lore`), not
+`/avventura@LoreGameBot`.
 
 @InventoryBot's sentence and item are not delimited, so its parser learns as it reads which is
 which, and marks a gain whose item it had to guess (InventoryBotTron's README). The bots write some
@@ -177,8 +185,8 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
 - **`loregame.accumulo`** carries the owner's answers (`result`: `short`, `idle`, `used`, `locked`;
   `count`, `max`, `level`), as the parser's event; the turn's line is `accumulo` in the outcome of
   `loregame.turn`. `loregame-state` counts against them (§6).
-- **Played by the shell's `player`**: the parser declares `/accumulo` and `/acc` (one accumulo: a
-  use of either holds both) with its mechanics (D132, D137): unlocked by the bot's own line on a
+- **Played by the shell's `player`**: the parser declares `/accumulo`, with `/acc` its alias (one
+  command, one state, D140), with its mechanics (D132, D137): unlocked by the bot's own line on a
   turn (not a pattern on the text, which a quoted story would match), and its use clearing the
   turns' rest, so the player plays it only while `/lore` rests. A use is the success; "not yet"
   holds it for the turns still needed (15 minutes each), the gate for 6 hours, "already ready" not

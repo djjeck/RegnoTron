@@ -22,6 +22,18 @@ describe('the game bots’ parsers', () => {
     expect([...loregame, ...epiclorelec]).toEqual([loregamePlugin, epiclorelecPlugin]);
   });
 
+  it('declare one turn each, by the bot’s own command, then /avventura, abbreviations last', () => {
+    // The owner's order (bot-os.md D140): a player takes the first on a tie of reach.
+    expect(epiclorelecPlugin.manifest.botCommands).toEqual([
+      { command: '/rompimiilcazzo', aliases: ['/avventura'], turn: true },
+    ]);
+    expect(loregamePlugin.manifest.botCommands?.[0]).toEqual({
+      command: '/lore',
+      aliases: ['/avventura', '/l'],
+      turn: true,
+    });
+  });
+
   it('run on a graph saved while their nodes named commands, which they ignore', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'game-parsers-'));
     try {

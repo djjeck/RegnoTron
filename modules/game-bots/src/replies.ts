@@ -33,14 +33,17 @@ export const EPICLORELECBOT = 'EpicLorelecBot';
 export type GameBot = typeof INVENTORYBOT | typeof LOREGAMEBOT | typeof EPICLORELECBOT;
 
 /**
- * The turn commands each of the three bots takes, in private and in the group: each parser's spec
+ * The turn command each of the three bots takes, in private and in the group: each parser's spec
  * names its bot's (`turnCommands`, a fact of the game, MegaBotTron1999's bot-os.md D70), which a
- * shell `player` bound to the parser offers to play.
+ * shell `player` bound to the parser offers to play. One turn each: the first entry its name, the
+ * rest its aliases (D140), in the owner's order of preference, which the player follows on a tie of
+ * reach: the bot's own command first, the shared `/avventura` after it, abbreviations last. In a
+ * group, the bare `/avventura` still wins by reach whenever it plays several bots' turns at once.
  */
 export const TURN_COMMANDS: Readonly<Record<GameBot, readonly string[]>> = {
   [INVENTORYBOT]: ['/avventura'],
-  [LOREGAMEBOT]: ['/avventura', '/lore', '/l'],
-  [EPICLORELECBOT]: ['/avventura', '/rompimiilcazzo'],
+  [LOREGAMEBOT]: ['/lore', '/avventura', '/l'],
+  [EPICLORELECBOT]: ['/rompimiilcazzo', '/avventura'],
 };
 
 /**

@@ -53,13 +53,18 @@ Every plugin is built from its node's config alone.
 **The parsers** (`loregame`, `epiclorelec`, on the shell's `turnParserPlugin`): their `chat` input
 is an edge from the owner's `telegram-user` node that reads the private chat with the bot
 (`@LoreGameBot`, …), and the game's group too when the owner's turns there should count. They have
-no config: each spec names its bot's turn commands (`turnCommands`, from `TURN_COMMANDS`:
-`/avventura`, @LoreGameBot's `/lore` and `/l`, and @EpicLorelecBot's `/rompimiilcazzo` too), a fact
-of the game rather than of a deployment (MegaBotTron1999's bot-os.md D70). A node saved with a
-`commands` config, as they had before, still runs: the key is ignored, and may be removed from the
-graph. Each publishes `<id>.turn`, which the editor lists with its description, and which, through
-`turnParserPlugin`, answers its turn commands (the shell's bot-os.md D98: a "too soon" refused with
-its `retryAt`, any other outcome `ok`).
+no config: each spec names its bot's turn (`turnCommands`, from `TURN_COMMANDS`), a fact of the game
+rather than of a deployment (MegaBotTron1999's bot-os.md D70): one turn, its name first and its
+aliases after it (D140), in the owner's order of preference, the bot's own command first, the shared
+`/avventura` after it, abbreviations last: @LoreGameBot's `/lore`, `/avventura`, `/l`;
+@EpicLorelecBot's `/rompimiilcazzo`, `/avventura`. The parser counts any of them, bare or addressed
+to its bot, as the turn, and names it by its name (`/lore`, `/rompimiilcazzo`) in its `state.ready`
+and its events. A shell `player` in the group sends the form that plays the most ready turns at once
+(the bare `/avventura` when several bots are ready), and on a tie the first in that order. A node
+saved with a `commands` config, as they had before, still runs: the key is ignored, and may be
+removed from the graph. Each publishes `<id>.turn`, which the editor lists with its description, and
+which, through `turnParserPlugin`, answers its turn commands (the shell's bot-os.md D98: a "too
+soon" refused with its `retryAt`, any other outcome `ok`).
 
 **Bans.** @LoreGameBot answers a banned player's every message with the ban, so `loregame` watches
 all it hears (docs/game-bots.md §5.1). The owner's turn answered with a ban is the outcome `banned`,
@@ -78,10 +83,10 @@ when a story quotes the line, which the bot never writes twice), and the bot's a
 a message of its own, not a reply, so the parser pairs it with the oldest command waiting: it needs
 the same edge as the bans, delivering every sender.
 
-**Playing it: the shell's `player`.** The parser declares `/accumulo` and `/acc` (the bot takes
-both; two rows, one accumulo: a use of either holds both) among its bot's commands (its spec's
-`commands`, MegaBotTron1999's bot-os.md D132, D137), so the `player` bound to the `loregame` node
-lists it beside the turns, ticked by default, with its mechanics:
+**Playing it: the shell's `player`.** The parser declares `/accumulo`, with `/acc` its alias (the
+bot takes both; one command, one state, D140), among its bot's commands (its spec's `commands`,
+MegaBotTron1999's bot-os.md D132, D137), so the `player` bound to the `loregame` node lists it, one
+row with both forms, beside the turn, ticked by default, with its mechanics:
 
 - **unlocked by the bot's word:** a turn with the bot's own line (one copy) makes it ready; never
   our count, and never a line a story quotes;
@@ -95,8 +100,8 @@ lists it beside the turns, ticked by default, with its mechanics:
   tells it each send), declares it the command's answer, and frees the turns in the parser and the
   outbox at once. The player looks again when its two-minute wait for an answer is over, so the free
   turn comes a couple of minutes after the use;
-- **a use by hand** counts too, in private or in the group, `/acc` included, which the shell alone
-  would not pair: it is not ready again until the next turn's line.
+- **a use by hand** counts too, in private or in the group, `/acc` included, even where the shell
+  alone would not pair it: it is not ready again until the next turn's line.
 
 Nothing else is to configure: the player's checklist offers it, and its chat-out edge follows.
 

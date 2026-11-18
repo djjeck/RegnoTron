@@ -9,8 +9,9 @@ nothing: there is no automation here. Its models of the games include the rules 
 without announcing them, since a rule that is public levels the field.
 
 **Status: v1-alpha.** The code is the parsers, state and tools that ran in production on an earlier,
-monolithic version, now split into modules for MegaBotTron1999 `v0.1.40`, whose loader installs them
-into a running shell. Everything here changes freely until the shell's launch.
+monolithic version, now split into modules for MegaBotTron1999 (`v0.1.40` and D140, at `d7661c0`),
+whose loader installs them into a running shell. Everything here changes freely until the shell's
+launch.
 
 ## The modules
 
@@ -60,12 +61,15 @@ nodes. Modules run with the shell's full rights, unsandboxed: install only what 
   reads it; to read Telegram too (or alone), an edge from a `telegram-user` node to its `telegram`
   input reads the game's group and the private chat with the bot (`bot`, its username). A
   `norelec-state` node, bound to its events, keeps the game's record for scripts to query.
-- The game bots' parsers need no config: each counts its bot's own turn commands, which its spec
-  names (`/avventura`, @LoreGameBot's `/lore` and `/l`, and @EpicLorelecBot's `/rompimiilcazzo` too:
-  `TURN_COMMANDS` in `modules/game-bots/src/replies.ts`), since which commands are turns is the
-  game's (the shell's bot-os.md D70). A parser node saved with a `commands` config, as before, still
-  runs; the key is ignored and may be removed. An edge that also reads the game's group has them
-  read the turns played there. A shell `player` bound to one lists its bot's commands to play.
+- The game bots' parsers need no config: each counts its bot's turn, which its spec names with its
+  aliases (`TURN_COMMANDS` in `modules/game-bots/src/replies.ts`: @LoreGameBot's `/lore`, then
+  `/avventura` and `/l`; @EpicLorelecBot's `/rompimiilcazzo`, then `/avventura`), since which
+  commands are turns is the game's (the shell's bot-os.md D70, D140). A parser node saved with a
+  `commands` config, as before, still runs; the key is ignored and may be removed. An edge that also
+  reads the game's group has them read the turns played there. A shell `player` bound to one lists
+  its bot's commands to play, one row each with its forms: in a group it sends the form that plays
+  the most ready turns at once, the shared bare `/avventura` when several bots are ready, and on a
+  tie the first in the order above, the bot's own command before `/avventura`, abbreviations last.
 - The nuclear clock posts only to the group its config names (`group`), which its chat-out edge to
   `telegram-bot` must send to, and only with its `nuclearClock` setting on.
 
@@ -74,9 +78,10 @@ Each module's README lists its plugins' config fields.
 ## Developing
 
 MegaBotTron1999 is vendored as a git submodule, `vendor/MegaBotTron1999`, pinned to a tag
-(`v0.1.40`). The shell's packages are workspaces here, beside the modules, which are workspaces too
-(each `@regnotron/<id>`, with `exports` `./*` → `./src/*`), so that imports and tests resolve as the
-loader will resolve them.
+(`v0.1.40`), or to a commit past it when the modules need a change not tagged yet (now `d7661c0`,
+D140's aliases). The shell's packages are workspaces here, beside the modules, which are workspaces
+too (each `@regnotron/<id>`, with `exports` `./*` → `./src/*`), so that imports and tests resolve as
+the loader will resolve them.
 
 ```sh
 git clone --recurse-submodules https://github.com/djjeck/RegnoTron.git
