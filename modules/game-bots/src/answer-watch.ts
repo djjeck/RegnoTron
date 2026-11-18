@@ -24,6 +24,8 @@ export interface AnswerWatchSpec<R> {
   commands: readonly string[];
   /** The answer `text` is, if it is one: the whole message. */
   parse(text: string): R | undefined;
+  /** The command takes arguments (`/dai bob sasso`): it is its first word. */
+  args?: boolean;
   /**
    * Whether an answer in private, with no command known to be waiting (sent before the parser
    * started, or from elsewhere), is the owner's all the same: by default, yes. An answer the bot
@@ -50,9 +52,17 @@ export interface PlayerAnswer<R> {
   reply: R;
 }
 
-/** Whether `text` is one of `commands`, bare or addressed to `bot`. */
-export function isCommandOf(text: string, commands: readonly string[], bot: string): boolean {
-  const m = /^(\/\w+)(?:@(\w+))?$/u.exec(text.trim());
+/**
+ * Whether `text` is one of `commands`, bare or addressed to `bot`: alone, or with its arguments
+ * after it when `args` (a gift names its receiver and its item).
+ */
+export function isCommandOf(
+  text: string,
+  commands: readonly string[],
+  bot: string,
+  args = false
+): boolean {
+  const m = (args ? /^(\/\w+)(?:@(\w+))?(?:\s|$)/u : /^(\/\w+)(?:@(\w+))?$/u).exec(text.trim());
   if (m === null) return false;
   if (m[2] !== undefined && m[2].toLowerCase() !== bot.toLowerCase()) return false;
   return commands.includes((m[1] as string).toLowerCase());
@@ -70,7 +80,7 @@ export class AnswerWatch<R> {
 
   /** Whether `text` is the watch's command, bare or addressed to its bot. */
   isCommand(text: string): boolean {
-    return isCommandOf(text, this.spec.commands, this.bot);
+    return isCommandOf(text, this.spec.commands, this.bot, this.spec.args === true);
   }
 
   /**

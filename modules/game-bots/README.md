@@ -156,6 +156,10 @@ first from the message, each turned from its edit (MegaBotTron1999's D144), with
 from its ◀️ ▶️ buttons (D145). The state takes a listing followed to its last page as the whole
 inventory, and keeps every player's (docs/game-bots.md §5.8, §6).
 
+**Gifts.** `/give` and `/dai` are published as `loregame.gift`, paired with the giver's command (the
+answer replies to none): the state moves the items or the coins from the giver to the receiver, each
+player's (docs/game-bots.md §5.10).
+
 **The places.** `/vai` and `/v` are published as `loregame.travel` (an arrival with what it
 consumed, where one is, a refusal), each the player's whose command it replies to, and any place's
 requirements as `loregame.requirements`; the state keeps the places (`state.places()`), sets a

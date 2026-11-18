@@ -426,6 +426,22 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
 `place`, `level`, `items`. **Not read yet:** the neutral places, which a "biglietto neutralizzante"
 lets one step aside to, and how one leaves them.
 
+### 5.10 Gifts
+
+`/give` and `/dai` [M] send items or coins to another player:
+`Hai inviato <n>x <item> [<rarity>] [<tag>]… a <username>!`, or
+`Hai inviato <n> monete a <username>!`, at times after `[N] ` [?]. The receiver is named as the
+giver typed them (an `@`, any case). The answer names the receiver, not the giver, and since August
+2026 it replies to no command (all 209 since then): the parser pairs it with the command waiting, as
+the accumulo's answers (§5.2). The receiver is told nothing. Its refusals (`Formato non valido!`,
+`Oggetto non trovato!`, `Non possiedi l'oggetto!`, `Elemento non trovato o utente non registrato!`,
+…) change nothing, and are not read. All 388 gifts in the exports are read, 45 of coins.
+
+**`loregame.gift`** carries every gift the parser pairs: the giver (`player`, `owner`), `kind`
+(`item`, with `item`, `qty`, `rarity`, `tags`, `level`; `coins`, with `coins`), `to` and `toOwner`.
+The state moves the items from the giver's inventory to the receiver's, or the coins from the one's
+`coins` to the other's; the receiver known whatever the case of their name.
+
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
 

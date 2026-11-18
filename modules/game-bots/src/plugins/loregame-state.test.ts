@@ -348,6 +348,7 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.equipment',
       'loregame.inventory',
       'loregame.travel',
+      'loregame.gift',
       'loregame.requirements',
       'loregame.playerTurn',
       'loregame.playerAccumulo',
@@ -1570,5 +1571,67 @@ describe('the places, as /vai and /v answer', () => {
     expect(again.read('places')).toEqual({});
     expect(again.read('held')).toEqual({ 'un sasso': 1 });
     await again.core.stop();
+  });
+});
+
+describe('gifts, as /give and /dai answer', () => {
+  it('moves items and coins from the giver to the receiver, each player’s', async () => {
+    const run = await bootState(path.join(dir, 'g1'), { group: true });
+    await run.owner('/me');
+    await run.bot(
+      [
+        '👤 alice',
+        '',
+        '👥 Nessuna azienda',
+        '',
+        'Livello 4 (500 ⚔️)',
+        '▓░░░░░░░░░ 6.20%',
+        '',
+        'Il Bene 😇',
+        'Episodio 100',
+        '50 ₭',
+        '',
+        'Armatura 🛡 - (vuoto)',
+        'Amuleto 🩺 - (vuoto)',
+        'Arma 🗡 - (vuoto)',
+        '',
+        '',
+        'Attualmente in Altrove [M1]',
+      ].join('\n')
+    );
+    const listing = await run.group('alice', '/zaino', { own: true });
+    await run.group('LoreGameBot', 'alice, hai:\n> un sasso [B1] x3', {
+      replyTo: listing,
+      buttons: [['🔒', '🔒']],
+    });
+    // The owner's gift, in the group: the answer is a message of its own.
+    await run.group('alice', '/dai bob sasso', { own: true });
+    await run.group('LoreGameBot', 'Hai inviato 2x un sasso [B1] a @BOB!');
+    expect(run.of('loregame.gift')).toMatchObject([
+      { player: 'alice', owner: true, kind: 'item', to: 'BOB', toOwner: false, qty: 2 },
+    ]);
+    expect(run.read('get', { path: 'inventory.items.un sasso' })).toMatchObject({
+      qty: 1,
+      exact: true,
+    });
+    expect(run.read('inventory', { player: 'BOB' })).toMatchObject({
+      items: { 'un sasso': { qty: 2, exact: false, via: 'gift' } },
+    });
+    // Bob, known by his username, gives the owner coins: theirs rise, exactly.
+    const bobs = await run.group('bob', '/lore');
+    await run.group('LoreGameBot', gain('una pigna [B1]'), { replyTo: bobs });
+    await run.group('bob', '/give alice 20');
+    await run.group('LoreGameBot', 'Hai inviato 20 monete a alice!');
+    expect(run.of('loregame.gift').at(-1)).toMatchObject({
+      player: 'bob',
+      toOwner: true,
+      coins: 20,
+    });
+    expect(run.read('stat', { stat: 'coins' })).toMatchObject({ value: 70, exact: true });
+    expect(run.read('holders', { item: 'un sasso' })).toEqual([
+      { player: 'BOB', qty: 2, exact: false },
+      { player: 'alice', qty: 1, exact: true },
+    ]);
+    await run.core.stop();
   });
 });

@@ -41,6 +41,8 @@
  * **The inventory and the places** (docs/game-bots.md §5.8, §5.9): `/zaino` and `/i`, a page at a
  * time (its pages are its edits, its buttons tell which), as `loregame.inventory`; `/vai` and `/v`,
  * as `loregame.travel`; and any place's requirements the bot states, as `loregame.requirements`.
+ * A gift (`/give`, `/dai`, §5.10), paired with its giver as the accumulo's answers are, as
+ * `loregame.gift`.
  *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
@@ -72,6 +74,7 @@ import {
 } from '#src/accumulo.ts';
 import { BanWatch } from '#src/bans.ts';
 import { parseEquip } from '#src/equipment.ts';
+import { GiftWatch } from '#src/gifts.ts';
 import { pageOf, parseInventory } from '#src/inventory.ts';
 import { parseTravel, placeRequirements, type Requirements } from '#src/places.ts';
 import { PlayerWatch } from '#src/players.ts';
@@ -132,6 +135,8 @@ const TRAVEL_ALIAS = '/v';
 /** The events of every player's move or place (§5.9), and of every place's requirements. */
 export const TRAVEL_EVENT = `${LOREGAME_PARSER}.travel`;
 export const REQUIREMENTS_EVENT = `${LOREGAME_PARSER}.requirements`;
+/** The event of every player's gift (`/give`, `/dai`, §5.10). */
+export const GIFT_EVENT = `${LOREGAME_PARSER}.gift`;
 /** The event of every player's inventory listing, or page of one (§5.8). */
 export const INVENTORY_EVENT = `${LOREGAME_PARSER}.inventory`;
 export const EQUIPMENT_EVENT = `${LOREGAME_PARSER}.equipment`;
@@ -366,6 +371,23 @@ const requirementsEvent = z
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("A place's requirements, wherever @LoreGameBot states them");
+const giftEvent = z
+  .object({
+    chat: z.string(),
+    player: player.describe('Who gave it'),
+    owner: z.boolean().describe('The giver is the owner of the account'),
+    kind: z.enum(['item', 'coins']),
+    to: z.string().describe('Who received it, as the giver named them'),
+    toOwner: z.boolean().describe('The receiver is the owner of the account'),
+    item: z.string().optional(),
+    qty: z.number().optional(),
+    rarity: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    level: z.object({ low: z.number(), high: z.number() }).nullable().optional(),
+    coins: z.number().optional(),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("A player's gift of items or coins (/give, /dai), as @LoreGameBot answered it");
 const inventoryEvent = z
   .object({
     chat: z.string(),
@@ -481,6 +503,7 @@ export const loregamePlugin: Plugin = {
       [EQUIPMENT_EVENT]: equipmentEvent,
       [INVENTORY_EVENT]: inventoryEvent,
       [TRAVEL_EVENT]: travelEvent,
+      [GIFT_EVENT]: giftEvent,
       [REQUIREMENTS_EVENT]: requirementsEvent,
       [PLAYER_TURN_EVENT]: playerTurnEvent,
       [PLAYER_ACCUMULO_EVENT]: playerAccumuloEvent,
@@ -562,6 +585,7 @@ export const loregamePlugin: Plugin = {
       return isPrivate(m) ? { player: self ?? '', owner: true } : undefined;
     };
     const trained = new TrainingWatch(LOREGAMEBOT);
+    const gifts = new GiftWatch(LOREGAMEBOT);
     chat.onMessage((m) => {
       const old = m.playback ? { playback: true as const } : {};
       // While an owner's /accumulo or /allenati waits for its answer, each message of the bot's in
@@ -624,6 +648,23 @@ export const loregamePlugin: Plugin = {
         ctx.bus.publish(
           TRAINING_EVENT,
           { chat: m.chat, player: who, owner, ...reply, ...old },
+          m.time
+        );
+      }
+      // A gift, its giver's (the answer names the receiver alone, and replies to nothing, §5.10).
+      const gift = gifts.answer(m, self);
+      if (gift !== undefined) {
+        const { player: giver, owner: mine, reply } = gift;
+        ctx.bus.publish(
+          GIFT_EVENT,
+          {
+            chat: m.chat,
+            player: giver,
+            owner: mine,
+            ...reply,
+            toOwner: self !== undefined && reply.to.toLowerCase() === self.toLowerCase(),
+            ...old,
+          },
           m.time
         );
       }
@@ -715,6 +756,7 @@ export const loregamePlugin: Plugin = {
             turns.actions.sent(sent);
             asked.sent(sent);
             trained.sent(sent);
+            gifts.sent(sent);
             if (asked.isCommand(sent.command ?? '') || trained.isCommand(sent.command ?? ''))
               ctx.log.info(
                 `waits for the answer to ${sent.command} #${sent.id ?? '?'} in ${sent.chat}`

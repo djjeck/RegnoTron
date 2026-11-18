@@ -67,6 +67,7 @@ import {
   ACCUMULO_EVENT,
   BAN_EVENT,
   EQUIPMENT_EVENT,
+  GIFT_EVENT,
   INVENTORY_EVENT,
   LEVEL_UP_EVENT,
   LOREGAME_PARSER,
@@ -117,6 +118,7 @@ export const CONSUMES: readonly string[] = [
   INVENTORY_EVENT,
   TRAVEL_EVENT,
   REQUIREMENTS_EVENT,
+  GIFT_EVENT,
 ];
 
 /**
@@ -254,7 +256,7 @@ const holding = z.object({
   qty: z.number().describe('Count'),
   exact: z.boolean().describe('Exact'),
   date: date.describe('Set'),
-  via: z.enum(['drop', 'level-up', 'listing']).describe('By'),
+  via: z.enum(['drop', 'level-up', 'listing', 'gift']).describe('By'),
   rarity: z.string().nullable().describe('Rarity'),
   tags: z.array(z.string()).describe('Tags'),
   level: z
@@ -1307,11 +1309,19 @@ function reduceOwner(state: LoreState, e: BusEvent): LoreState {
 }
 
 /** The next state: an event's gains added to the inventory, a ban set or ended (pure). */
+/** The reducer's steps, in order: each a part of the state, after an event. */
+const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
+  reduceBans,
+  reduceOwner,
+  reduceAccumulo,
+  reducePlayers,
+  reduceListing,
+  reducePlaces,
+  reduceGift,
+];
+
 export function reduce(state: LoreState, e: BusEvent): LoreState {
-  const next = reducePlaces(
-    reduceListing(reducePlayers(reduceAccumulo(reduceOwner(reduceBans(state, e), e), e), e), e),
-    e
-  );
+  const next = STEPS.reduce((s, step) => step(s, e), state);
   // Each inventory: the owner's drops and level-ups in theirs, another player's in theirs.
   const gained = gainsOf(e);
   if (gained === undefined || gained.gains.length === 0) return next;
@@ -1463,6 +1473,89 @@ function reducePlaces(state: LoreState, e: BusEvent): LoreState {
     });
   }
   return withInventory(s, whose, { ...inv, items, held: heldOf(items) }, at);
+}
+
+/** What a gift event says (the parser's `loregame.gift`). */
+const giftSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  kind: z.enum(['item', 'coins']),
+  to: z.string(),
+  toOwner: z.boolean(),
+  item: z.string().optional(),
+  qty: z.number().optional(),
+  rarity: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  level: z.object({ low: z.number(), high: z.number() }).nullable().optional(),
+  coins: z.number().optional(),
+});
+
+/**
+ * The state after a gift (docs/game-bots.md §5.10): the items leave the giver's inventory and
+ * reach the receiver's, or the coins the one's coins and the other's; the receiver known by their
+ * name whatever its case (the giver types it), a player first heard of so.
+ */
+function reduceGift(state: LoreState, e: BusEvent): LoreState {
+  if (e.type !== GIFT_EVENT) return state;
+  const r = giftSchema.safeParse(e);
+  if (!r.success) return state;
+  const d = r.data;
+  const at = asIso(e.t);
+  let s = state;
+  const named = (n: string): string =>
+    Object.keys(s.players).find((k) => k.toLowerCase() === n.toLowerCase()) ?? n;
+  const giver: Whose | undefined = d.owner
+    ? { owner: true }
+    : d.player === ''
+      ? undefined
+      : { owner: false, player: named(d.player) };
+  const receiver: Whose = d.toOwner ? { owner: true } : { owner: false, player: named(d.to) };
+  for (const w of [giver, receiver])
+    if (w !== undefined && !w.owner && playerOf(s, w.player) === null)
+      s = { ...s, players: { ...s.players, [w.player]: initialPlayer(at) } };
+  /** A player's coins moved by `n`, their stats' (the owner's, by their name once known). */
+  const coins = (w: Whose, n: number): void => {
+    const key = w.owner ? s.owner.name : w.player;
+    const p = key === null ? null : playerOf(s, key);
+    if (p === null || key === null) return;
+    const stats = move(p.stats, 'coins', (v) => Number(v) + n, true, at);
+    s = { ...s, players: { ...s.players, [key]: { ...p, as_of: at, stats } } };
+  };
+  if (d.kind === 'coins') {
+    const n = d.coins ?? 0;
+    if (giver !== undefined) coins(giver, -n);
+    coins(receiver, n);
+    return s;
+  }
+  if (d.item === undefined || d.qty === undefined) return s;
+  const item = d.item;
+  const n = d.qty;
+  if (giver !== undefined) {
+    const inv = inventoryOf(s, giver);
+    const h = inv === undefined ? undefined : own(inv.items, item);
+    if (inv !== undefined && h !== undefined) {
+      const items = withItem(inv.items, item, {
+        ...h,
+        qty: Math.max(0, h.qty - n),
+        exact: h.exact && h.qty >= n,
+        date: at,
+      });
+      s = withInventory(s, giver, { ...inv, items, held: heldOf(items) }, at);
+    }
+  }
+  const inv = inventoryOf(s, receiver);
+  if (inv === undefined) return s;
+  const h = own(inv.items, item);
+  const items = withItem(inv.items, item, {
+    qty: (h?.qty ?? 0) + n,
+    exact: h?.exact ?? inv.listed !== null,
+    date: at,
+    via: 'gift',
+    rarity: d.rarity ?? h?.rarity ?? null,
+    tags: d.tags ?? h?.tags ?? [],
+    ...(d.level === undefined ? {} : { level: d.level }),
+  });
+  return withInventory(s, receiver, { ...inv, items, held: heldOf(items) }, at);
 }
 
 /** Every place the state knows of, by code. */
