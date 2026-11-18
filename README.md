@@ -9,7 +9,7 @@ nothing: there is no automation here. Its models of the games include the rules 
 without announcing them, since a rule that is public levels the field.
 
 **Status: v1-alpha.** The code is the parsers, state and tools that ran in production on an earlier,
-monolithic version, now split into modules for MegaBotTron1999 (`v0.1.43` and D142, at `42efad5`),
+monolithic version, now split into modules for MegaBotTron1999 (`v0.1.45` and D144, at `220f996`),
 whose loader installs them into a running shell. Everything here changes freely until the shell's
 launch.
 
@@ -80,10 +80,10 @@ Each module's README lists its plugins' config fields.
 ## Developing
 
 MegaBotTron1999 is vendored as a git submodule, `vendor/MegaBotTron1999`, pinned to a tag
-(`v0.1.43`), or to a commit past it when the modules need a change not tagged yet (now `42efad5`,
-D142's outbox with no cooldown). The shell's packages are workspaces here, beside the modules, which
-are workspaces too (each `@regnotron/<id>`, with `exports` `./*` → `./src/*`), so that imports and
-tests resolve as the loader will resolve them.
+(`v0.1.45`), or to a commit past it when the modules need a change not tagged yet (now `220f996`,
+D144's message edits, which a plugin asks for). The shell's packages are workspaces here, beside the
+modules, which are workspaces too (each `@regnotron/<id>`, with `exports` `./*` → `./src/*`), so
+that imports and tests resolve as the loader will resolve them.
 
 ```sh
 git clone --recurse-submodules https://github.com/djjeck/RegnoTron.git
