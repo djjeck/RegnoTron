@@ -4,9 +4,11 @@ import {
   announce,
   banOf,
   CONSUMES,
+  foldReadiness,
   freshness,
   held,
   initialState,
+  LORE_READINESS,
   type LoreState,
   playerOf,
   reduce,
@@ -694,5 +696,69 @@ describe('the players', () => {
     expect(Object.keys(s.players)).toEqual(['__proto__', 'constructor']);
     expect(playerOf(s, '__proto__')?.turns).toBe(1);
     expect(playerOf(s, 'toString')).toBeNull();
+  });
+});
+
+describe('the owner’s readiness, with what the state knows besides (MegaBotTron1999’s D141)', () => {
+  const T = Date.parse('2026-11-06T12:00:00Z');
+  const MIN = 60_000;
+  const at = (type: string, t: number, payload: Record<string, unknown>): BusEvent => ({
+    type: `loregame.${type}`,
+    t,
+    instance: 'loregame',
+    ...payload,
+  });
+  const ready = (r: ReturnType<typeof LORE_READINESS.initial>, t = T) => LORE_READINESS.ready(r, t);
+  /** The turn resting 15 minutes, the accumulo full: as after a turn with the bot's line. */
+  const rested = LORE_READINESS.reduce(
+    LORE_READINESS.initial(),
+    at('turn', T, {
+      outcome: { kind: 'gain', bot: 'LoreGameBot' },
+      retryAt: T + 15 * MIN,
+      unlocks: ['/accumulo'],
+    })
+  );
+
+  it('holds every command while the owner is banned, until the ban ends or the bot serves them', () => {
+    const banned = foldReadiness(
+      rested,
+      at('ban', T, { player: 'alice', owner: true, until: T + 60 * MIN })
+    );
+    for (const r of Object.values(ready(banned)))
+      expect(r).toMatchObject({ ready: false, until: T + 60 * MIN, why: 'the owner is banned' });
+    expect(ready(banned, T + 60 * MIN)['/lore']).toMatchObject({ ready: true });
+    // Another player's ban is not the owner's; one with no end holds until it is lifted.
+    expect(
+      foldReadiness(rested, at('ban', T, { player: 'bob', owner: false, until: T + MIN }))
+    ).toBe(rested);
+    const open = foldReadiness(rested, at('ban', T, { player: 'alice', owner: true }));
+    expect(ready(open, T + 99 * 60 * MIN)['/lore']).toEqual({
+      ready: false,
+      why: 'the owner is banned',
+    });
+    const lifted = foldReadiness(open, at('unban', T + MIN, { player: 'alice', owner: true }));
+    expect(ready(lifted, T + 16 * MIN)['/lore']).toMatchObject({ ready: true });
+  });
+
+  it('takes the owner’s /accumulo answered anywhere: a use, a no, the level gate', () => {
+    // A use: the unlock spent, the turn's rest ended.
+    const used = foldReadiness(rested, at('accumulo', T + MIN, { result: 'used' }));
+    expect(ready(used, T + MIN)['/lore']).toMatchObject({ ready: true, since: T + MIN });
+    expect(ready(used, T + MIN)['/accumulo']).toMatchObject({ why: 'waits for an unlock' });
+    // "Already ready": nothing spent.
+    expect(foldReadiness(rested, at('accumulo', T, { result: 'idle' }))).toBe(rested);
+    // Not yet: its unlock withdrawn, until the bot's next line.
+    const short = foldReadiness(rested, at('accumulo', T, { result: 'short', count: 3, max: 20 }));
+    expect(ready(short)['/accumulo']).toMatchObject({ ready: false, why: 'waits for an unlock' });
+    // Under the level: withdrawn, and held 6 hours even if a line unlocks it again.
+    const locked = foldReadiness(rested, at('accumulo', T, { result: 'locked', level: 10 }));
+    const again = LORE_READINESS.unlock(locked, '/accumulo', T + MIN);
+    expect(ready(again, T + MIN)['/accumulo']).toMatchObject({
+      ready: false,
+      until: T + 6 * 60 * MIN,
+      why: 'under the level the bot asks',
+    });
+    // Any other event of the parser's is the shell's to reduce.
+    expect(foldReadiness(rested, at('turn', T, {}))).toBe(rested);
   });
 });

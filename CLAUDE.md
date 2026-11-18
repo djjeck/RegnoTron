@@ -57,10 +57,11 @@ formatting. Address every error before marking a sub-task complete.
   on the owner's computer (its README): its input and its report are never committed, and its tests
   use invented chats.
 - **No automation.** No module imports the shell's actors (`@megabottron1999/turns/player.ts` and
-  `attention.ts`; ESLint refuses them), and nothing here sends a game command. A parser declares its
-  game's commands and their mechanics (its spec's `turnCommands` and `commands`, the shell's
-  bot-os.md D132, D137), which the shell's `player` offers the owner as a checklist: what to play,
-  and whether at all, is the owner's, in their graph.
+  `attention.ts`; ESLint refuses them), and nothing here sends a game command. A parser names its
+  game's commands (its spec's `turnCommands` and `commands`, with their aliases), and a state their
+  mechanics and readiness (`statePlugin`'s `readiness`, or the generic `readinessPlugin`; the
+  shell's bot-os.md D132, D137, D141), which the shell's `player` offers the owner as a checklist,
+  bound to that state: what to play, and whether at all, is the owner's, in their graph.
 - **Modules** (MegaBotTron1999's bot-os.md D49): each `modules/<id>/` has a `module.json` (`id`,
   `version`, `api`, `provides` `@regnotron/<id>`, the modules it `imports` with version ranges, its
   `plugins`) and is also a workspace package of the same name and version, with `exports` `./*` →
@@ -75,8 +76,8 @@ formatting. Address every error before marking a sub-task complete.
   plugin's channel, as its config, and the game bots' turn commands (`/avventura`), named in each
   parser's spec (`turnCommands`, the shell's bot-os.md D70), which a shell `player` plays (README,
   "Configuration the game needs").
-- **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (`v0.1.40`), or to a commit
-  past it when the modules need a change not tagged yet (now `d7661c0`, D140). Never edit it here: a
+- **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (`v0.1.41`), or to a commit
+  past it when the modules need a change not tagged yet (now `ff48ef4`, D141). Never edit it here: a
   change to the shell is made in its repository, and the pin is bumped here (with `npm install` for
   the lockfile) in a commit of its own.
 - **@InventoryBot is read elsewhere:** its parser plugin, `inventorybot`, and its grammar live in

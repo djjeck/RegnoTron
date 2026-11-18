@@ -52,6 +52,7 @@ export async function bootState(
           reads: [DM, GROUP],
         },
         { from: 'loregame.events', to: `${LOREGAME_STATE}.events`, type: 'events' },
+        { from: 'loregame.interface', to: `${LOREGAME_STATE}.parser`, type: 'interface' },
       ],
     };
     fs.mkdirSync(path.join(dir, 'graph'), { recursive: true });
@@ -122,16 +123,21 @@ export async function bootState(
     await settle();
     return id;
   };
-  /** Until when the parser (or another node of its contract) says the bot rests (`state.rest`). */
-  const rest = (node = 'loregame'): unknown => {
-    const r = core.controls.read(node, 'rest');
-    return 'value' in r ? r.value : r;
-  };
-  /** Each command's readiness, as the parser tells a shell player (`state.ready`). */
+  /**
+   * Each command's readiness, as the state tells a shell player (`state.ready`, MegaBotTron1999's
+   * D141).
+   */
   const ready = (): Record<string, { ready: boolean; until?: number; why?: string }> => {
-    const r = core.controls.read('loregame', 'ready');
+    const r = core.controls.read(LOREGAME_STATE, 'ready');
     if ('error' in r) throw new Error(r.error);
     return r.value as Record<string, { ready: boolean; until?: number; why?: string }>;
+  };
+  /** Until when the bot rests, and why, as the state's readiness of the turn (`/lore`) says. */
+  const rest = (): { until: number; why: string } | undefined => {
+    const lore = ready()['/lore'];
+    return lore === undefined || lore.ready || lore.until === undefined
+      ? undefined
+      : { until: lore.until, why: lore.why ?? '' };
   };
   const of = (type: string): BusEvent[] => records.filter((r) => r.type === type);
   return { core, clock, log, account, bot, owner, turn, read, of, settle, group, rest, ready };

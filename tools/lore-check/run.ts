@@ -43,6 +43,7 @@ export async function replayLore(
         // Every chat of the export, from every sender: the group's players are named so.
         { from: 'telegram-user.chat', to: 'loregame.chat', type: 'chat-in', reads: chats },
         { from: 'loregame.events', to: 'loregame-state.events', type: 'events' },
+        { from: 'loregame.interface', to: 'loregame-state.parser', type: 'interface' },
       ],
     },
   });

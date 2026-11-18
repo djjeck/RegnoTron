@@ -33,7 +33,11 @@ describe('the loregame-state node', () => {
     const m = parseManifest(loregameStatePlugin.manifest);
     expect(m.id).toBe('loregame-state');
     expect(m.kinds).toEqual(['stats']);
-    expect(m.inputs).toMatchObject({ events: { type: 'events', namespace: 'loregame' } });
+    expect(m.inputs).toMatchObject({
+      events: { type: 'events', namespace: 'loregame' },
+      // The parser a shell player's sends are handed to (MegaBotTron1999's D141).
+      parser: { type: 'interface', members: ['actions.sent'], bind: { node: 'loregame' } },
+    });
     expect(Object.keys(m.events ?? {})).toEqual([
       'loregame-state.changed',
       'loregame-state.banned',
@@ -51,7 +55,12 @@ describe('the loregame-state node', () => {
       'bans',
       'count',
       'held',
+      // The owner's readiness, for a shell player (D141).
+      'ready',
+      'commands',
+      'bot',
     ]);
+    expect(Object.keys(m.interface.actions ?? {})).toEqual(['sent']);
     expect(m.config?.parse({})).toEqual({ pin: ['inventory.held', 'owner.as_of'] });
     const run = await bootState(dir);
     expect(run.core.graphProblems()).toEqual([]);
@@ -326,8 +335,10 @@ describe('the loregame parser’s accumulo', () => {
   it('declares what the parser publishes, beside the turns', () => {
     const { events } = parseManifest(loregamePlugin.manifest);
     expect(Object.keys(events ?? {})).toEqual([
+      'loregame.sent',
       'loregame.turn',
       'loregame.answer',
+      'loregame.reply',
       'loregame.ban',
       'loregame.unban',
       'loregame.accumulo',
@@ -454,7 +465,10 @@ describe('the accumulo, for a shell player', () => {
   };
 
   it('is declared to the player: unlocked by the bot’s word, ending /lore’s rest when used', () => {
-    const m = parseManifest(loregamePlugin.manifest);
+    // By the state, whose mechanics they are (D141), in the parser's words.
+    expect(parseManifest(loregamePlugin.manifest).botCommands).toBeUndefined();
+    const m = parseManifest(loregameStatePlugin.manifest);
+    expect(m.botUsername).toBe('LoreGameBot');
     // One turn by its name, then its aliases in the owner's order; one accumulo, `/acc` its alias.
     expect(m.botCommands).toEqual([
       { command: '/lore', aliases: ['/avventura', '/l'], turn: true },
@@ -556,7 +570,8 @@ describe('the accumulo, for a shell player', () => {
     // The bot answers /acc in a message of its own; only the parser's watch knows it is the owner's.
     await run.group('alice', '/acc', { own: true });
     await run.group('LoreGameBot', USED);
-    expect(ready(run)).toMatchObject({ ready: false, why: 'used since the bot said it was full' });
+    expect(ready(run)).toMatchObject({ ready: false, why: 'waits for an unlock' });
+    expect(run.ready()['/lore']).toMatchObject({ ready: true });
     // Kept across a restart.
     await run.core.stop();
     const again = await bootState(path.join(dir, 'm'), { group: true });

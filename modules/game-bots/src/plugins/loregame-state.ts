@@ -3,10 +3,16 @@
  * `statePlugin` (its docs/bot-os-api.md §5, bot-os.md D72) from the `loregame` parser's turns, with
  * the reducer of `src/loregame-state.ts`, which says what it keeps and how.
  *
- * - **Its input:** `events`, required, bound to the `loregame` parser's events output (the
- *   namespace `loregame`): `loregame.turn`. It resumes from its cursor in the event log, so nothing
- *   is applied twice, and the turns the parser published while it was down are applied at its next
- *   start.
+ * - **Its inputs:** `events`, required, bound to the `loregame` parser's events output (the
+ *   namespace `loregame`): its turns, sends, answers, bans and accumulo. It resumes from its cursor
+ *   in the event log, so nothing is applied twice, and what the parser published while it was down
+ *   is applied at its next start. `parser`, required, bound to the `loregame` parser's interface:
+ *   the sends a shell player tells it of, handed on (MegaBotTron1999's bot-os.md D141).
+ * - **The owner's readiness** (D141): each of @LoreGameBot's commands' readiness, the section
+ *   `readiness`, which a shell player binds to (`state.ready`, `state.commands`, `state.bot`,
+ *   `actions.sent`): reduced from the parser's events by the shell, with the accumulo's mechanics,
+ *   and the owner's ban and their `/accumulo` answers folded in (`foldReadiness`), so no wrapper of
+ *   the parser's patches it.
  * - **Its sections:** `owner` (when its state last changed, and the owner's name in the bans),
  *   `bans` (the banned players, with when each ban ends) and `inventory` (an estimate: the items
  *   the turns gained, `exact` once a listing says so).
@@ -34,6 +40,7 @@
  * event its reducer refuses is recorded as `loregame-state.refused`.
  */
 import { type Plugin } from '@megabottron1999/core';
+import { type ReadinessState } from '@megabottron1999/turns/readiness.ts';
 import { statePlugin } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
 import {
@@ -42,10 +49,12 @@ import {
   announce,
   banOf,
   CONSUMES,
+  foldReadiness,
   freshness,
   held,
   initialAccumulo,
   initialState,
+  LORE_READINESS,
   LOREGAME_STATE,
   type LoreState,
   PINS,
@@ -70,7 +79,15 @@ const base = statePlugin<Kept>({
   schema: stateSchema,
   initial: initialState() as Kept,
   consumes: CONSUMES,
-  reduce: (state, event) => reduce(state, event) as Kept,
+  // The owner's readiness, the parser's events reduced by the shell (D141); and the facts this
+  // state knows besides, folded in.
+  readiness: LORE_READINESS,
+  reduce: (state, event) => {
+    const next = reduce(state, event) as Kept;
+    const r = next['readiness'] as ReadinessState;
+    const folded = foldReadiness(r, event);
+    return folded === r ? next : { ...next, readiness: folded };
+  },
   freshness,
   events: {
     banned: z

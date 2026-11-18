@@ -143,9 +143,11 @@ a ban is read off any reply of the bot:
 - **The owner's turn** answered with a ban is the outcome `banned` (with its `until`), declared a
   refusal (`reason: banned`, MegaBotTron1999's bot-os.md D98) that holds the bot's commands
   (`LORE_COMMANDS`) back in that chat until `until`, not an `ok`.
-- **The parser's `state.rest` and `state.ready`**, which the shell's `player` asks before each
-  command, say the bot rests, and every command is held, until the owner's ban ends. It never sends
-  into a ban, and plays again at its end, or when the bot serves the owner again.
+- **The owner's readiness in `loregame-state`** (MegaBotTron1999's bot-os.md D141), which the
+  shell's `player` asks before each command (`state.ready`), holds every command until the owner's
+  ban ends: the state folds the owner's `loregame.ban` in, and lifts it on their `loregame.unban`.
+  The player never sends into a ban, and plays again at its end, or when the bot serves the owner
+  again.
 - **`loregame.ban` and `loregame.unban`** are the parser's events for any player, each when a ban
   starts, changes or ends (a banned player's hundred replies are one `ban`): `loregame-state` keeps
   them (§6). The parser keeps the bans it knows across restarts.
@@ -185,15 +187,18 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
 - **`loregame.accumulo`** carries the owner's answers (`result`: `short`, `idle`, `used`, `locked`;
   `count`, `max`, `level`), as the parser's event; the turn's line is `accumulo` in the outcome of
   `loregame.turn`. `loregame-state` counts against them (§6).
-- **Played by the shell's `player`**: the parser declares `/accumulo`, with `/acc` its alias (one
-  command, one state, D140), with its mechanics (D132, D137): unlocked by the bot's own line on a
-  turn (not a pattern on the text, which a quoted story would match), and its use clearing the
-  turns' rest, so the player plays it only while `/lore` rests. A use is the success; "not yet"
-  holds it for the turns still needed (15 minutes each), the gate for 6 hours, "already ready" not
-  at all. The owner's own use, by hand or in the group (where the shell cannot pair it), holds it
-  until the next line. A player in the group (D139): the bot answers its `/accumulo` with a message
-  of its own, so the parser pairs it with the send the player tells it of, declares it the answer
-  (`loregame.accumulo`, with the turns' `holds`), and frees the turns itself.
+- **Played by the shell's `player`**, bound to `loregame-state` (D141): the parser names
+  `/accumulo`, with `/acc` its alias (one command, one state, D140), in its vocabulary, and the
+  state declares its mechanics (D132, D137): unlocked by the bot's own line on a turn (not a pattern
+  on the text, which a quoted story would match), and its use clearing the turns' rest, so the
+  player plays it only while `/lore` rests. A use is the success; "not yet" holds it for the turns
+  still needed (15 minutes each) and withdraws its unlock until the next line, the level gate holds
+  it 6 hours, "already ready" not at all. The owner's own answer, by hand or in the group (where the
+  shell cannot pair it), counts the same: the state folds `loregame.accumulo` into the readiness, a
+  use ending the turns' rest. A player in the group (D139): the bot answers its `/accumulo` with a
+  message of its own, so the parser pairs it with the send the player tells it of (through the
+  state), declares it the answer (`loregame.accumulo`, with the turns' `holds` for the outbox), and
+  the state frees the turn.
 
 **Not read yet**: Stoccaggio itself (the maximum is the one the bot's counter states, else the usual
 20), and the level, which a training or a level-up elsewhere raises without the state hearing.

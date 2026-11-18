@@ -17,8 +17,8 @@
  * them (measured over 5,400 answers: 99.8% within 10 seconds, and the counter then follows the
  * player's own turns in 99% of the readings).
  */
+import { type CommandMechanics } from '@megabottron1999/turns/readiness.ts';
 import {
-  type CommandMechanics,
   isPrivate,
   type TurnOutcome,
   type TurnReading,
@@ -212,11 +212,12 @@ export function accumuloReady(view: AccumuloView): boolean {
 export const ACCUMULO = '/accumulo';
 
 /**
- * Its mechanics, for the shell's player (MegaBotTron1999's bot-os.md D132, D137): it waits for the
- * bot's word that it is full (`unlock`, named by the parser's reading of a turn that carries the
- * line, never matched on the text, which a story may quote), and its success ends the rest of the
- * next `/lore` (`effects`). From that effect the player derives its policy: played only while
- * `/lore` rests, which is when it gains a turn.
+ * Its mechanics, declared on the state's side (`loregame-state`'s readiness, MegaBotTron1999's
+ * bot-os.md D132, D137, D141): it waits for the bot's word that it is full (`unlock`, named by the
+ * parser's reading of a turn that carries the line, never matched on the text, which a story may
+ * quote), and its success ends the rest of the next `/lore` (`effects`). From that effect the
+ * shell's player derives its policy: played only while `/lore` rests, which is when it gains a
+ * turn.
  */
 export const ACCUMULO_MECHANICS: CommandMechanics = {
   unlock: {},
@@ -228,7 +229,8 @@ export const LOCKED_RETRY_MS = 6 * 60 * 60_000;
 
 /**
  * What the bot's answer to the owner's `/accumulo` is to the shell's parser: a use is the success
- * (the accumulo spent, and the rest of the next `/lore` ended, its mechanics' effect); any other
+ * (the accumulo spent, and the rest of the next `/lore` ended: its mechanics' effect in the state,
+ * and announced, so that the outbox's cooldown on the turn ends too, D98, D141); any other
  * answer is a "too soon" (`nothing`, `cooldown`), no success, holding `/accumulo` back as long as
  * it can say: "not yet" for the turns still needed at the bot's rest each, the level gate for
  * `LOCKED_RETRY_MS`, "already ready" (full, nothing to zero, nothing spent) not at all.
@@ -236,7 +238,11 @@ export const LOCKED_RETRY_MS = 6 * 60 * 60_000;
 export function accumuloReading(a: AccumuloReply): Exclude<TurnReading, undefined> {
   const outcome = (o: Record<string, unknown>): TurnOutcome =>
     ({ bot: LOREGAMEBOT, ...o }) as TurnOutcome;
-  if (a.result === 'used') return { outcome: outcome({ kind: 'accumulo', result: 'used' }) };
+  if (a.result === 'used')
+    return {
+      outcome: outcome({ kind: 'accumulo', result: 'used' }),
+      effects: [{ command: '/lore', clear: true }],
+    };
   const tooSoon = outcome({ kind: 'nothing', reason: 'cooldown', ...a });
   if (a.result === 'idle') return { outcome: tooSoon };
   if (a.result === 'locked') return { outcome: tooSoon, restMs: LOCKED_RETRY_MS };

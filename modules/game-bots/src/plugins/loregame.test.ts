@@ -1,13 +1,18 @@
-import { runParser as run, T0 } from '@megabottron1999/turns/test/parser-run.ts';
+import { runParser, T0 } from '@megabottron1999/turns/test/parser-run.ts';
 import { describe, expect, it } from 'vitest';
 import { loregamePlugin } from './loregame.ts';
+import { loregameStatePlugin } from './loregame-state.ts';
+
+/** The parser, with the state that keeps the owner's readiness (MegaBotTron1999's D141). */
+const run = (group?: string) =>
+  runParser(loregamePlugin, {}, group, undefined, loregameStatePlugin);
 
 const GROUP = '-1001000000001';
 const MIN = 60_000;
 
 describe('the loregame parser', () => {
   it("reads replies to alice's turns, by hand or sent by the actor, with the rests", async () => {
-    const p = await run(loregamePlugin, {}, GROUP);
+    const p = await run(GROUP);
     const lore = { sender: 'LoreGameBot' };
     // By hand in the group, addressed to it.
     const hand = p.hear({
@@ -73,7 +78,7 @@ describe('the loregame parser', () => {
   });
 
   it('counts /lore as a turn, as /avventura, in the group and in private', async () => {
-    const p = await run(loregamePlugin, {}, GROUP);
+    const p = await run(GROUP);
     const lore = { sender: 'LoreGameBot' };
     const hand = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/lore@LoreGameBot' });
     p.hear({ ...lore, chat: GROUP, replyTo: hand, text: "Hai ottenuto un'ampolla di nebbia [C]!" });
@@ -87,7 +92,7 @@ describe('the loregame parser', () => {
   });
 
   it('rests a cut-off turn 15 minutes, 30 when the fight it kept was lost', async () => {
-    const p = await run(loregamePlugin, {}, GROUP);
+    const p = await run(GROUP);
     const lore = { sender: 'LoreGameBot' };
     const cut = (fight: string): string =>
       [
@@ -121,7 +126,7 @@ describe('the loregame parser', () => {
   });
 
   it('counts /l, the short alias, as a turn too, in the group and in private', async () => {
-    const p = await run(loregamePlugin, {}, GROUP);
+    const p = await run(GROUP);
     const lore = { sender: 'LoreGameBot' };
     const hand = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/l@LoreGameBot' });
     p.hear({ ...lore, chat: GROUP, replyTo: hand, text: "Hai ottenuto un'ampolla di nebbia [C]!" });

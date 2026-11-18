@@ -29,18 +29,29 @@
  *   announces it: the bot's counter is not our count, a full accumulo is announced before (or
  *   not when) we count it so, or it stops being full without a use seen. The bot's word wins.
  *
+ * - **The owner's readiness** (MegaBotTron1999's bot-os.md D141): when each of the bot's commands
+ *   may be played, which a shell player asks before each, in the section `readiness` the shell's
+ *   `ReadinessModel` (`LORE_READINESS`) reduces from the parser's events, with the accumulo's
+ *   mechanics (src/accumulo.ts); and the facts this state knows besides, folded in by
+ *   `foldReadiness`: the owner's ban holds every command until it ends, and the bot's answer to the
+ *   owner's `/accumulo` in any chat (`loregame.accumulo`, which the shell cannot pair in the group)
+ *   uses it (a use: the turn's rest ended) or withdraws its unlock (not full, or under the level,
+ *   which also holds it for `LOCKED_RETRY_MS`).
+ *
  * Any other outcome (a "too soon", a fight lost, the item lost) changes nothing: the state records
  * facts, and the parser has already read the reply. An item or a player may be named anything
  * (players write them), `__proto__` included, so both are read and written as own properties.
  */
 import { type BusEvent } from '@megabottron1999/core';
+import { ReadinessModel, type ReadinessState } from '@megabottron1999/turns/readiness.ts';
 import { type Announcement, type Mark } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
-import { ACCUMULO_MAX } from '#src/accumulo.ts';
+import { ACCUMULO, ACCUMULO_MAX, ACCUMULO_MECHANICS, LOCKED_RETRY_MS } from '#src/accumulo.ts';
 import {
   ACCUMULO_EVENT,
   BAN_EVENT,
   LOREGAME_PARSER,
+  LOREGAME_VOCABULARY,
   PLAYER_ACCUMULO_EVENT,
   PLAYER_TURN_EVENT,
   UNBAN_EVENT,
@@ -60,6 +71,54 @@ export const CONSUMES: readonly string[] = [
   PLAYER_TURN_EVENT,
   PLAYER_ACCUMULO_EVENT,
 ];
+
+/**
+ * The owner's readiness at @LoreGameBot (D141): the parser's vocabulary, and the accumulo's
+ * mechanics, declared here, on the state's side.
+ */
+export const LORE_READINESS = new ReadinessModel({
+  parser: { id: LOREGAME_PARSER, ...LOREGAME_VOCABULARY },
+  mechanics: { [ACCUMULO]: ACCUMULO_MECHANICS },
+});
+
+/** The key of the owner's ban, and of the level gate, among the readiness's holds. */
+const BAN_HOLD = 'ban';
+const LEVEL_HOLD = 'level';
+
+/**
+ * The facts this state knows besides the parser's answers, folded into the owner's readiness
+ * (D141, pure): the owner's ban holds every command until it ends, or until the bot serves them
+ * again; the bot's answer to the owner's `/accumulo`, wherever it came, uses it or withdraws its
+ * unlock (the level gate also holding it for `LOCKED_RETRY_MS`).
+ */
+export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
+  if ((e.type === BAN_EVENT || e.type === UNBAN_EVENT) && e['owner'] === true) {
+    const until = e['until'];
+    return LORE_READINESS.hold(
+      r,
+      BAN_HOLD,
+      e.type === UNBAN_EVENT
+        ? undefined
+        : {
+            ...(typeof until === 'number' ? { until } : {}),
+            why: 'the owner is banned',
+          }
+    );
+  }
+  if (e.type !== ACCUMULO_EVENT) return r;
+  const result = e['result'];
+  if (result === 'used') return LORE_READINESS.succeed(r, ACCUMULO, e.t);
+  // "Already ready" spends nothing and says it is full: it holds nothing back.
+  if (result !== 'short' && result !== 'locked') return r;
+  const locked = LORE_READINESS.lock(r, ACCUMULO);
+  return result === 'short'
+    ? locked
+    : LORE_READINESS.hold(locked, LEVEL_HOLD, {
+        until: e.t + LOCKED_RETRY_MS,
+        why: 'under the level the bot asks',
+        commands: [ACCUMULO],
+      });
+}
 
 /** The paths of the state its node's panel draws first, and its card's line. */
 export const PINS = ['inventory.held', 'owner.as_of'];

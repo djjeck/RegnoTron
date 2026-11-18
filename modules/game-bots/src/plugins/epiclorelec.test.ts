@@ -1,13 +1,14 @@
 import { runParser as run, T0 } from '@megabottron1999/turns/test/parser-run.ts';
 import { describe, expect, it } from 'vitest';
-import { epiclorelecPlugin } from './epiclorelec.ts';
+import { epiclorelecPlugin, epiclorelecReadyPlugin } from './epiclorelec.ts';
 
 const GROUP = '-1001000000001';
 const MIN = 60_000;
 
 describe('the epiclorelec parser', () => {
   it('reads its count in private and its cooldown where it answers a turn', async () => {
-    const p = await run(epiclorelecPlugin, {}, GROUP);
+    // With its readiness state, which keeps its rest (MegaBotTron1999's D141).
+    const p = await run(epiclorelecPlugin, {}, GROUP, undefined, epiclorelecReadyPlugin);
     const epic = { sender: 'EpicLorelecBot' };
     p.hear({
       ...epic,

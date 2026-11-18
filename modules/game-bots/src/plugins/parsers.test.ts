@@ -12,22 +12,33 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { EPICLORELECBOT, LOREGAMEBOT, TURN_COMMANDS } from '#src/replies.ts';
-import { EPICLORELEC_PARSER, epiclorelecPlugin, plugins as epiclorelec } from './epiclorelec.ts';
+import {
+  EPICLORELEC_PARSER,
+  epiclorelecPlugin,
+  epiclorelecReadyPlugin,
+  plugins as epiclorelec,
+} from './epiclorelec.ts';
 import { LOREGAME_PARSER, loregamePlugin, plugins as loregame } from './loregame.ts';
+import { loregameStatePlugin } from './loregame-state.ts';
 
 describe('the game bots’ parsers', () => {
   it('count their bot’s own turn commands, named in their specs, with no config', () => {
     for (const plugin of [loregamePlugin, epiclorelecPlugin])
       expect(plugin.manifest.config).toBeUndefined();
-    expect([...loregame, ...epiclorelec]).toEqual([loregamePlugin, epiclorelecPlugin]);
+    expect([...loregame, ...epiclorelec]).toEqual([
+      loregamePlugin,
+      epiclorelecPlugin,
+      epiclorelecReadyPlugin,
+    ]);
   });
 
   it('declare one turn each, by the bot’s own command, then /avventura, abbreviations last', () => {
-    // The owner's order (bot-os.md D140): a player takes the first on a tie of reach.
-    expect(epiclorelecPlugin.manifest.botCommands).toEqual([
+    // The owner's order (bot-os.md D140): a player takes the first on a tie of reach. Declared by
+    // the states a player binds to, in their parsers' words (D141).
+    expect(epiclorelecReadyPlugin.manifest.botCommands).toEqual([
       { command: '/rompimiilcazzo', aliases: ['/avventura'], turn: true },
     ]);
-    expect(loregamePlugin.manifest.botCommands?.[0]).toEqual({
+    expect(loregameStatePlugin.manifest.botCommands?.[0]).toEqual({
       command: '/lore',
       aliases: ['/avventura', '/l'],
       turn: true,
