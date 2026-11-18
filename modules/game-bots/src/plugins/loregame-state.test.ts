@@ -476,7 +476,7 @@ describe('the accumulo, for a shell player', () => {
     await run.bot(reply, { replyTo: id });
   };
 
-  it('is declared to the player: unlocked by the bot’s word, ending /lore’s rest when used', () => {
+  it('is declared to the player: unlocked by the bot’s word, and no condition to derive', () => {
     // By the state, whose mechanics they are (D141), in the parser's words.
     expect(parseManifest(loregamePlugin.manifest).botCommands).toBeUndefined();
     const m = parseManifest(loregameStatePlugin.manifest);
@@ -488,7 +488,7 @@ describe('the accumulo, for a shell player', () => {
         command: '/accumulo',
         aliases: ['/acc'],
         unlock: {},
-        effects: [{ command: '/lore', clear: true }],
+        // No effect: the player derives no condition from one; the state keeps the game's rules.
       },
       // The training, its cooldown of a day.
       { command: '/allenati', cooldownMin: 1440 },
@@ -562,13 +562,22 @@ describe('the accumulo, for a shell player', () => {
       outcome: { kind: 'nothing', reason: 'cooldown', result: 'short', count: 17, max: 20 },
       retryAt: run.clock.now() + 45 * MIN,
     });
-    // Full again by a turn's line, and the rest over: the bot says "already ready".
+    // Full again by a turn's line, and legal while the turn rests.
     run.clock.advance(46 * MIN);
     await run.owner('/lore');
     await run.bot(lit('un sasso [B1]'));
+    expect(ready(run)).toMatchObject({ ready: true });
+    // The rest over, it is illegal: the bot would refuse it, with nothing to end.
     run.clock.advance(16 * MIN);
+    expect(run.ready()['/lore']).toMatchObject({ ready: true });
+    expect(ready(run)).toMatchObject({ ready: false, why: '/lore is not resting: nothing to end' });
+    expect(ready(run)).not.toHaveProperty('until');
+    // Sent by hand all the same: "already ready", refused, and nothing spent.
     await play(run, 'La lore è già pronta!\n\nIl tuo accumulo: 20/20');
-    // Still full: nothing was spent.
+    expect(ready(run)).toMatchObject({ ready: false });
+    // The next turn rests, and it is legal again: still full.
+    await run.owner('/lore');
+    await run.bot(gain('un sasso [B1]'));
     expect(ready(run)).toMatchObject({ ready: true });
     await run.core.stop();
   });

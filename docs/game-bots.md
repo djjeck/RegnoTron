@@ -170,12 +170,12 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
   it is `sure` (one copy). A turn cut off at Telegram's limit loses it with its ending.
 - **The answers to `/accumulo`** are four, each the whole message:
 
-| Reply                                                                                       | Means                                                        |
-| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `Accumulo non ancora sufficiente!` and `Il tuo accumulo: <n>/<max>`, after a blank line     | Not yet: `n` of the `max` it needs                           |
-| `La lore è già pronta!` and the same counter                                                | Full, but there is no rest to zero: nothing is spent         |
-| `🔋 IL TUO ACCUMULO SI ATTIVA! Ti senti di nuovo pronto per vivere una nuova storia! /lore` | Used: the rest is zeroed, the count starts again from 0      |
-| `Devi essere almeno di livello 4!`                                                          | Under the level; the sentence is shared with other commands' |
+| Reply                                                                                       | Means                                                         |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `Accumulo non ancora sufficiente!` and `Il tuo accumulo: <n>/<max>`, after a blank line     | Not yet: `n` of the `max` it needs                            |
+| `La lore è già pronta!` and the same counter                                                | Refused: full, but the turn is not resting, so nothing to end |
+| `🔋 IL TUO ACCUMULO SI ATTIVA! Ti senti di nuovo pronto per vivere una nuova storia! /lore` | Used: the rest is zeroed, the count starts again from 0       |
+| `Devi essere almeno di livello 4!`                                                          | Under the level; the sentence is shared with other commands'  |
 
 - **Whose answer it is.** In private it is the owner's. In the group, since 7 Feb 2026 [M] the bot
   no longer replies to the command: the answer is a message of its own that follows it, within 10
@@ -190,14 +190,20 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
 - **Played by the shell's `player`**, bound to `loregame-state` (D141): the parser names
   `/accumulo`, with `/acc` its alias (one command, one state, D140), in its vocabulary, and the
   state declares its mechanics (D132, D137): unlocked by the bot's own line on a turn (not a pattern
-  on the text, which a quoted story would match), and its use clearing the turns' rest, so the
-  player plays it only while `/lore` rests. A use is the success; "not yet" holds it for the turns
-  still needed (15 minutes each) and withdraws its unlock until the next line, the level gate holds
-  it 6 hours, "already ready" not at all. The owner's own answer, by hand or in the group (where the
-  shell cannot pair it), counts the same: the state folds `loregame.accumulo` into the readiness, a
-  use ending the turns' rest. A player in the group (D139): the bot answers its `/accumulo` with a
-  message of its own, so the parser pairs it with the send the player tells it of (through the
-  state), declares it the answer (`loregame.accumulo`), and the state frees the turn.
+  on the text, which a quoted story would match). **It is legal only while `/lore` rests** [M]: the
+  bot refuses it otherwise ("already ready": all 10 such answers in the exports came with the turn
+  free, the last in July 2026, and spent nothing, the accumulo used later with no turn between), and
+  every one of the 1,446 uses it answered came while the turn rested but two, minutes after the rest
+  the state predicted, a turn unseen as likely. So the state reports it not ready while the turn is
+  free (`/lore is not resting: nothing to end`), and declares no effect for the player to derive a
+  condition from: legal, the player plays it at once; illegal, it is not offered. A use is the
+  success, and ends the turns' rest (the state's rule); "not yet" holds it for the turns still
+  needed (15 minutes each) and withdraws its unlock until the next line, the level gate holds it 6
+  hours. The owner's own answer, by hand or in the group (where the shell cannot pair it), counts
+  the same: the state folds `loregame.accumulo` into the readiness, a use ending the turns' rest. A
+  player in the group (D139): the bot answers its `/accumulo` with a message of its own, so the
+  parser pairs it with the send the player tells it of (through the state), declares it the answer
+  (`loregame.accumulo`), and the state frees the turn.
 
 **Not read yet**: Stoccaggio itself (the maximum is the one the bot's counter states, else the usual
 20). The level is read off any level-up the parser can place (§5.4).

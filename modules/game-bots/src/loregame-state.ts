@@ -46,14 +46,20 @@
  *   `foldReadiness`: the owner's ban holds every command until it ends, and the bot's answer to the
  *   owner's `/accumulo` in any chat (`loregame.accumulo`, which the shell cannot pair in the group)
  *   uses it (a use: the turn's rest ended) or withdraws its unlock (not full, or under the level,
- *   which also holds it for `LOCKED_RETRY_MS`).
+ *   which also holds it for `LOCKED_RETRY_MS`). And a rule of the game's over the shell's readiness
+ *   (`LoreReadinessModel`): `/accumulo` is legal only while the turn rests, which is when the bot
+ *   takes it.
  *
  * Any other outcome (a "too soon", a fight lost, the item lost) changes nothing: the state records
  * facts, and the parser has already read the reply. An item or a player may be named anything
  * (players write them), `__proto__` included, so both are read and written as own properties.
  */
 import { type BusEvent } from '@megabottron1999/core';
-import { ReadinessModel, type ReadinessState } from '@megabottron1999/turns/readiness.ts';
+import {
+  type Readiness,
+  ReadinessModel,
+  type ReadinessState,
+} from '@megabottron1999/turns/readiness.ts';
 import { type Announcement, type Mark } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
 import { ACCUMULO, ACCUMULO_MAX, ACCUMULO_MECHANICS, LOCKED_RETRY_MS } from '#src/accumulo.ts';
@@ -94,10 +100,44 @@ export const CONSUMES: readonly string[] = [
  * The owner's readiness at @LoreGameBot (D141): the parser's vocabulary, and the accumulo's and the
  * training's mechanics, declared here, on the state's side.
  */
-export const LORE_READINESS = new ReadinessModel({
+export class LoreReadinessModel extends ReadinessModel {
+  /**
+   * Each command's readiness at `now`, the shell's, with the game's rule over `/accumulo`: it is
+   * legal only while the turn rests (docs/game-bots.md §5.2). The bot refuses it otherwise, "La
+   * lore è già pronta!", and spends nothing: there is no rest to end.
+   */
+  override ready(state: ReadinessState, now: number): Record<string, Readiness> {
+    const r = super.ready(state, now);
+    const accumulo = r[ACCUMULO];
+    if (accumulo?.ready === true && r[this.turn]?.ready === true) {
+      const { since: _, ...seen } = accumulo;
+      r[ACCUMULO] = { ...seen, ready: false, why: `${this.turn} is not resting: nothing to end` };
+    }
+    return r;
+  }
+}
+
+export const LORE_READINESS = new LoreReadinessModel({
   parser: { id: LOREGAME_PARSER, ...LOREGAME_VOCABULARY },
   mechanics: { [ACCUMULO]: ACCUMULO_MECHANICS, [TRAINING]: TRAINING_MECHANICS },
 });
+
+/**
+ * The turn's rest ended at `t`, by a use of the accumulo: the game's rule, which no declared
+ * effect carries (so that the player derives no condition from one). Pure.
+ */
+function endRest(r: ReadinessState, t: number): ReadinessState {
+  const turn = LORE_READINESS.turn;
+  const was = r.commands[turn];
+  if (was?.readyAt === undefined || was.readyAt <= t) return r;
+  return {
+    ...r,
+    commands: {
+      ...r.commands,
+      [turn]: { ...was, readyAt: t, why: `${was.why ?? 'held'}, cut by ${ACCUMULO}` },
+    },
+  };
+}
 
 /** The key of the owner's ban, and of the level gate, among the readiness's holds. */
 const BAN_HOLD = 'ban';
@@ -130,8 +170,10 @@ export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
       : r;
   if (e.type !== ACCUMULO_EVENT) return r;
   const result = e['result'];
-  if (result === 'used') return LORE_READINESS.succeed(r, ACCUMULO, e.t);
-  // "Already ready" spends nothing and says it is full: it holds nothing back.
+  // A use ends the turn's rest, the game's rule.
+  if (result === 'used') return endRest(LORE_READINESS.succeed(r, ACCUMULO, e.t), e.t);
+  // "Already ready" is refused: there was no rest to end, nothing is spent, and the accumulo stays
+  // full. It is illegal until the turn rests (`LoreReadinessModel`), so it holds nothing back here.
   if (result !== 'short' && result !== 'locked') return r;
   const locked = LORE_READINESS.lock(r, ACCUMULO);
   return result === 'short'

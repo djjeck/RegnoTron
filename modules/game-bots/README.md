@@ -103,12 +103,15 @@ beside the turn, ticked by default, with its mechanics:
 
 - **unlocked by the bot's word:** a turn with the bot's own line (one copy) makes it ready; never
   our count, and never a line a story quotes;
-- **its use ends the rest of the next `/lore`:** the player therefore plays it only while `/lore`
-  rests, which is when it gains a turn, and the state lets the `/lore` go at once;
+- **legal only while `/lore` rests:** the bot refuses it otherwise ("La lore è già pronta!", nothing
+  spent), so the state reports it not ready while the turn is free, and ready again at the next
+  turn; there is no condition in the player, which plays it as soon as it is legal;
+- **its use ends the rest of the next `/lore`:** the state lets the `/lore` go at once (the game's
+  rule, kept by the state: no effect is declared, which would make the player derive a condition);
 - **its answers** are `loregame.answer` (`command: "/accumulo"`) where the shell pairs them, and
   `loregame.accumulo`, the owner's, wherever they come: a use is the success; "not yet" holds it for
   the turns the bot's counter says it still needs, at 15 minutes each, and withdraws its unlock
-  until the next line; the level gate holds it 6 hours; "already ready" (nothing spent) not at all;
+  until the next line; the level gate holds it 6 hours; "already ready" is a refusal, nothing spent;
   a ban, like every command, until it ends;
 - **a player that plays in the group** (MegaBotTron1999's D139): the bot answers its `/accumulo`
   with a message of its own, which the shell cannot pair; the parser pairs it itself (the player

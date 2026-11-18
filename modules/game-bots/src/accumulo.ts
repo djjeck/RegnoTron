@@ -125,14 +125,12 @@ export const ACCUMULO = '/accumulo';
  * Its mechanics, declared on the state's side (`loregame-state`'s readiness, MegaBotTron1999's
  * bot-os.md D132, D137, D141): it waits for the bot's word that it is full (`unlock`, named by the
  * parser's reading of a turn that carries the line, never matched on the text, which a story may
- * quote), and its success ends the rest of the next `/lore` (`effects`). From that effect the
- * shell's player derives its policy: played only while `/lore` rests, which is when it gains a
- * turn.
+ * quote). Two more rules are the game's, and `loregame-state` keeps them (`LoreReadinessModel`,
+ * `foldReadiness`): it is **legal only while `/lore` rests** (the bot refuses it otherwise, "La
+ * lore è già pronta!", spending nothing), and its use ends that rest. No `effects` are declared, so
+ * the shell's player derives no condition for it: legal, it is played; not, it is not offered.
  */
-export const ACCUMULO_MECHANICS: CommandMechanics = {
-  unlock: {},
-  effects: [{ command: '/lore', clear: true }],
-};
+export const ACCUMULO_MECHANICS: CommandMechanics = { unlock: {} };
 
 /** How long the level gate holds `/accumulo` back: nothing tells when the owner levels up. */
 export const LOCKED_RETRY_MS = 6 * 60 * 60_000;
