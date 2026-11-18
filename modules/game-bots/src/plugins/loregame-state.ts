@@ -266,6 +266,35 @@ const base = statePlugin<Kept>({
         state: { ...kept.state, players: Object.fromEntries(migrated) },
       });
     },
+    // 0.24.0 knows each player's gear: added, learnt from the equipment of their profile.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const players = kept?.state?.['players'] as
+        Record<string, Record<string, unknown>> | undefined;
+      if (kept?.state === undefined || players === undefined) return;
+      const gearOf = (p: Record<string, unknown>): Record<string, unknown> => {
+        const worn = (p['profile'] as { equipment?: Record<string, unknown> } | null)?.equipment;
+        const gear: Record<string, unknown> = {};
+        for (const [slot, w] of Object.entries(worn ?? {}))
+          if (w !== null && typeof w === 'object' && 'item' in w)
+            Object.defineProperty(gear, String((w as { item: unknown }).item), {
+              value: { slot, level: (w as { level?: unknown }).level ?? null },
+              enumerable: true,
+              writable: true,
+              configurable: true,
+            });
+        return gear;
+      };
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          players: Object.fromEntries(
+            Object.entries(players).map(([name, p]) => [name, { gear: gearOf(p), ...p }])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {

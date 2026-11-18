@@ -1,6 +1,6 @@
 {
   "id": "game-bots",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "api": "1",
   "provides": "@regnotron/game-bots",
   "imports": {},

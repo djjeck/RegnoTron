@@ -66,12 +66,14 @@ import { ACCUMULO, ACCUMULO_MAX, ACCUMULO_MECHANICS, LOCKED_RETRY_MS } from '#sr
 import {
   ACCUMULO_EVENT,
   BAN_EVENT,
+  EQUIPMENT_EVENT,
   LEVEL_UP_EVENT,
   LOREGAME_PARSER,
   LOREGAME_VOCABULARY,
   PLAYER_ACCUMULO_EVENT,
   PLAYER_TURN_EVENT,
   PROFILE_EVENT,
+  SKILLS_EVENT,
   TRAINING_EVENT,
   UNBAN_EVENT,
 } from '#src/plugins/loregame.ts';
@@ -81,6 +83,7 @@ import {
   mismatches,
   move,
   set,
+  skillsBought,
   type StatDrift,
   type Stats,
   STATS_DRIFT_KEPT,
@@ -93,7 +96,7 @@ export const LOREGAME_STATE = 'loregame-state';
 
 /**
  * The parser's events it applies: the owner's turns, the bans, the accumulo, the trainings, the
- * level-ups and the profiles, every player's.
+ * level-ups, the profiles, the skills menus and the equipment, every player's.
  */
 const TURN_EVENT = `${LOREGAME_PARSER}.turn`;
 export const CONSUMES: readonly string[] = [
@@ -106,6 +109,8 @@ export const CONSUMES: readonly string[] = [
   TRAINING_EVENT,
   LEVEL_UP_EVENT,
   PROFILE_EVENT,
+  SKILLS_EVENT,
+  EQUIPMENT_EVENT,
 ];
 
 /**
@@ -342,6 +347,15 @@ const player = z.object({
     .describe(
       'Their stats now: the last profile’s, moved by each command read since (none before a profile)'
     ),
+  gear: z
+    .record(
+      z.string(),
+      z.object({
+        slot: z.enum(['armour', 'amulet', 'weapon']),
+        level: z.object({ low: z.number(), high: z.number() }).nullable(),
+      })
+    )
+    .describe('Their equippable items seen, by name: the slot each goes in, and its level range'),
   stats_drift: z
     .array(
       z.object({
@@ -434,6 +448,7 @@ export function initialPlayer(at: string): Player {
     xp: initialXp(),
     profile: null,
     stats: {},
+    gear: {},
     stats_drift: [],
   };
 }
@@ -522,6 +537,7 @@ const profileSchema = z.looseObject({
 /** What a level-up event says (the parser's `loregame.levelUp`). */
 const levelUpSchema = z.looseObject({
   coins: z.number().optional(),
+  skillPoints: z.number().optional(),
   player: z.string(),
   owner: z.boolean(),
   level: z.number(),
@@ -903,17 +919,192 @@ function playerAfterProfile(p: Player, e: BusEvent): Player {
     location: d.location,
     unread: d.unread,
   };
-  const stats = statsOf(profile, at);
-  const found: StatDrift[] = mismatches(p.stats, stats, e.t, at);
+  const said = statsOf(profile, at);
   return {
-    ...p,
+    ...checked(p, said, e.t, at),
     as_of: at,
     game: { ...p.game, level: d.level },
     accumulo,
     profile,
-    stats,
+    gear: learnt(p.gear, profile.equipment),
+  };
+}
+
+/**
+ * A player after a snapshot of some of their stats (a profile, the skills menu, the slots listed):
+ * each held exactly that it says otherwise kept as a mismatch, then those it says seeded from it,
+ * exact; the others kept as they were.
+ */
+function checked(p: Player, said: Stats, t: number, at: string): Player {
+  const explained = bought(p.stats, said);
+  const found: StatDrift[] = mismatches(p.stats, explained.said, t, at).filter(
+    (d) => !explained.stats.includes(d.stat)
+  );
+  said = explained.said;
+  return {
+    ...p,
+    stats: { ...p.stats, ...said },
     stats_drift:
       found.length === 0 ? p.stats_drift : [...p.stats_drift, ...found].slice(-STATS_DRIFT_KEPT),
+  };
+}
+
+/**
+ * The skills a snapshot says that points spent with the menu's buttons explain (docs/game-bots.md
+ * §5.6): levels only raised, as many as the points left fell (a menu, which says them), or no more
+ * than the points held (a profile, which does not, and then has them spent). Those are no
+ * mismatch; anything else is.
+ */
+function bought(expected: Stats, said: Stats): { said: Stats; stats: string[] } {
+  const n = skillsBought(expected, said);
+  const points = Object.hasOwn(expected, 'skill_points') ? expected['skill_points'] : undefined;
+  if (n === undefined || n === 0 || points?.exact !== true) return { said, stats: [] };
+  const held = Number(points.value);
+  const left = Object.hasOwn(said, 'skill_points') ? said['skill_points'] : undefined;
+  if (left !== undefined)
+    return held - Number(left.value) === n
+      ? { said, stats: ['skills', 'skill_points'] }
+      : { said, stats: [] };
+  if (n > held) return { said, stats: [] };
+  const skills = said['skills'] as Stats[string];
+  return {
+    // The points it spent, from those held: what it explains, not what it says.
+    said: { ...said, skill_points: { value: held - n, exact: true, as_of: skills.as_of } },
+    stats: ['skills', 'skill_points'],
+  };
+}
+
+type Gear = Player['gear'];
+type Worn = NonNullable<Player['profile']>['equipment'];
+const SLOT_NAMES = ['armour', 'amulet', 'weapon'] as const;
+
+/** The gear known, with each item worn in `equipment` learnt: its slot and its level range. */
+function learnt(gear: Gear, equipment: Worn): Gear {
+  let next = gear;
+  for (const slot of SLOT_NAMES) {
+    const worn = equipment[slot];
+    if (worn === null) continue;
+    const was = Object.hasOwn(next, worn.item) ? next[worn.item] : undefined;
+    if (was?.slot === slot && JSON.stringify(was.level) === JSON.stringify(worn.level)) continue;
+    next = { ...next };
+    Object.defineProperty(next, worn.item, {
+      value: { slot, level: worn.level },
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
+  return next;
+}
+
+/** The slot an item's tag says it goes in ("equipaggiabile 🗡"), if one does. */
+function slotOfTags(tags: readonly string[]): (typeof SLOT_NAMES)[number] | undefined {
+  for (const t of tags) {
+    if (!t.startsWith('equipaggiabile ')) continue;
+    if (t.includes('🗡')) return 'weapon';
+    if (t.includes('🩺')) return 'amulet';
+    if (t.includes('🛡') || t.includes('🥋')) return 'armour';
+  }
+  return undefined;
+}
+
+/** What a skills menu event says (the parser's `loregame.skills`). */
+const skillsSchema = z.looseObject({
+  skills: z.array(z.object({ name: z.string(), level: z.number() })),
+  points: z.number(),
+});
+
+/** A player after their skills menu: their skills and points left, checked, then seeded. */
+function playerAfterSkills(p: Player, e: BusEvent): Player {
+  const r = skillsSchema.safeParse(e);
+  if (!r.success) return p;
+  const at = asIso(e.t);
+  const skills: Record<string, number> = {};
+  for (const s of r.data.skills)
+    if (s.level > 0)
+      Object.defineProperty(skills, s.name, {
+        value: s.level,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+  return {
+    ...checked(
+      p,
+      {
+        skills: { value: skills, exact: true, as_of: at },
+        skill_points: { value: r.data.points, exact: true, as_of: at },
+      },
+      e.t,
+      at
+    ),
+    as_of: at,
+  };
+}
+
+/** What an equipment event says (the parser's `loregame.equipment`). */
+const equipSchema = z.looseObject({
+  kind: z.enum(['equipped', 'removed', 'listing']),
+  item: z.string().optional(),
+  removed: z.string().nullable().optional(),
+  equipment: z
+    .object({ armour: equippedSchema, amulet: equippedSchema, weapon: equippedSchema })
+    .optional(),
+});
+
+/**
+ * A player after an answer to their `/equipaggia`: the slots listed, checked and seeded; an item
+ * equipped in the slot of the one it replaced, else in the slot their gear or their drops' tags
+ * say it goes in, with the level range their gear knows; an item taken off, its slot emptied. A
+ * slot or a range the state cannot tell leaves the equipment not exact.
+ */
+function playerAfterEquip(p: Player, e: BusEvent, inventory: LoreState['inventory']): Player {
+  const r = equipSchema.safeParse(e);
+  if (!r.success) return p;
+  const at = asIso(e.t);
+  const d = r.data;
+  if (d.kind === 'listing' && d.equipment !== undefined)
+    return {
+      ...checked(p, { equipment: { value: d.equipment, exact: true, as_of: at } }, e.t, at),
+      as_of: at,
+      gear: learnt(p.gear, d.equipment),
+    };
+  const held = Object.hasOwn(p.stats, 'equipment') ? p.stats['equipment'] : undefined;
+  if (held === undefined || d.item === undefined) return p;
+  const worn = held.value as Worn;
+  const where = (item: string) => SLOT_NAMES.find((s) => worn[s]?.item === item);
+  if (d.kind === 'removed') {
+    const slot = where(d.item);
+    return {
+      ...p,
+      as_of: at,
+      stats: set(
+        p.stats,
+        'equipment',
+        slot === undefined ? worn : { ...worn, [slot]: null },
+        held.exact && slot !== undefined,
+        at
+      ),
+    };
+  }
+  const known = Object.hasOwn(p.gear, d.item) ? p.gear[d.item] : undefined;
+  const holding = Object.hasOwn(inventory.items, d.item) ? inventory.items[d.item] : undefined;
+  const slot =
+    (d.removed === null || d.removed === undefined ? undefined : where(d.removed)) ??
+    known?.slot ??
+    (holding === undefined ? undefined : slotOfTags(holding.tags));
+  return {
+    ...p,
+    as_of: at,
+    stats: set(
+      p.stats,
+      'equipment',
+      slot === undefined
+        ? worn
+        : { ...worn, [slot]: { item: d.item, level: known?.level ?? null } },
+      held.exact && slot !== undefined && known !== undefined,
+      at
+    ),
   };
 }
 
@@ -930,6 +1121,7 @@ function playerAfterLevelUp(p: Player, e: BusEvent): Player {
   // it missed a gain.
   let stats = set(p.stats, 'level', level, true, at);
   stats = move(stats, 'coins', (v) => Number(v) + (u.data.coins ?? 0), true, at);
+  stats = move(stats, 'skill_points', (v) => Number(v) + (u.data.skillPoints ?? 0), true, at);
   const xp = Object.hasOwn(stats, 'xp') ? stats['xp'] : undefined;
   if (xp !== undefined && Number(xp.value) < xpForLevel(level))
     stats = set(stats, 'xp', xpForLevel(level), false, at);
@@ -1003,7 +1195,9 @@ function reducePlayers(state: LoreState, e: BusEvent): LoreState {
     e.type !== PLAYER_ACCUMULO_EVENT &&
     e.type !== TRAINING_EVENT &&
     e.type !== LEVEL_UP_EVENT &&
-    e.type !== PROFILE_EVENT
+    e.type !== PROFILE_EVENT &&
+    e.type !== SKILLS_EVENT &&
+    e.type !== EQUIPMENT_EVENT
   )
     return state;
   const said = playerEventSchema.safeParse(e);
@@ -1017,6 +1211,14 @@ function reducePlayers(state: LoreState, e: BusEvent): LoreState {
   else if (e.type === TRAINING_EVENT) after = playerAfterTraining(before, e);
   else if (e.type === LEVEL_UP_EVENT) after = playerAfterLevelUp(before, e);
   else if (e.type === PROFILE_EVENT) after = playerAfterProfile(before, e);
+  else if (e.type === SKILLS_EVENT) after = playerAfterSkills(before, e);
+  else if (e.type === EQUIPMENT_EVENT)
+    // The owner's drops tell an item's slot by its tag; another player's inventory is not kept.
+    after = playerAfterEquip(
+      before,
+      e,
+      e['owner'] === true ? state.inventory : { held: 0, items: {} }
+    );
   else {
     const a = afterReply(before.accumulo, e);
     if (a !== before.accumulo) after = { ...before, as_of: at, accumulo: a };
@@ -1092,10 +1294,12 @@ export function announce(before: LoreState, after: LoreState, e: BusEvent): Anno
   ];
 }
 
-/** Each stat a profile said otherwise of, for its player. */
+/** Each stat a snapshot (a profile, the skills menu, the slots listed) said otherwise of. */
 function announceStats(before: LoreState, after: LoreState, e: BusEvent): Announcement[] {
   const name = e['player'];
-  if (e.type !== PROFILE_EVENT || typeof name !== 'string') return [];
+  const snapshot =
+    e.type === PROFILE_EVENT || e.type === SKILLS_EVENT || e.type === EQUIPMENT_EVENT;
+  if (!snapshot || typeof name !== 'string') return [];
   // A profile's mismatches carry its time; one already told (a profile at the same second) is not
   // told again.
   const at = asIso(e.t);

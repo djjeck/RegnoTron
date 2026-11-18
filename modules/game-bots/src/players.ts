@@ -19,11 +19,13 @@ import { LOREGAMEBOT, type Outcome, parseLoreGameBot, TURN_COMMANDS } from '#src
 /** How many messages are remembered per watch. */
 const KEPT = 5000;
 
-/** A message heard: who sent it, and the turn command it was, if one (its first word). */
+/** A message heard: who sent it, the turn command it was, if one, and its command's word. */
 interface Said {
   player: string;
   owner: boolean;
   command: string | undefined;
+  /** Its first word if a command (`/equipaggia`), lower case, without the bot it is addressed to. */
+  word: string | undefined;
 }
 
 /** A player's turn, as the bot answered it: a turn read, or a "too soon". */
@@ -36,6 +38,13 @@ export interface PlayerTurn {
 }
 
 /** A turn command's first word, lower case, without the bot it is addressed to. */
+/** A command's first word, lower case, without `@<bot>`; none if not a command, or another bot's. */
+function wordOf(text: string, bot: string): string | undefined {
+  const m = /^(\/\w+)(?:@(\w+))?(?:\s|$)/u.exec(text.trim());
+  if (m === null || (m[2] !== undefined && m[2].toLowerCase() !== bot)) return undefined;
+  return (m[1] as string).toLowerCase();
+}
+
 const commandOf = (text: string, bot: string): string | undefined =>
   isTurnCommand(text, TURN_COMMANDS[LOREGAMEBOT], bot)
     ? (text.trim().split('@')[0] as string).toLowerCase()
@@ -63,6 +72,7 @@ export class PlayerWatch {
           player,
           owner,
           command: commandOf(m.text, this.bot),
+          word: wordOf(m.text, this.bot),
         });
       return undefined;
     }
@@ -82,8 +92,8 @@ export class PlayerWatch {
   whose(chat: string, id: string, self: string | undefined): Omit<Said, 'command'> | undefined {
     const said = this.said.get(`${chat}\n${id}`);
     if (said === undefined) return undefined;
-    if (said.owner) return { player: self ?? said.player, owner: true };
-    return said.player === '' ? undefined : { player: said.player, owner: false };
+    if (said.owner) return { player: self ?? said.player, owner: true, word: said.word };
+    return said.player === '' ? undefined : { player: said.player, owner: false, word: said.word };
   }
 
   /** A command the owner's account sent (`actions.sent`), which it never hears come back. */
@@ -93,6 +103,7 @@ export class PlayerWatch {
       player: self ?? '',
       owner: true,
       command: commandOf(s.command, this.bot),
+      word: wordOf(s.command, this.bot),
     });
   }
 

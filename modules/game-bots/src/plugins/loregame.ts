@@ -33,6 +33,10 @@
  * player on its first line, so any profile of the bot's, in any chat, is published as
  * `loregame.profile` for that player, the owner's when it names the account.
  *
+ * **Skills and equipment** (docs/game-bots.md §5.6, §5.7): the `/abilita` menu and the answers to
+ * `/equipaggia` that change or list the equipment, each the player's whose command it replies to,
+ * as `loregame.skills` and `loregame.equipment`.
+ *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
  * - To the owner's turn, it is an outcome (`banned`, with its `until`), declared a refusal
@@ -62,6 +66,7 @@ import {
   parseAccumulo,
 } from '#src/accumulo.ts';
 import { BanWatch } from '#src/bans.ts';
+import { parseEquip } from '#src/equipment.ts';
 import { PlayerWatch } from '#src/players.ts';
 import { parseProfile } from '#src/profile.ts';
 import {
@@ -72,6 +77,7 @@ import {
   splitLevelUp,
   TURN_COMMANDS,
 } from '#src/replies.ts';
+import { parseSkillMenu } from '#src/skills.ts';
 import {
   parseTraining,
   TRAINING,
@@ -106,6 +112,11 @@ export const UNBAN_EVENT = `${LOREGAME_PARSER}.unban`;
 export const ACCUMULO_EVENT = `${LOREGAME_PARSER}.accumulo`;
 /** The event of every player's level-up the parser can place, the owner's included (§5.4). */
 export const LEVEL_UP_EVENT = `${LOREGAME_PARSER}.levelUp`;
+/** The commands whose answers name nobody, and the events of every player's (§5.6, §5.7). */
+const SKILLS_COMMAND = '/abilita';
+const EQUIP_COMMAND = '/equipaggia';
+export const SKILLS_EVENT = `${LOREGAME_PARSER}.skills`;
+export const EQUIPMENT_EVENT = `${LOREGAME_PARSER}.equipment`;
 /** The event of every player's profile the account reads, the owner's included (§5.5). */
 export const PROFILE_EVENT = `${LOREGAME_PARSER}.profile`;
 /** The event of every player's answer to `/allenati`, the owner's included (§5.3). */
@@ -266,6 +277,47 @@ const profileEvent = z
     "A player's profile (/info, /me), as @LoreGameBot gave it: any player's the account reads"
   );
 
+const skillsEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    skills: z
+      .array(
+        z.object({
+          name: z.string(),
+          level: z.number().describe('0 (Ø) to its max'),
+          max: z.number(),
+          effect: z
+            .object({ value: z.number(), unit: z.enum(['%', '']), what: z.string() })
+            .describe('What it gives at its level, as the bot states it'),
+        })
+      )
+      .describe('Every skill the menu lists, those at no level too'),
+    points: z.number().describe('"Punti disponibili": the points left to spend'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe(
+    "A player's skills menu (/abilita), as @LoreGameBot gave it, before any button pressed"
+  );
+const equipmentEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    kind: z
+      .enum(['equipped', 'removed', 'listing'])
+      .describe('An item equipped (replacing `removed`), taken off, or the slots listed'),
+    item: z.string().optional(),
+    removed: z.string().nullable().optional(),
+    equipment: z
+      .object({ armour: equipped, amulet: equipped, weapon: equipped })
+      .optional()
+      .describe('listing: the three slots'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("What @LoreGameBot's answer to a player's /equipaggia changed, or listed");
+
 const playerTurnEvent = z
   .object({
     chat: z.string(),
@@ -332,6 +384,8 @@ export const loregamePlugin: Plugin = {
       [TRAINING_EVENT]: trainingEvent,
       [LEVEL_UP_EVENT]: levelUpEvent,
       [PROFILE_EVENT]: profileEvent,
+      [SKILLS_EVENT]: skillsEvent,
+      [EQUIPMENT_EVENT]: equipmentEvent,
       [PLAYER_TURN_EVENT]: playerTurnEvent,
       [PLAYER_ACCUMULO_EVENT]: playerAccumuloEvent,
     },
@@ -448,7 +502,28 @@ export const loregamePlugin: Plugin = {
               ? undefined
               : { player: training.player, owner: training.owner };
         if (levelUp !== undefined && by !== undefined)
-          ctx.bus.publish(LEVEL_UP_EVENT, { chat: m.chat, ...by, ...levelUp, ...old }, m.time);
+          ctx.bus.publish(
+            LEVEL_UP_EVENT,
+            { chat: m.chat, player: by.player, owner: by.owner, ...levelUp, ...old },
+            m.time
+          );
+        // The skills menu and the answers to /equipaggia name nobody: they reply to the player's
+        // command, which they are about only if it was that command (a refusal like "Non possiedi
+        // l'oggetto!" is other commands' too, and is not read).
+        const to = (word: string): { player: string; owner: boolean } | undefined => {
+          const w = m.replyTo === undefined ? undefined : players.whose(m.chat, m.replyTo, self);
+          if (w !== undefined)
+            return w.word === word ? { player: w.player, owner: w.owner } : undefined;
+          return isPrivate(m) ? { player: self ?? '', owner: true } : undefined;
+        };
+        const menu = parseSkillMenu(m.text);
+        const menuOf = menu === undefined ? undefined : to(SKILLS_COMMAND);
+        if (menu !== undefined && menuOf !== undefined)
+          ctx.bus.publish(SKILLS_EVENT, { chat: m.chat, ...menuOf, ...menu, ...old }, m.time);
+        const equip = parseEquip(m.text);
+        const equipOf = equip === undefined ? undefined : to(EQUIP_COMMAND);
+        if (equip !== undefined && equipOf !== undefined)
+          ctx.bus.publish(EQUIPMENT_EVENT, { chat: m.chat, ...equipOf, ...equip, ...old }, m.time);
       }
     });
     const turns = instance.interface as TurnParserInterface;

@@ -5,8 +5,10 @@
  * changed. The next profile is checked against them: a stat held exactly that the profile says
  * otherwise is a mismatch (`StatDrift`), and the profile seeds them again. Pure.
  *
- * A stat no command read moves (the equipment, the skills, …) is expected to stay as the profile
- * said, exactly: a mismatch then tells of a command the parser does not read yet.
+ * A stat no command read moves (the company, the titles, …) is expected to stay as the profile said,
+ * exactly: a mismatch then tells of a command the parser does not read yet. A part of a profile (the
+ * skills menu, the slots `/equipaggia` lists) is checked and seeds the stats it says, alone; and
+ * `skill_points`, which the menu says and the profile does not, is kept across a profile.
  */
 
 /** A stat now: its value, whether every change since the profile was seen, and when it changed. */
@@ -98,10 +100,13 @@ function holding(effects: unknown, t: number): string[] {
     .sort();
 }
 
-/** The stats held exactly that a new profile's (`said`, at `t`) say otherwise. */
+/**
+ * The stats held exactly that a snapshot (`said`, at `t`: a profile, or a part of one, as the skills
+ * menu or the slots listed) says otherwise: those it says alone are compared.
+ */
 export function mismatches(expected: Stats, said: Stats, t: number, at: string): StatDrift[] {
   const found: StatDrift[] = [];
-  for (const stat of STATS) {
+  for (const stat of Object.keys(said)) {
     const e = Object.hasOwn(expected, stat) ? expected[stat] : undefined;
     const s = Object.hasOwn(said, stat) ? said[stat] : undefined;
     if (e === undefined || s === undefined || !e.exact) continue;
@@ -112,4 +117,24 @@ export function mismatches(expected: Stats, said: Stats, t: number, at: string):
     if (canonical(a) !== canonical(b)) found.push({ stat, expected: a, said: b, at });
   }
   return found;
+}
+
+/**
+ * How many skill levels a snapshot's skills (`said`) add to those held (`expected`) when it only
+ * raises them (none lowered, none gone): what points spent with the menu's buttons, which the
+ * account does not hear, would explain. Undefined when it says otherwise, or either is not known.
+ */
+export function skillsBought(expected: Stats, said: Stats): number | undefined {
+  const e = Object.hasOwn(expected, 'skills') ? expected['skills'] : undefined;
+  const s = Object.hasOwn(said, 'skills') ? said['skills'] : undefined;
+  if (e === undefined || s === undefined || !e.exact) return undefined;
+  const before = e.value as Record<string, number>;
+  const after = s.value as Record<string, number>;
+  let bought = 0;
+  for (const name of Object.keys(before))
+    if (!Object.hasOwn(after, name) || (after[name] as number) < (before[name] as number))
+      return undefined;
+  for (const [name, level] of Object.entries(after))
+    bought += level - (Object.hasOwn(before, name) ? (before[name] as number) : 0);
+  return bought;
 }

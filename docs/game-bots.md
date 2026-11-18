@@ -245,10 +245,10 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
 
 **What it gives** [M]: the `+<n>` is XP, kept for good (the profile's ⚔️, §5.4, §5.5). The extra is
 not XP: over every interval between the owner's profiles since October, a training with
-`💪🏻 +2 extra` rose their ⚔️ by its `+<n>` alone. It comes with the skill 💪🏻 Calistenico (all 5
-trainings with Calistenico I had `+2 extra`); what it raises is not known yet, since no line of the
-profile moves by it. The `+<n>` has been 10 without a faction, 15 in a faction's gym, 17 since mid
-November.
+`💪🏻 +2 extra` rose their ⚔️ by its `+<n>` alone. It comes with the skill 💪🏻 Calistenico, whose menu
+says what it is: `+2 Forza extra dall'allenamento` a level (§5.6), strength, which no line of the
+profile shows (all 5 trainings with Calistenico I had `+2 extra`). The `+<n>` has been 10 without a
+faction, 15 in a faction's gym, 17 since mid November.
 
 ### 5.4 Level-ups and XP
 
@@ -304,13 +304,65 @@ lines are read by what they say, not where they stand (the season before had the
 | `🎖️ Titoli`, then `  - <title>`                  | Titles: players write them, so they are kept as they are.                                                                                                                                                                                              |
 | `Attualmente in <place> [<code>]`                | Where they are.                                                                                                                                                                                                                                        |
 
-`👤 Configurazioni giocatore` (the settings) also starts with 👤, and is not a profile. **Not known
-yet**: what the skills do, but Calistenico (§5.3) and Stoccaggio (the accumulo's maximum, 20 less
-its level in the season before; one player with Stoccaggio I still had 20 this season).
+`👤 Configurazioni giocatore` (the settings) also starts with 👤, and is not a profile. What each
+skill does, the `/abilita` menu says (§5.6).
 
 **`loregame.profile`** carries every profile the parser reads (`player`, `owner`, and each line's
 value: `company`, `level`, `xp`, `progress`, `alignment`, `episode`, `recipes`, `coins`,
 `obsession`, `equipment`, `skills`, `effects`, `titles`, `location`, `unread`).
+
+### 5.6 The skills menu
+
+`/abilita` [M] answers with a menu, always replying to the command (139 in the exports, every line
+read): each skill a player may raise, those at no level too, then the points left to spend, and the
+buttons to spend them:
+
+```
+🎒 Sciacallaggio II (2/5) +10% Probabilità di trovare oggetti rari
+🖌 Ispirazione Ø (0/5) +0% Probabilità di trovare generatori
+🔋 Stoccaggio I (1/5) -1 Accumulo massimo necessario
+🎯 Ricercato Ø (0/5) +0% Probabilità di incontrare guardiani
+💪🏻 Calistenico I (1/5) +2 Forza extra dall'allenamento
+
+Punti disponibili: 1
+```
+
+A level a step each, the same in every menu since February: Sciacallaggio +5% (+10% in January),
+Creatività, Ispirazione after it (September), +10%, Ricercato +6%, **Stoccaggio −1 to what the
+accumulo needs** (§5.2), **Calistenico +2 strength from each training** (§5.3, since October). `Ø`
+is no level. A level-up gives the points (§5).
+
+**A point is spent with the menu's buttons**, which the bot answers by editing the menu: no message
+of its own, and the account's connector hears no edits, nor anything of a button pressed
+(MegaBotTron1999's `telegram-user` reads new messages alone). So the state learns of a purchase from
+the next menu or profile: a skill raised, as many levels as the points fell (a menu), or no more
+than the points held (a profile, which does not show them, and then has them spent), is a purchase,
+not a mismatch (§6.1). The exports show each message as it was last edited, so the menus they hold
+are the ones after the purchase.
+
+**`loregame.skills`** carries every menu the parser reads, the player's whose `/abilita` it replies
+to (in private, the owner's): each skill (`name`, `level`, `max`, `effect`: `value`, `unit`, `what`)
+and `points`.
+
+### 5.7 `/equipaggia`
+
+`/equipaggia <item>` [M] equips an item, in the slot it goes in, taking off the one there:
+`Hai rimosso <old>!` then `Hai equipaggiato <new>!`, or the latter alone; an item worn already is
+taken off (`Hai rimosso <item>!` alone). Without an item, the bot lists the three slots, as the
+profile does (`Formato non valido! /equipaggia {oggetto}` and the slots). Its refusals change
+nothing: `Non hai il livello necessario…`, `Non possiedi l'oggetto!`,
+`L'oggetto non è equipaggiabile!`, `Hai già equipaggiato questo oggetto!`,
+`Troppi oggetti trovati con quel nome (…)` and its list. Every answer replies to the command (64 in
+the exports; the ones read, every line).
+
+The answer names no slot and no level range: the state takes them from what it saw of the item (the
+slot of the item it replaced; a profile or a listing that showed it worn; the owner's drop's tag,
+`[equipaggiabile 🗡]`), and leaves the equipment not exact when it cannot tell (§6.1).
+
+**`loregame.equipment`** carries every answer that changes or lists the equipment, the player's
+whose `/equipaggia` it replies to (in private, the owner's): `kind` (`equipped`, with `item` and the
+`removed` one; `removed`, with `item`; `listing`, with `equipment`). A refusal is not read: other
+commands' answers share its words.
 
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
@@ -399,13 +451,21 @@ training answer as it does the owner's (§5.2, §5.3, §5.4). Per player:
   (the equipment, the skills, the company, …) stays as the profile said, exact. Before a profile
   there are none. `state.stat({ player?, stat })` answers one, by its dotted path, with its `exact`
   and `as_of`;
+- **their skills and gear** (§5.6, §5.7): the skills menu is a part of a profile, checked and
+  seeding `skills` and `skill_points` (the points left, which the profile does not show and keeps);
+  a level-up adds its points; a purchase the account did not hear (the menu's buttons) is no
+  mismatch. An answer to `/equipaggia` moves `equipment`: the item equipped in the slot of the one
+  it replaced, else the slot their `gear` knows (every item seen worn, by name: its slot and its
+  level range) or the owner's drop's tag says; an item taken off empties its slot. A slot or a range
+  the state cannot tell leaves it not exact. The slots listed are a part of a profile, checked and
+  seeding `equipment`;
 - **their stats' mismatches** (`stats_drift`, the latest ten): each stat held exactly that the next
-  profile says otherwise (`stat`, `expected`, `said`, when), announced live as
-  `loregame-state.statsDrift`; then the profile seeds the stats again. An effect is compared by
+  profile, menu or listing says otherwise (`stat`, `expected`, `said`, when), announced live as
+  `loregame-state.statsDrift`; then it seeds the stats it says again. An effect is compared by
   whether it still holds, not by its end (told to the second). A mismatch tells of a command the
-  parser does not read yet (the coins of the shop and the market, `/abilita`, `/equipaggia`, …), or
-  of a rule the state has wrong. It is the state's own record, not the shell's drift (bot-os.md P5),
-  which counts a parser's unread messages and would pause the players over it.
+  parser does not read yet (the coins of the shop and the market, the company, a recipe, a button
+  pressed, …), or of a rule the state has wrong. It is the state's own record, not the shell's drift
+  (bot-os.md P5), which counts a parser's unread messages and would pause the players over it.
 
 Measured [M] with `npm run lore-check` (tools/lore-check/README.md) on the exports of Oct–Nov 2026,
 every player of the group: the counter the bot gives agrees with the state's in 98% of its readings,
@@ -415,8 +475,9 @@ XP with the state's in 33 of the 34 intervals whose turns were all seen (the one
 training's +15, in private). Every turn seen before the rest was over is explained: after a use of
 the accumulo the account heard (293), a second turn within a minute (§2: 3), or a use in private
 (1). Of the owner's stats, the mismatches the profiles told are the coins (22, the shop and the
-market not read yet), the skills bought, the equipment worn, the company joined, a recipe, the
-Neutralizzato effect, and one turn not seen (its XP and its episode).
+market not read yet), the company joined, a recipe, the Neutralizzato effect, an armour worn without
+a message the account read, and one turn not seen (its XP and its episode); the skills bought are
+each a purchase the next menu explains.
 
 What it keeps of a player is a floor of what they did, and better as they play in the group. A
 player is known by the username the connector gives; one without a username is not kept (the

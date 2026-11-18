@@ -64,15 +64,19 @@ const EPISODE = /^Episodio ([\d.]+)$/u;
 const RECIPES = /^([\d.]+) Ricette completate$/u;
 const COINS = /^([\d.]+) ₭$/u;
 const OBSESSION = /^Ossessionato da (.+) x([\d.]+)$/u;
-const SLOT = /^(Armatura|Amuleto|Arma) \S+ - (.+)$/u;
+/** An equipment slot's line, as the profile and `/equipaggia` write it. */
+export const SLOT = /^(Armatura|Amuleto|Arma) \S+ - (.+)$/u;
 const SKILL = /^\S+ (\S.*) (I|II|III|IV|V)$/u;
 const ITEM = /^\s+- (.+)$/u;
 const LEFT = /^(.+?) \(([^()]+)\)$/u;
 const LOCATION = /^Attualmente in (.+) \[([A-Z]+\d*\+?)\]$/u;
-const SLOTS = { Armatura: 'armour', Amuleto: 'amulet', Arma: 'weapon' } as const;
+/** The slots, by the word the bot writes. */
+export const SLOTS = { Armatura: 'armour', Amuleto: 'amulet', Arma: 'weapon' } as const;
+/** A slot, as the state names it. */
+export type Slot = (typeof SLOTS)[keyof typeof SLOTS];
 
 /** An equipped item, "(vuoto)" none. */
-function equipped(raw: string): Equipped | null {
+export function equipped(raw: string): Equipped | null {
   if (raw === '(vuoto)') return null;
   const range = /^(.+) \((\d+) - (\d+)\)$/u.exec(raw);
   if (range !== null)

@@ -16,6 +16,8 @@ The turns of the group's game bots, read on the turn plugins of `@megabottron199
   whose they are (`TrainingWatch`) and its cooldown of a day (`TRAINING_MECHANICS`);
 - `src/profile.ts`: @LoreGameBot's profile, the answer to `/info` and `/me` (`parseProfile`), and
   its levels' XP (`xpForLevel`, `levelForXp`);
+- `src/skills.ts`: the `/abilita` menu (`parseSkillMenu`); `src/equipment.ts`: the answers to
+  `/equipaggia` (`parseEquip`); `src/stats.ts`: a player's stats now, and their mismatches;
 - `src/answer-watch.ts`: whose answer a message of the bot's own is, in the group, where it replies
   to no command (`AnswerWatch`, which the accumulo's and the training's watches are);
 - `src/plugins/`: the parser plugins of @LoreGameBot and @EpicLorelecBot (`loregame`,
@@ -149,6 +151,12 @@ account; the account's own echo) waits for one answer.
 published as `loregame.profile` for the player its first line names (docs/game-bots.md §5.5): every
 line read, one it cannot read kept in `unread`.
 
+**Skills and equipment.** The `/abilita` menu and the answers to `/equipaggia` that change or list
+the equipment are published as `loregame.skills` and `loregame.equipment`, each the player's whose
+command it replies to (docs/game-bots.md §5.6, §5.7). A point spent with the menu's buttons is not
+heard (the connector hears no edits): the next menu or profile tells it, and the state takes it for
+a purchase.
+
 **Level-ups.** Any message of the bot's that ends in a level-up, whatever brought it, is published
 as `loregame.levelUp` for the player it is about (docs/game-bots.md §5.4): the owner's in private,
 else the sender of the message it replies to, else the player whose training it paired.
@@ -249,11 +257,13 @@ and until when the next waits), their XP seen (`xp`: since their last level-up, 
 level-ups with the XP seen before each), their last profile (`profile`: as the bot gave it, each
 line a stat, queried alone with `state.profile`) and their **stats now** (`stats`: the profile's,
 moved by each command read since, each with whether it is still exact and when it changed, queried
-with `state.stat`). A new profile is checked against the stats held exactly: each it says otherwise
-is kept in `stats_drift` and announced as `loregame-state.statsDrift` (`player`, `owner`, `stat`,
-`expected`, `said`), then seeds them again (docs/game-bots.md §6.1). The parser publishes them as
-`loregame.playerTurn`, `loregame.playerAccumulo`, `loregame.training`, `loregame.levelUp` and
-`loregame.profile`, which needs the group edge to deliver every sender, as the bans do.
+with `state.stat`; the skills menu and the slots listed move them too, and each player's `gear`,
+every item seen worn with its slot and level range, places an item equipped). A new profile, menu or
+listing is checked against the stats held exactly: each it says otherwise is kept in `stats_drift`
+and announced as `loregame-state.statsDrift` (`player`, `owner`, `stat`, `expected`, `said`), then
+seeds them again (docs/game-bots.md §6.1). The parser publishes them as `loregame.playerTurn`,
+`loregame.playerAccumulo`, `loregame.training`, `loregame.levelUp` and `loregame.profile`, which
+needs the group edge to deliver every sender, as the bans do.
 
 `loregame-state.accumuloReady` (`count`, `max`, `via`: `turn` or `reading`), `accumuloUsed` (`turns`
 since the last use, `exact`) and `accumuloDrift` (`kind`, `counted`, `said`, `max`) announce each

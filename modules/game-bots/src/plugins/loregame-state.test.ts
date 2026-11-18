@@ -341,6 +341,8 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.training',
       'loregame.levelUp',
       'loregame.profile',
+      'loregame.skills',
+      'loregame.equipment',
       'loregame.playerTurn',
       'loregame.playerAccumulo',
     ]);
@@ -1083,6 +1085,156 @@ describe('a player’s stats, now', () => {
     expect(again.read('stat', { stat: 'xp' })).toMatchObject({ value: 507, exact: false });
     expect(again.read('stat', { stat: 'coins' })).toMatchObject({ value: 50, exact: true });
     expect(again.read('player', { name: 'alice' })).not.toHaveProperty('xp.total');
+    await again.core.stop();
+  });
+});
+
+describe('skills and equipment, as /abilita and /equipaggia answer', () => {
+  const PROFILE = [
+    '👤 alice',
+    '',
+    '👥 Nessuna azienda',
+    '',
+    'Livello 4 (500 ⚔️)',
+    '▓░░░░░░░░░ 6.20%',
+    '',
+    'Il Bene 😇',
+    'Episodio 100',
+    '0 Ricette completate',
+    '50 ₭',
+    '',
+    'Armatura 🛡 - una pentola (2 - 6)',
+    'Amuleto 🩺 - (vuoto)',
+    'Arma 🗡 - un mestolo (4)',
+    '',
+    '🎒 Sciacallaggio II',
+    '',
+    '',
+    'Attualmente in Altrove [M1]',
+  ].join('\n');
+  const MENU = (sciacallaggio: string, points: number) =>
+    [
+      `🎒 Sciacallaggio ${sciacallaggio} (${sciacallaggio === 'III' ? 3 : 2}/5) +10% Probabilità di trovare oggetti rari`,
+      '🔋 Stoccaggio Ø (0/5) -0 Accumulo massimo necessario',
+      '',
+      `Punti disponibili: ${points}`,
+    ].join('\n');
+  /** A command of the owner's in the group, and the bot's answer replying to it. */
+  const play = async (
+    run: Awaited<ReturnType<typeof bootState>>,
+    command: string,
+    answer: string
+  ) => {
+    const id = await run.group('alice', command, { own: true });
+    await run.group('LoreGameBot', answer, { replyTo: id });
+  };
+
+  it('moves the equipment by each answer, in the slot the gear or the item replaced tells', async () => {
+    const run = await bootState(path.join(dir, 'x1'), { group: true });
+    await run.owner('/me');
+    await run.bot(PROFILE);
+    const worn = () => run.read('stat', { stat: 'equipment' });
+    // A known item replacing another: its slot, its range.
+    await play(run, '/equipaggia mestolo', 'Hai equipaggiato un mestolo!');
+    expect(worn()).toMatchObject({ exact: true });
+    // A new item replacing the weapon: the weapon's slot, its range not known yet.
+    await play(
+      run,
+      '/equipaggia spatola',
+      'Hai rimosso un mestolo!\nHai equipaggiato una spatola!'
+    );
+    expect(worn()).toMatchObject({
+      value: { weapon: { item: 'una spatola', level: null }, armour: { item: 'una pentola' } },
+      exact: false,
+    });
+    expect(run.of('loregame.equipment').at(-1)).toMatchObject({
+      player: 'alice',
+      owner: true,
+      kind: 'equipped',
+      removed: 'un mestolo',
+    });
+    // The slots listed: checked against what was held exactly (nothing now), and seeded.
+    await play(
+      run,
+      '/equipaggia',
+      'Formato non valido! /equipaggia {oggetto}\n\nArmatura 🛡 - una pentola (2 - 6)\nAmuleto 🩺 - (vuoto)\nArma 🗡 - una spatola (1 - 3)'
+    );
+    expect(worn()).toMatchObject({
+      value: { weapon: { item: 'una spatola', level: { low: 1, high: 3 } } },
+      exact: true,
+    });
+    // Taken off: its slot empty, still exact.
+    await play(run, '/equipaggia pentola', 'Hai rimosso una pentola!');
+    expect(worn()).toMatchObject({ value: { armour: null }, exact: true });
+    // A refusal, or an answer to another command, changes nothing.
+    await play(run, '/equipaggia sasso', "Non possiedi l'oggetto!");
+    await play(run, '/usa pentola', 'Hai equipaggiato una pentola!');
+    expect(worn()).toMatchObject({ value: { armour: null }, exact: true });
+    // The next profile disagrees on the armour: told.
+    await run.owner('/me');
+    await run.bot(PROFILE.replace('Arma 🗡 - un mestolo (4)', 'Arma 🗡 - una spatola (1 - 3)'));
+    expect(run.of('loregame-state.statsDrift')).toMatchObject([
+      { stat: 'equipment', expected: { armour: null }, said: { armour: { item: 'una pentola' } } },
+    ]);
+    await run.core.stop();
+  });
+
+  it('checks and seeds the skills and the points left by the menu, and counts a level-up’s', async () => {
+    const run = await bootState(path.join(dir, 'x2'), { group: true });
+    await run.owner('/me');
+    await run.bot(PROFILE);
+    await play(run, '/abilita', MENU('II', 1));
+    expect(run.of('loregame.skills').at(-1)).toMatchObject({ player: 'alice', points: 1 });
+    expect(run.read('stat', { stat: 'skill_points' })).toMatchObject({ value: 1, exact: true });
+    expect(run.read('stat', { stat: 'skills' })).toMatchObject({ value: { Sciacallaggio: 2 } });
+    expect(run.of('loregame-state.statsDrift')).toEqual([]);
+    // A level-up gives a point; the menu replying to another command is not read.
+    await run.bot(
+      'Hai finito una ricetta!\n\n🎉 Congratulazioni, hai raggiunto il livello 5! 🎉\nOttieni:\n> 50 monete\n> 1 punto /abilita'
+    );
+    expect(run.read('stat', { stat: 'skill_points' })).toMatchObject({ value: 2 });
+    await play(run, '/info', MENU('III', 0));
+    expect(run.read('stat', { stat: 'skill_points' })).toMatchObject({ value: 2 });
+    // A point spent with the buttons, which the account does not hear: the next menu shows a level
+    // more and a point less, a purchase, not a mismatch.
+    const skillDrift = () =>
+      run
+        .of('loregame-state.statsDrift')
+        .filter((d) => d['stat'] === 'skills' || d['stat'] === 'skill_points');
+    await play(run, '/abilita', MENU('III', 1));
+    expect(skillDrift()).toEqual([]);
+    expect(run.read('stat', { stat: 'skills' })).toMatchObject({ value: { Sciacallaggio: 3 } });
+    // The last point spent, told by a profile alone: the points follow, exact.
+    await run.owner('/me');
+    await run.bot(PROFILE.replace('Sciacallaggio II', 'Sciacallaggio IV'));
+    expect(skillDrift()).toEqual([]);
+    expect(run.read('stat', { stat: 'skill_points' })).toMatchObject({ value: 0, exact: true });
+    // Points the state cannot explain: a mismatch.
+    await play(run, '/abilita', MENU('III', 4));
+    expect(skillDrift()).toMatchObject([
+      { stat: 'skills', expected: { Sciacallaggio: 4 }, said: { Sciacallaggio: 3 } },
+      { stat: 'skill_points', expected: 0, said: 4 },
+    ]);
+    await run.core.stop();
+  });
+
+  it('adds the gear to the players of a state kept before there was any (0.23.0)', async () => {
+    const dir2 = path.join(dir, 'x3');
+    const run = await bootState(dir2);
+    await run.owner('/me');
+    await run.bot(PROFILE);
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    delete kept.state.players.alice.gear;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 8 }));
+    const again = await bootState(dir2);
+    expect(again.read('get', { path: 'players.alice.gear' })).toEqual({
+      'una pentola': { slot: 'armour', level: { low: 2, high: 6 } },
+      'un mestolo': { slot: 'weapon', level: { low: 4, high: 4 } },
+    });
     await again.core.stop();
   });
 });
