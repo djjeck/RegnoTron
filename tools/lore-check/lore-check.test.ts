@@ -2,7 +2,7 @@ import { type Inbound } from '@megabottron1999/core';
 import { describe, expect, it } from 'vitest';
 import { CHECKS, report } from './checks.ts';
 import { parseArgs, standIns, USAGE } from './cli.ts';
-import { replayLore } from './run.ts';
+import { mergeRenamedChats, replayLore } from './run.ts';
 
 // An invented chat (CLAUDE.md, "Test data is synthetic"): the bot's phrases are the game's.
 const T0 = Date.parse('2026-11-06T12:00:00Z');
@@ -223,6 +223,24 @@ describe('the lore check', () => {
     expect(row('… by verdict', 0)).toBe('agrees ×1, off by +1 ×1');
     // XP: tested where every turn was seen alone.
     expect(row('with every turn seen')).toBe('1 of 1 (100.0%)');
+  });
+
+  it('takes a group renamed between two exports as one chat, each message once', () => {
+    const before = Array.from({ length: 12 }, (_, i) => say(i, 'bob', `messaggio ${i}`));
+    // The later export, titled anew, holds the last ten again, and two more.
+    const after = [...before.slice(2), say(20, 'bob', 'dopo'), say(21, 'bob', 'ancora')].map(
+      (m) => ({ ...m, chat: 'Il Gruppo, rinominato' })
+    );
+    const elsewhere = say(5, 'bob', 'altrove', { chat: '@LoreGameBot', private: true });
+    const merged = mergeRenamedChats([...before, ...after, elsewhere]);
+    expect(merged).toHaveLength(15);
+    expect(new Set(merged.map((m) => m.chat))).toEqual(new Set([GROUP, '@LoreGameBot']));
+    // Fewer shared than the threshold: two chats, as they are.
+    const few = mergeRenamedChats([
+      ...before.slice(0, 3),
+      ...before.slice(0, 3).map((m) => ({ ...m, chat: 'Altro' })),
+    ]);
+    expect(new Set(few.map((m) => m.chat))).toEqual(new Set([GROUP, 'Altro']));
   });
 
   it('reads its command line, and says what it needs', () => {

@@ -13,11 +13,15 @@ npm run lore-check -- <export folder>… --owner "<your display name>" --usernam
 - **The exports:** folders of Telegram Desktop exports, HTML or JSON, read by MegaBotTron1999's
   `@megabottron1999/telegram-export` (its docs/telegram-export.md): the private chat with the bot
   and the game's group together, as the account sees them, since the state is one, whatever the
-  chat. Overlapping exports are merged. A macOS HTML export has no UTC offset: its dates are read in
-  `--time-zone`, this computer's by default.
-- **Who is who:** your messages, by your display name in the exports (`--owner`, repeatable), are
-  the account's own, under `--username`; the private chat with the bot is the one titled with its
-  name (`--bot`). The exports have no usernames, so each player is known by their display name.
+  chat. Overlapping exports are merged. A group renamed between two exports is one chat: an export
+  names a chat by its title when it was made, and gives no id, so two titles that share messages
+  (the same id, sender and text, ten at least) are taken as one, and each message is replayed once
+  (`mergeRenamedChats`). A macOS HTML export has no UTC offset: its dates are read in `--time-zone`,
+  this computer's by default.
+- **Who is who:** your messages, by your display name in the exports (`--owner`, repeatable: give
+  each name you had over the exports' span, since an export shows the one you had when it was made),
+  are the account's own, under `--username`; the private chat with the bot is the one titled with
+  its name (`--bot`). The exports have no usernames, so each player is known by their display name.
 - **The replay:** MegaBotTron1999's `replay` (its bot-os.md D131), on the dev kit's clock, every
   chat read from every sender: rests, answers and the stores behave as they do live.
 - **The report** is printed; the players are shown as P1, P2, … unless `--names`, so that it can be

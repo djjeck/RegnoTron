@@ -42,12 +42,10 @@ form (NFC).
 - **15 minutes** after a turn, for each of the three [M].
 - **@LoreGameBot: 30 minutes after a fight lost** [M] (about 4% of its turns).
 - **@LoreGameBot: a second turn within a minute** [M]: a turn command sent within a minute of a turn
-  is answered at times as a turn of its own, not a "too soon": most often a `/lore` after an
-  `/avventura` (226 of 236 within a minute, Oct–Nov 2026), less often the same command again; never
-  a `/avventura` after a `/lore` in the exports. After a minute the rest holds (33 of 34). The bot
-  answers within a second, so it is not a race of two commands; nor is it the bot catching up after
-  a disconnection (its delayed answers explain at most 6 of them). The rest then runs from the
-  second turn.
+  is answered at times as a turn of its own, not a "too soon": 24 times in Oct–Nov 2026, 22 of them
+  an `/avventura`. The rest then runs from the second turn. Far more turns come within a minute of
+  the last after an `/accumulo` the player sent between the two (291 of 315), which ends the rest
+  (§5.2); an earlier count, 226 of 236 `/lore` after an `/avventura`, took those for second turns.
 - A turn sent too soon gets the bot's "too soon", with the wait left, which the parsers read:
   - @InventoryBot:
     `Troppo presto, devi riposare ancora per 9 minuti e 29 secondi prima di poterti avventurare…`
@@ -410,13 +408,15 @@ training answer as it does the owner's (§5.2, §5.3, §5.4). Per player:
   which counts a parser's unread messages and would pause the players over it.
 
 Measured [M] with `npm run lore-check` (tools/lore-check/README.md) on the exports of Oct–Nov 2026,
-every player of the group: the counter the bot gives agrees with the state's in 97% of its readings,
+every player of the group: the counter the bot gives agrees with the state's in 98% of its readings,
 and a "too soon" with the rest predicted in 99%; a training's "too soon" with the day predicted in
-98% (the rest are trainings in private); a profile's level with its XP in all 104 of them, and its
-XP with the state's in 30 of the 31 intervals whose turns were all seen. A profile's episodes are
-short of the turns the state saw in 3 of 91 intervals, by 1 to 17: turns counted that the game did
-not, not explained yet. Every turn seen before the rest was over is explained: after a use of the
-accumulo the account heard, a second turn within a minute (§2), or, rarely, a use in private.
+98% (the rest are trainings in private); a profile's level with its XP in all 103 of them, and its
+XP with the state's in 33 of the 34 intervals whose turns were all seen (the one apart by a
+training's +15, in private). Every turn seen before the rest was over is explained: after a use of
+the accumulo the account heard (293), a second turn within a minute (§2: 3), or a use in private
+(1). Of the owner's stats, the mismatches the profiles told are the coins (22, the shop and the
+market not read yet), the skills bought, the equipment worn, the company joined, a recipe, the
+Neutralizzato effect, and one turn not seen (its XP and its episode).
 
 What it keeps of a player is a floor of what they did, and better as they play in the group. A
 player is known by the username the connector gives; one without a username is not kept (the

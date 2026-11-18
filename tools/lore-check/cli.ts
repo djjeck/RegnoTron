@@ -10,7 +10,7 @@
 import { readExportPaths } from '@megabottron1999/telegram-export/files.ts';
 import { toInbounds } from '@megabottron1999/telegram-export/inbound.ts';
 import { CHECKS, report } from './checks.ts';
-import { replayLore } from './run.ts';
+import { mergeRenamedChats, replayLore } from './run.ts';
 
 interface Args {
   paths: string[];
@@ -85,12 +85,15 @@ async function main(argv: readonly string[]): Promise<number> {
   const senders: Record<string, string> = {};
   for (const m of messages) if (m.sender !== null) senders[m.sender] = m.sender;
   senders[a.bot] = 'LoreGameBot';
-  const inbounds = toInbounds(messages, {
-    owner: { username: a.username, names: a.owner },
-    // The private chat with the bot is titled with its name.
-    chats: { [a.bot]: { chat: '@LoreGameBot', private: true } },
-    senders,
-  }).filter((m) => a.since === undefined || m.time >= a.since);
+  // A group renamed between two exports is one chat, its messages once.
+  const inbounds = mergeRenamedChats(
+    toInbounds(messages, {
+      owner: { username: a.username, names: a.owner },
+      // The private chat with the bot is titled with its name.
+      chats: { [a.bot]: { chat: '@LoreGameBot', private: true } },
+      senders,
+    })
+  ).filter((m) => a.since === undefined || m.time >= a.since);
   console.error(`replaying ${inbounds.length} messages…`);
   const run = await replayLore(inbounds, {
     self: a.username,
