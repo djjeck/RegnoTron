@@ -76,10 +76,10 @@ formatting. Address every error before marking a sub-task complete.
   plugin's channel, as its config, and the game bots' turn commands (`/avventura`), named in each
   parser's spec (`turnCommands`, the shell's bot-os.md D70), which a shell `player` plays (README,
   "Configuration the game needs").
-- **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (`v0.1.46`, D144: a message's
-  edits), or to a commit past it when the modules need a change not tagged yet (now `2cdb371`, D145:
-  a message's buttons). Never edit it here: a change to the shell is made in its repository, and the
-  pin is bumped here (with `npm install` for the lockfile) in a commit of its own.
+- **The shell** is the submodule, pinned to a tag of MegaBotTron1999 (now `v0.1.47`, D145: a
+  message's buttons), or to a commit past it when the modules need a change not tagged yet. Never
+  edit it here: a change to the shell is made in its repository, and the pin is bumped here (with
+  `npm install` for the lockfile) in a commit of its own.
 - **@InventoryBot is read elsewhere:** its parser plugin, `inventorybot`, and its grammar live in
   [InventoryBotTron](https://github.com/djjeck/InventoryBotTron); nothing here imports it.
 - **Coverage stays at or above 90%** on statements, branches, functions and lines, for the whole and
