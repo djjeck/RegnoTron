@@ -52,6 +52,7 @@ describe('the loregame-state node', () => {
       'ban',
       'accumulo',
       'player',
+      'profile',
       'bans',
       'count',
       'held',
@@ -337,6 +338,7 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.accumulo',
       'loregame.training',
       'loregame.levelUp',
+      'loregame.profile',
       'loregame.playerTurn',
       'loregame.playerAccumulo',
     ]);
@@ -914,6 +916,96 @@ describe('a level-up, whatever brought it', () => {
     expect(again.read('player', { name: 'bob' })).toMatchObject({
       turns: 1,
       xp: { seen: 0, since_level: null, level_ups: [] },
+    });
+    await again.core.stop();
+  });
+});
+
+describe('a profile, any player’s', () => {
+  const PROFILE = (player: string, level: number, xp: number) =>
+    [
+      `👤 ${player}`,
+      '',
+      '👥 Nessuna azienda',
+      '',
+      `Livello ${level} (${xp} ⚔️)`,
+      '▓░░░░░░░░░ 10.00%',
+      '',
+      'Il Bene 😇',
+      'Episodio 1.200',
+      '0 Ricette completate',
+      '1.250 ₭',
+      '',
+      'Armatura 🛡 - (vuoto)',
+      'Amuleto 🩺 - (vuoto)',
+      'Arma 🗡 - una spatola (3 - 8)',
+      '',
+      '🔋 Stoccaggio II',
+      '',
+      '🎭 Effetti',
+      '  - Neutralizzato (2 ore)',
+      '',
+      '',
+      'Attualmente in Il Bosco Inventato ⛅️ [B1]',
+    ].join('\n');
+
+  it('is kept for the player it names, each stat queried alone, and sets their level and XP', async () => {
+    const run = await bootState(path.join(dir, 'v1'), { group: true });
+    // Bob's, which the owner asked for in the group: it names him.
+    const asked = await run.group('alice', '/info bob', { own: true });
+    await run.group('LoreGameBot', PROFILE('bob', 3, 233), { replyTo: asked });
+    expect(run.of('loregame.profile')).toMatchObject([{ player: 'bob', owner: false, xp: 233 }]);
+    expect(run.read('profile', { player: 'bob', stat: 'level' })).toBe(3);
+    expect(run.read('profile', { player: 'bob', stat: 'equipment.weapon.level' })).toEqual({
+      low: 3,
+      high: 8,
+    });
+    expect(run.read('profile', { player: 'bob', stat: 'skills.Stoccaggio' })).toBe(2);
+    expect(run.read('profile', { player: 'bob', stat: 'effects' })).toEqual([
+      { name: 'Neutralizzato', until: new Date(T0 + 2 * 60 * MIN).toISOString() },
+    ]);
+    expect(run.read('profile', { player: 'bob', stat: 'nothing.such' })).toBeNull();
+    expect(run.read('profile', { player: 'nobody' })).toBeNull();
+    expect(run.read('player', { name: 'bob' })).toMatchObject({
+      game: { level: 3 },
+      xp: { total: 233, exact: true },
+      accumulo: { locked: 4 },
+    });
+    // Unnamed, the owner's: theirs, in private, names the account.
+    expect(run.read('profile', { stat: 'coins' })).toBeNull();
+    await run.owner('/me');
+    await run.bot(PROFILE('alice', 4, 500));
+    expect(run.of('loregame.profile').at(-1)).toMatchObject({ player: 'alice', owner: true });
+    expect(run.read('profile', { stat: 'coins' })).toBe(1250);
+    expect(run.read('get', { path: 'owner.name' })).toBe('alice');
+    // A turn of theirs since moves their XP: 1, its win's "+N" besides.
+    const turn = await run.group('alice', '/lore', { own: true });
+    await run.group('LoreGameBot', gain('un sasso [B1]'), { replyTo: turn });
+    expect(run.read('player', { name: 'alice' })).toMatchObject({
+      xp: { total: 501, exact: true },
+    });
+    await run.core.stop();
+  });
+
+  it('adds the profiles to the players of a state kept before there were any (0.21.1)', async () => {
+    const dir2 = path.join(dir, 'v2');
+    const run = await bootState(dir2, { group: true });
+    const bobs = await run.group('bob', '/lore');
+    await run.group('LoreGameBot', gain('un sasso [B1]'), { replyTo: bobs });
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    delete kept.state.players.bob.profile;
+    delete kept.state.players.bob.xp.total;
+    delete kept.state.players.bob.xp.exact;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 6 }));
+    const again = await bootState(dir2, { group: true });
+    expect(again.read('player', { name: 'bob' })).toMatchObject({
+      turns: 1,
+      profile: null,
+      xp: { total: null, exact: false, seen: 1 },
     });
     await again.core.stop();
   });

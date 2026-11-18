@@ -29,7 +29,9 @@
  * - **The players** (`state.player({ name })`): every player's turns the account reads, the
  *   owner's included, kept by username: their name and level in the game, their turns seen, those a
  *   "too soon" told of (played in their private chat, which the account does not read), their rest,
- *   their accumulo, their trainings, their XP and level-ups, each a floor of what they did
+ *   their accumulo, their trainings, their XP and level-ups, and their last profile
+ *   (`state.profile({ player?, stat? })`: whole, or one stat by its dotted path), each a floor of
+ *   what they did
  *   (src/players.ts).
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
@@ -62,6 +64,7 @@ import {
   type LoreState,
   PINS,
   playerOf,
+  profileOf,
   reduce,
   stateSchema,
 } from '#src/loregame-state.ts';
@@ -205,6 +208,29 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.22.0 kept no profiles, and XP without its total: each player's added, none known.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const players = kept?.state?.['players'] as
+        Record<string, Record<string, unknown>> | undefined;
+      if (kept?.state === undefined || players === undefined) return;
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          players: Object.fromEntries(
+            Object.entries(players).map(([name, p]) => [
+              name,
+              {
+                profile: null,
+                ...p,
+                xp: { total: null, exact: false, ...(p['xp'] as object | undefined) },
+              },
+            ])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -232,6 +258,12 @@ const base = statePlugin<Kept>({
       input: z.object({ name: z.string() }),
       output: z.looseObject({ turns: z.number(), unseen: z.number() }).nullable(),
       run: (s, input: { name: string }) => playerOf(s, input.name),
+    },
+    profile: {
+      help: "A player's last profile (/info), the owner's unless named: whole, or one stat by its dotted path (level, xp, coins, skills.Stoccaggio, equipment.weapon.level); none if not known",
+      input: z.object({ player: z.string().optional(), stat: z.string().optional() }),
+      output: z.unknown(),
+      run: (s, input: { player?: string; stat?: string }) => profileOf(s, input.player, input.stat),
     },
     bans: {
       help: 'Every banned player, with when their ban ends and when it was told',

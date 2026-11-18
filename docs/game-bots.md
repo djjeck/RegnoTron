@@ -101,7 +101,7 @@ up to 17 Nov 2026. A reply, in order:
 | `Il combattimento inizia...`                                  | Opens the fight.                                                                                                                                                                   | each encounter       |
 | `⚡️ <player> [L<n>] attiva il potere di <item> ⚡️!`           | One per equipped item whose power fires, before the fight's line.                                                                                                                  | 4% of the fights     |
 | `<player> [L<n>] sconfigge <enemy> [L<n>]!`                   | The fight is won. The player is named by their game name and level, which the line gives and no other does.                                                                        | 2/3 of the fights    |
-| ` Hai imparato qualcosa di nuovo... (+<n>)`                   | Ends a won fight's line, most of the time. Not the level bar's points: it does not add up to them [?].                                                                             | 3/4 of the wins      |
+| ` Hai imparato qualcosa di nuovo... (+<n>)`                   | Ends a won fight's line, most of the time: the XP the win gives besides the turn's (§5.4).                                                                                         | 3/4 of the wins      |
 | `<enemy> [L<n>] sconfigge <player> [L<n>]!`                   | The fight is lost, then `Torni a casa dolorante e a mani vuote...` (a rest of 30 minutes, §2).                                                                                     | 1/3 of the fights    |
 | `Nessuno dei due sembra avere la meglio...`                   | A draw, then `L'oggetto si perde nello scontro...`: the item is lost.                                                                                                              | 1.6% of the fights   |
 | `Hai ottenuto [<n>x ]<item> [(<a> - <b>) ]<rarity>[ <tag>…]!` | The gain. `<n>x` is how many (1 without); `(a - b)` follows an equippable item's name, two numbers whose meaning is unknown [?]; the tags are `[usabile]`, `[equipaggiabile 🗡]`, … | 72% of the turns     |
@@ -245,8 +245,12 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
   state folds the owner's `loregame.training` into the readiness, and declares it the command's
   answer to the outbox.
 
-**Not read yet**: where the extra comes from. The `+<n>` is XP (§5.4): in one clean case the
-profile's ⚔️ rose by a training's +15 within three minutes, with no turn between.
+**What it gives** [M]: the `+<n>` is XP, kept for good (the profile's ⚔️, §5.4, §5.5). The extra is
+not XP: over every interval between the owner's profiles since October, a training with
+`💪🏻 +2 extra` rose their ⚔️ by its `+<n>` alone. It comes with the skill 💪🏻 Calistenico (all 5
+trainings with Calistenico I had `+2 extra`); what it raises is not known yet, since no line of the
+profile moves by it. The `+<n>` has been 10 without a faction, 15 in a faction's gym, 17 since mid
+November.
 
 ### 5.4 Level-ups and XP
 
@@ -261,11 +265,54 @@ no one's (none since October: all 21 placed [M]). The turn's and the training's 
 the level-up they ended in, but the state reads it from `loregame.levelUp` alone, so it is counted
 once.
 
-**XP** is what `Hai imparato qualcosa di nuovo... (+<n>)` gives: after a fight won (§5, not every
-win says it) and a training (with its extra, §5.3). The state counts the XP it sees each player gain
-and, at each level-up, how much it saw since the one before (§6.1): a floor, since some wins say
-none and players play where the account does not read. Whether a level takes a fixed XP, and what
-the profile's ⚔️ counts, is for the profile to tell.
+**XP** [M] is the profile's ⚔️ (§5.5), measured over every interval between the owner's profiles
+since October (25 of 25 exact), and again by `lore-check` over every player's profiles whose turns
+were all seen (30 of 31; the one apart by a training's +15, in private):
+
+- **a turn gives 1**, whatever it brings; **a fight won** gives its `+<n>` besides (none when the
+  line has none); **a fight lost** takes 2 (the turn's 1 included, it costs 1);
+- **a training** gives its `+<n>`, and not its extra (§5.3);
+- a draw, and a turn cut off before its fight ends, are not measured yet.
+
+**The levels** [M] are fixed: a player holds **53 × (level − 1)²** XP at the start of a level (0,
+53, 212, 477, 848, 1,325, 1,908, 2,597, 3,392, 4,293, 5,300, …), and the profile's bar is the share
+of the way to the next, to two decimals: exact in all 239 profiles since August 2026 (the season
+before had other levels). The state counts the XP it sees each player gain and, at each level-up,
+how much it saw since the one before; with a profile, it holds their total (§6.1).
+
+### 5.5 The profile
+
+`/info` and `/me` give the player's own profile, `/info <username>` another's [M]: 458 in the
+exports (January–November 2026), every line read. Since August 2026 it replies to the command
+(February to July, in the group, it was a message of its own); either way its first line names its
+player, so the parser needs no pairing: any profile of the bot's, in any chat, is its player's. The
+lines are read by what they say, not where they stand (the season before had the alignment first, no
+⚔️ and no bar), and a line read as nothing is kept as `unread`:
+
+| Line                                             | What it is                                                                                                                                                                                                                                             |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `👤 <username>`                                  | The player, by username (the argument of `/info <username>`, in all 76 cases with one).                                                                                                                                                                |
+| `👥 <company>`                                   | Their company; `Nessuna azienda` (before: `Nessun clan`), none.                                                                                                                                                                                        |
+| `Livello <n> (<xp> ⚔️)`                          | Level and XP (§5.4); numbers in the thousands are written `4.614`.                                                                                                                                                                                     |
+| `▓▓▓░░░░░░░ <pct>%`                              | The way to the next level (§5.4); its ▓ are the tens of the percentage.                                                                                                                                                                                |
+| `Il Bene 😇`, `Il Male 👿`, `Il Neutrale 👤`     | Alignment.                                                                                                                                                                                                                                             |
+| `Episodio <n>`                                   | The turns they took [M]: it rose by the owner's turns seen, exactly, in 24 of 25 intervals.                                                                                                                                                            |
+| `<n> Ricette completate`                         | Recipes completed (since September 2026).                                                                                                                                                                                                              |
+| `<n> ₭`                                          | Coins.                                                                                                                                                                                                                                                 |
+| `Ossessionato da <item> x<n>`                    | An obsession, if any.                                                                                                                                                                                                                                  |
+| `Armatura 🛡 - …`, `Amuleto 🩺 - …`, `Arma 🗡 - …` | Equipped (🥋 the armour's emoji before February): `(vuoto)`, empty; else the item and its level range, `(a - b)`, rolled when `/generaequipaggiamento` makes it, or `(n)`, a range of one (no range is ever written `(n - n)`: 3,736 seen, all a < b). |
+| `<emoji> <skill> <I–V>`                          | The skills of `/abilita`, each with its level: 🎒 Sciacallaggio, 🎯 Ricercato, 🖌 Creatività, 🖌 Ispirazione, 🔋 Stoccaggio, 💪🏻 Calistenico.                                                                                                             |
+| `🎭 Effetti`, then `  - <effect> (<time left>)`  | Effects, with the time left in the turn's words (§2); only "Neutralizzato" seen.                                                                                                                                                                       |
+| `🎖️ Titoli`, then `  - <title>`                  | Titles: players write them, so they are kept as they are.                                                                                                                                                                                              |
+| `Attualmente in <place> [<code>]`                | Where they are.                                                                                                                                                                                                                                        |
+
+`👤 Configurazioni giocatore` (the settings) also starts with 👤, and is not a profile. **Not known
+yet**: what the skills do, but Calistenico (§5.3) and Stoccaggio (the accumulo's maximum, 20 less
+its level in the season before; one player with Stoccaggio I still had 20 this season).
+
+**`loregame.profile`** carries every profile the parser reads (`player`, `owner`, and each line's
+value: `company`, `level`, `xp`, `progress`, `alignment`, `episode`, `recipes`, `coins`,
+`obsession`, `equipment`, `skills`, `effects`, `titles`, `location`, `unread`).
 
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
@@ -311,16 +358,17 @@ It is a floor, not the truth, while the turns are all it reads:
 - **The training** (§5.3): the readiness's, a day after the owner's last training.
 - **A level-up** of the owner's (§5.4), whatever brought it, adds its items to the inventory, and
   opens the accumulo when it reaches its level.
+- **Their profile** (§5.5), and their username (`owner.name`), as with every player's (§6.1).
 - **Items and players are named by players**, anything, `__proto__` included.
 
 ### 6.1 Every player
 
 The state also keeps **every player** whose turns the account reads (`players`, by username; the
-owner's included), from four events of the parser for any player, `loregame.playerTurn` (a turn, or
+owner's included), from five events of the parser for any player, `loregame.playerTurn` (a turn, or
 a "too soon"), `loregame.playerAccumulo` (an answer to `/accumulo`), `loregame.training` (an answer
-to `/allenati`) and `loregame.levelUp`: the bot replies to a turn command naming nobody, so the
-parser names the player by the message it replies to, and pairs an `/accumulo` or a training answer
-as it does the owner's (§5.2, §5.3, §5.4). Per player:
+to `/allenati`), `loregame.levelUp` and `loregame.profile`: the bot replies to a turn command naming
+nobody, so the parser names the player by the message it replies to, and pairs an `/accumulo` or a
+training answer as it does the owner's (§5.2, §5.3, §5.4). Per player:
 
 - **in the game:** their name and level, as a fight's line and a level-up (§5.4) say;
 - **turns seen**, the last one's time, and their **rest** (15 minutes, 30 after a fight lost, a "too
@@ -337,17 +385,25 @@ as it does the owner's (§5.2, §5.3, §5.4). Per player:
 - **their trainings** (§5.3): those seen, the last one, and until when the next waits (a day after
   it, or a "too soon"'s wait); a "too soon" whose wait ends well after the one predicted tells of a
   training in private (`unseen`);
-- **their XP** (§5.4): what the account saw them gain (`seen`), how much since their last level-up
-  seen (`since_level`), and their latest ten level-ups with the XP seen before each (none when the
-  level-up before was not seen): the ground for expecting the next level-up once the profile tells
-  the thresholds.
+- **their XP** (§5.4): the XP they hold (`total`: their last profile's, moved by each turn and
+  training seen since, by the rule of §5.4), `exact` while nothing since is known to be missing (a
+  turn unseen, a draw, a turn cut off; a level-up beyond the total raises it to that level's
+  threshold, not exact); what the account saw them gain (`seen`), how much since their last level-up
+  seen (`since_level`), and their latest ten level-ups with the XP seen before each. Their turns in
+  private, which a "too soon" does not tell of, leave a total short: the next profile sets it again;
+- **their profile** (§5.5), the last one the account read, each line a stat of its own (`profile`:
+  `level`, `xp`, `coins`, `skills`, `equipment`, …), the effects with when they end; it sets their
+  level and their XP. `state.profile({ player?, stat? })` answers it whole, or one stat by its
+  dotted path (`skills.Stoccaggio`, `equipment.weapon.level`), the owner's unless named.
 
 Measured [M] with `npm run lore-check` (tools/lore-check/README.md) on the exports of Oct–Nov 2026,
 every player of the group: the counter the bot gives agrees with the state's in 97% of its readings,
 and a "too soon" with the rest predicted in 99%; a training's "too soon" with the day predicted in
-98% (the rest are trainings in private). Every turn seen before the rest was over is explained:
-after a use of the accumulo the account heard, a second turn within a minute (§2), or, rarely, a use
-in private.
+98% (the rest are trainings in private); a profile's level with its XP in all 104 of them, and its
+XP with the state's in 30 of the 31 intervals whose turns were all seen. A profile's episodes are
+short of the turns the state saw in 3 of 91 intervals, by 1 to 17: turns counted that the game did
+not, not explained yet. Every turn seen before the rest was over is explained: after a use of the
+accumulo the account heard, a second turn within a minute (§2), or, rarely, a use in private.
 
 What it keeps of a player is a floor of what they did, and better as they play in the group. A
 player is known by the username the connector gives; one without a username is not kept (the

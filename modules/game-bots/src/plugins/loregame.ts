@@ -29,6 +29,10 @@
  * it is about: the owner's in private, else the sender of the message it replies to, else the player
  * whose training it paired. One the parser cannot place is no one's.
  *
+ * **Profiles** (docs/game-bots.md §5.5): the answer to `/info`, `/me` or `/info <player>` names its
+ * player on its first line, so any profile of the bot's, in any chat, is published as
+ * `loregame.profile` for that player, the owner's when it names the account.
+ *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
  * - To the owner's turn, it is an outcome (`banned`, with its `until`), declared a refusal
@@ -59,6 +63,7 @@ import {
 } from '#src/accumulo.ts';
 import { BanWatch } from '#src/bans.ts';
 import { PlayerWatch } from '#src/players.ts';
+import { parseProfile } from '#src/profile.ts';
 import {
   type LoreAccumulo,
   LOREGAMEBOT,
@@ -101,6 +106,8 @@ export const UNBAN_EVENT = `${LOREGAME_PARSER}.unban`;
 export const ACCUMULO_EVENT = `${LOREGAME_PARSER}.accumulo`;
 /** The event of every player's level-up the parser can place, the owner's included (§5.4). */
 export const LEVEL_UP_EVENT = `${LOREGAME_PARSER}.levelUp`;
+/** The event of every player's profile the account reads, the owner's included (§5.5). */
+export const PROFILE_EVENT = `${LOREGAME_PARSER}.profile`;
 /** The event of every player's answer to `/allenati`, the owner's included (§5.3). */
 export const TRAINING_EVENT = `${LOREGAME_PARSER}.training`;
 /** The events of every player's turns and `/accumulo`, the owner's included (§6.1). */
@@ -227,6 +234,38 @@ const levelUpEvent = z
   })
   .describe("A player's level-up, whatever brought it: any player's the account can place");
 
+const equipped = z
+  .object({
+    item: z.string(),
+    level: z.object({ low: z.number(), high: z.number() }).nullable(),
+  })
+  .nullable();
+const profileEvent = z
+  .object({
+    chat: z.string(),
+    player: player.describe('The player it names, by username'),
+    owner: z.boolean().describe('It names the account'),
+    company: z.string().nullable(),
+    level: z.number(),
+    xp: z.number().describe('"⚔️": the XP they hold'),
+    progress: z.number().nullable().describe("The bar's percentage towards the next level"),
+    alignment: z.enum(['Bene', 'Male', 'Neutrale']),
+    episode: z.number().describe('"Episodio": the turns they took'),
+    recipes: z.number().nullable(),
+    coins: z.number(),
+    obsession: z.object({ item: z.string(), count: z.number() }).nullable(),
+    equipment: z.object({ armour: equipped, amulet: equipped, weapon: equipped }),
+    skills: z.record(z.string(), z.number()).describe('By name, their level (1–5)'),
+    effects: z.array(z.object({ name: z.string(), leftMs: z.number().nullable() })),
+    titles: z.array(z.string()),
+    location: z.object({ name: z.string(), code: z.string() }).nullable(),
+    unread: z.array(z.string()).describe('Its lines the grammar could not read'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe(
+    "A player's profile (/info, /me), as @LoreGameBot gave it: any player's the account reads"
+  );
+
 const playerTurnEvent = z
   .object({
     chat: z.string(),
@@ -292,6 +331,7 @@ export const loregamePlugin: Plugin = {
       [ACCUMULO_EVENT]: accumuloEvent,
       [TRAINING_EVENT]: trainingEvent,
       [LEVEL_UP_EVENT]: levelUpEvent,
+      [PROFILE_EVENT]: profileEvent,
       [PLAYER_TURN_EVENT]: playerTurnEvent,
       [PLAYER_ACCUMULO_EVENT]: playerAccumuloEvent,
     },
@@ -384,6 +424,19 @@ export const loregamePlugin: Plugin = {
           m.time
         );
       }
+      // A profile, its player's: it names them (§5.5).
+      const profile = bots ? parseProfile(m.text) : undefined;
+      if (profile !== undefined)
+        ctx.bus.publish(
+          PROFILE_EVENT,
+          {
+            chat: m.chat,
+            ...profile,
+            owner: self !== undefined && profile.player.toLowerCase() === self.toLowerCase(),
+            ...old,
+          },
+          m.time
+        );
       // A level-up, whatever brought it, for the player the message is about (§5.4).
       if (m.own !== true && m.sender.toLowerCase() === LOREGAMEBOT.toLowerCase()) {
         const { levelUp } = splitLevelUp(m.text.normalize('NFC'));

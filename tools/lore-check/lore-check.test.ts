@@ -59,7 +59,7 @@ function chat(): Inbound[] {
 describe('the lore check', () => {
   it('replays a chat through the real parser and state, and checks what they made of it', async () => {
     const run = await replayLore(chat(), { self: 'alice' });
-    const [coverage, rests, accumulo, , , players] = CHECKS.map((c) => c.run(run));
+    const [coverage, rests, accumulo, , , , players] = CHECKS.map((c) => c.run(run));
     const row = (f: typeof coverage, label: string) =>
       f?.rows.find(([k]) => k.startsWith(label))?.[1];
     expect(row(coverage, 'replies to a turn command')).toBe('5');
@@ -173,9 +173,56 @@ describe('the lore check', () => {
     const row = (label: string) => found?.rows.find(([k]) => k.startsWith(label))?.[1];
     expect(row('the bot’s level-ups')).toBe('3');
     expect(row('placed with a player')).toBe('2 of 3 (66.7%)');
-    expect(row('XP seen gained')).toBe('15');
-    expect(row('… XP seen before reaching level 5')).toBe('11');
+    // Each turn 1, and its win's "+N".
+    expect(row('XP seen gained')).toBe('18');
+    expect(row('… XP seen before reaching level 5')).toBe('13');
     expect(row('… XP seen before reaching level 4')).toBeUndefined();
+  });
+
+  it('checks each profile against the XP and the turns the state held since the last one', async () => {
+    const PROFILE = (level: number, xp: number, episode: number) =>
+      [
+        '👤 bob',
+        '',
+        '👥 Nessuna azienda',
+        '',
+        `Livello ${level} (${xp} ⚔️)`,
+        '▓░░░░░░░░░ 10.00%',
+        '',
+        'Il Bene 😇',
+        `Episodio ${episode}`,
+        '0 ₭',
+        '',
+        'Armatura 🛡 - (vuoto)',
+        'Amuleto 🩺 - (vuoto)',
+        'Arma 🗡 - (vuoto)',
+        '',
+        '',
+        'Attualmente in Il Bosco Inventato ⛅️ [B1]',
+      ].join('\n');
+    const run = await replayLore(
+      [
+        ...asked(0, 'bob', '/me', PROFILE(3, 250, 100)),
+        ...asked(1, 'bob', '/lore', TURN),
+        ...asked(20, 'bob', '/lore', TURN),
+        // Two turns: XP and episodes agree.
+        ...asked(30, 'bob', '/me', PROFILE(3, 252, 102)),
+        ...asked(31, 'bob', '/lore', TURN),
+        // One turn seen, two taken; and a level its XP does not make.
+        ...asked(50, 'bob', '/me', PROFILE(4, 260, 104) + '\nUna riga nuova'),
+      ],
+      { self: 'alice' }
+    );
+    const found = CHECKS.find((c) => c.id === 'profiles')?.run(run);
+    const rows = found?.rows ?? [];
+    const row = (label: string, n = 0) => rows.filter(([k]) => k.startsWith(label))[n]?.[1];
+    expect(row('profiles read')).toBe('3');
+    expect(row('their level as their XP makes it')).toBe('2 of 3 (66.7%)');
+    expect(row('lines left unread')).toBe('1');
+    // Episodes: the first interval agrees, the second has a turn unseen.
+    expect(row('… by verdict', 0)).toBe('agrees ×1, off by +1 ×1');
+    // XP: tested where every turn was seen alone.
+    expect(row('with every turn seen')).toBe('1 of 1 (100.0%)');
   });
 
   it('reads its command line, and says what it needs', () => {

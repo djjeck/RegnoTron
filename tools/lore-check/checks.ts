@@ -17,6 +17,7 @@ import {
   playerOf,
   reduce,
 } from '@regnotron/game-bots/loregame-state.ts';
+import { levelForXp } from '@regnotron/game-bots/profile.ts';
 import { LOREGAMEBOT, TURN_COMMANDS } from '@regnotron/game-bots/replies.ts';
 
 /** One event of the parser, with the state before and after it. */
@@ -311,6 +312,62 @@ export const levels: Check = {
   },
 };
 
+/**
+ * Profiles (docs/game-bots.md §5.5, §6.1): each profile against what the state held of its player
+ * since their last one. Its episodes against the turns seen since (a turn unseen told of besides):
+ * agreeing, every turn was seen; and then its XP against the state's total, which tests the XP rule
+ * of §5.4 alone (a player's turns in private, which the account does not read, would move it too).
+ * And its level against its XP (53 × (level − 1)²), and its lines left unread.
+ */
+export const profiles: Check = {
+  id: 'profiles',
+  run: (r) => {
+    const seen = r.steps.filter((s) => s.event.type === 'loregame.profile');
+    const xp: string[] = [];
+    const episodes: string[] = [];
+    let unknown = 0;
+    let levels = 0;
+    let unread = 0;
+    const last = new Map<string, { episode: number; turns: number; unseen: number }>();
+    for (const s of seen) {
+      const name = s.event['player'] as string;
+      const said = { xp: s.event['xp'] as number, episode: s.event['episode'] as number };
+      if (levelForXp(said.xp) === s.event['level']) levels++;
+      unread += (s.event['unread'] as string[]).length;
+      const p = playerOf(s.before, name);
+      const before = last.get(name);
+      if (before !== undefined && p !== null) {
+        const turns =
+          said.episode - before.episode - (p.turns - before.turns) - (p.unseen - before.unseen);
+        episodes.push(turns === 0 ? 'agrees' : `off by ${turns > 0 ? '+' : ''}${turns}`);
+        // Every turn seen: the XP rule alone.
+        if (turns === 0 && p.xp.total !== null) {
+          const off = said.xp - p.xp.total;
+          if (!p.xp.exact) unknown++;
+          else xp.push(off === 0 ? 'agrees' : `off by ${off > 0 ? '+' : ''}${off}`);
+        }
+      }
+      const after = playerOf(s.after, name);
+      if (after !== null)
+        last.set(name, { episode: said.episode, turns: after.turns, unseen: after.unseen });
+    }
+    const agree = (v: string[]) => pct(v.filter((x) => x === 'agrees').length, v.length);
+    return {
+      title: 'Profiles',
+      rows: [
+        ['profiles read, any player’s', String(seen.length)],
+        ['their level as their XP makes it', pct(levels, seen.length)],
+        ['lines left unread', String(unread)],
+        ['episodes against the turns seen since the last profile', agree(episodes)],
+        ['… by verdict', tally(episodes)],
+        ['with every turn seen, XP against the state’s', agree(xp)],
+        ['… by verdict', tally(xp)],
+        ['… an outcome whose XP is not known (a draw, a turn cut off)', String(unknown)],
+      ],
+    };
+  },
+};
+
 /** The players: how many, their turns seen and unseen, and the busiest, their name shown or not. */
 export const players: Check = {
   id: 'players',
@@ -340,7 +397,15 @@ export const players: Check = {
 };
 
 /** Every check, in the report's order: add one here as the parser learns to read more. */
-export const CHECKS: readonly Check[] = [coverage, rests, accumulo, training, levels, players];
+export const CHECKS: readonly Check[] = [
+  coverage,
+  rests,
+  accumulo,
+  training,
+  levels,
+  profiles,
+  players,
+];
 
 /** The report's text: each check's title, then its rows. */
 export function report(findings: readonly Finding[]): string {

@@ -14,6 +14,8 @@ The turns of the group's game bots, read on the turn plugins of `@megabottron199
   whose they are (`AccumuloWatch`) and when an actor may send it (`accumuloReady`);
 - `src/training.ts`: @LoreGameBot's training: the bot's answers to `/allenati` (`parseTraining`),
   whose they are (`TrainingWatch`) and its cooldown of a day (`TRAINING_MECHANICS`);
+- `src/profile.ts`: @LoreGameBot's profile, the answer to `/info` and `/me` (`parseProfile`), and
+  its levels' XP (`xpForLevel`, `levelForXp`);
 - `src/answer-watch.ts`: whose answer a message of the bot's own is, in the group, where it replies
   to no command (`AnswerWatch`, which the accumulo's and the training's watches are);
 - `src/plugins/`: the parser plugins of @LoreGameBot and @EpicLorelecBot (`loregame`,
@@ -143,6 +145,10 @@ whether it replies to one, and what it made of it, never its text. An answer the
 pair then shows whether it reached it at all. A send told twice (a player's, by each player of the
 account; the account's own echo) waits for one answer.
 
+**Profiles.** Any profile of the bot's (`/info`, `/me`, `/info <username>`), in any chat, is
+published as `loregame.profile` for the player its first line names (docs/game-bots.md §5.5): every
+line read, one it cannot read kept in `unread`.
+
 **Level-ups.** Any message of the bot's that ends in a level-up, whatever brought it, is published
 as `loregame.levelUp` for the player it is about (docs/game-bots.md §5.4): the owner's in private,
 else the sender of the message it replies to, else the player whose training it paired.
@@ -186,19 +192,20 @@ not read yet, so a count only rises and `exact` stays false. A turn cut off at T
 have gained what the reply lost: it changes no count, and marks the inventory `uncertain` in
 `state.freshness`.
 
-| Interface                | Answers                                                          |
-| ------------------------ | ---------------------------------------------------------------- |
-| `state.get({ path? })`   | The state, or the value at a dotted path (`inventory.items`)     |
-| `state.freshness`        | How fresh each section is: its last snapshot, the deltas since   |
-| `state.count({ name })`  | How many of an item the owner holds, as the state estimates it   |
-| `state.held()`           | Every item held, with its count                                  |
-| `state.ban({ player? })` | A player's ban (the owner's unless named): `{ until, since }`    |
-| `state.bans()`           | Every banned player, with their ban                              |
-| `state.accumulo()`       | The owner's accumulo: the count, the bot's word, the drift       |
-| `state.player({ name })` | A player by username: level, turns, rest, accumulo, training, XP |
-| `state.ready()`          | Each of the bot's commands' readiness, for a shell player (D141) |
-| `state.commands()`       | The bot's commands with their aliases and mechanics              |
-| `state.bot()`            | The bot's username, `LoreGameBot`                                |
+| Interface                           | Answers                                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------ |
+| `state.get({ path? })`              | The state, or the value at a dotted path (`inventory.items`)                   |
+| `state.freshness`                   | How fresh each section is: its last snapshot, the deltas since                 |
+| `state.count({ name })`             | How many of an item the owner holds, as the state estimates it                 |
+| `state.held()`                      | Every item held, with its count                                                |
+| `state.ban({ player? })`            | A player's ban (the owner's unless named): `{ until, since }`                  |
+| `state.bans()`                      | Every banned player, with their ban                                            |
+| `state.accumulo()`                  | The owner's accumulo: the count, the bot's word, the drift                     |
+| `state.player({ name })`            | A player by username: level, turns, rest, accumulo, training, XP               |
+| `state.profile({ player?, stat? })` | A player's last profile (the owner's unless named), or one stat by dotted path |
+| `state.ready()`                     | Each of the bot's commands' readiness, for a shell player (D141)               |
+| `state.commands()`                  | The bot's commands with their aliases and mechanics                            |
+| `state.bot()`                       | The bot's username, `LoreGameBot`                                              |
 
 A ban is kept with when it ends, as the bot states it (Rome's clock; a date alone: the end of the
 day), and is over when the bot serves the player again, which it does early at times, or when its
@@ -237,10 +244,12 @@ if (accumuloReady(ctx.use<AccumuloInterface>('state').state.accumulo())) {
 included; docs/game-bots.md §6.1): their name and level in the game, their turns seen and those a
 "too soon" told of (played in their private chat, which the account does not read), their rest,
 their accumulo and their trainings (`training`: those seen, those a "too soon" told of, the last,
-and until when the next waits) and their XP (`xp`: the XP seen, since their last level-up, and their
-latest level-ups with the XP seen before each). The parser publishes them as `loregame.playerTurn`,
-`loregame.playerAccumulo`, `loregame.training` and `loregame.levelUp`, which needs the group edge to
-deliver every sender, as the bans do.
+and until when the next waits), their XP (`xp`: the total they hold, from their last profile and the
+turns and trainings seen since, whether it is exact, the XP seen, since their last level-up, and
+their latest level-ups with the XP seen before each) and their last profile (`profile`: each line a
+stat, queried alone with `state.profile`). The parser publishes them as `loregame.playerTurn`,
+`loregame.playerAccumulo`, `loregame.training`, `loregame.levelUp` and `loregame.profile`, which
+needs the group edge to deliver every sender, as the bans do.
 
 `loregame-state.accumuloReady` (`count`, `max`, `via`: `turn` or `reading`), `accumuloUsed` (`turns`
 since the last use, `exact`) and `accumuloDrift` (`kind`, `counted`, `said`, `max`) announce each

@@ -51,6 +51,7 @@ describe('the loregame state', () => {
       'loregame.playerAccumulo',
       'loregame.training',
       'loregame.levelUp',
+      'loregame.profile',
     ]);
   });
 
@@ -727,15 +728,96 @@ describe('the players', () => {
       trained(T + 50 * MIN, 15, 2),
       levelUp(5, [], { t: T + 50 * MIN, player: 'bob' })
     );
+    // Each turn 1, a win's "+N" besides, a loss 2 less; a training its "+N", not its extra. No
+    // profile yet: no total.
     expect(playerOf(s, 'bob')?.xp).toEqual({
-      seen: 26,
+      total: null,
+      exact: false,
+      seen: 5 + 6 + 1 - 1 + 15,
       since_level: 0,
       level_ups: [
         { level: 4, at: new Date(T).toISOString(), xp: null },
-        { level: 5, at: new Date(T + 50 * MIN).toISOString(), xp: 22 },
+        { level: 5, at: new Date(T + 50 * MIN).toISOString(), xp: 6 + 1 - 1 + 15 },
       ],
     });
     expect(playerOf(s, 'bob')?.game.level).toBe(5);
+  });
+
+  it('moves a profile’s XP by each turn and training seen, and says when it no longer knows', () => {
+    const profile = (t: number, xp: number, level: number): BusEvent =>
+      ({
+        type: 'loregame.profile',
+        t,
+        chat: '-1001',
+        player: 'bob',
+        owner: false,
+        company: null,
+        level,
+        xp,
+        progress: null,
+        alignment: 'Bene',
+        episode: 100,
+        recipes: 0,
+        coins: 0,
+        obsession: null,
+        equipment: { armour: null, amulet: null, weapon: null },
+        skills: {},
+        effects: [],
+        titles: [],
+        location: null,
+        unread: [],
+      }) as unknown as BusEvent;
+    const fight = (result: string, learned?: number) => ({
+      fight: {
+        player: { name: 'Bobby', level: 4 },
+        enemy: { name: 'un orso', level: 2 },
+        result,
+        ...(learned === undefined ? {} : { learned }),
+      },
+    });
+    const trained: BusEvent = {
+      type: 'loregame.training',
+      t: T + 70 * MIN,
+      chat: '-1001',
+      player: 'bob',
+      owner: false,
+      result: 'trained',
+      gym: null,
+      learned: 15,
+      extra: 2,
+    } as unknown as BusEvent;
+    const xp = (...events: BusEvent[]) => playerOf(run(...events), 'bob')?.xp;
+    const known = profile(T, 500, 4);
+    // A turn 1, a win 1 and its "+N", a loss 1 less, a training its "+N" and not its extra.
+    expect(
+      xp(
+        known,
+        turnOf('bob', T + MIN),
+        turnOf('bob', T + 20 * MIN, fight('won', 5)),
+        turnOf('bob', T + 40 * MIN, fight('lost')),
+        trained
+      )
+    ).toMatchObject({ total: 500 + 1 + 6 - 1 + 15, exact: true });
+    // A draw: not known to give the same.
+    expect(xp(known, turnOf('bob', T + MIN, fight('draw')))).toMatchObject({
+      total: 501,
+      exact: false,
+    });
+    // A turn unseen, told by a "too soon" when we held them rested.
+    expect(xp(known, turnOf('bob', T + MIN), soon('bob', T + 40 * MIN, 5 * MIN))).toMatchObject({
+      total: 501,
+      exact: false,
+    });
+    // A level-up beyond what we hold: they hold its threshold at least.
+    expect(xp(known, levelUp(5, [], { t: T + MIN, player: 'bob' }))).toMatchObject({
+      total: 848,
+      exact: false,
+    });
+    // The next profile says it all again.
+    expect(xp(known, soon('bob', T + 40 * MIN, MIN), profile(T + HOUR, 600, 4))).toMatchObject({
+      total: 600,
+      exact: true,
+    });
   });
 
   it('keeps a player named like an object’s own property', () => {

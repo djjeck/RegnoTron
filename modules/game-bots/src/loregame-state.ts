@@ -71,9 +71,11 @@ import {
   LOREGAME_VOCABULARY,
   PLAYER_ACCUMULO_EVENT,
   PLAYER_TURN_EVENT,
+  PROFILE_EVENT,
   TRAINING_EVENT,
   UNBAN_EVENT,
 } from '#src/plugins/loregame.ts';
+import { xpForLevel } from '#src/profile.ts';
 import { loreRestMs, type Outcome } from '#src/replies.ts';
 import { TRAINING, TRAINING_COOLDOWN_MIN, TRAINING_MECHANICS } from '#src/training.ts';
 
@@ -82,7 +84,7 @@ export const LOREGAME_STATE = 'loregame-state';
 
 /**
  * The parser's events it applies: the owner's turns, the bans, the accumulo, the trainings, the
- * level-ups, every player's.
+ * level-ups and the profiles, every player's.
  */
 const TURN_EVENT = `${LOREGAME_PARSER}.turn`;
 export const CONSUMES: readonly string[] = [
@@ -94,6 +96,7 @@ export const CONSUMES: readonly string[] = [
   PLAYER_ACCUMULO_EVENT,
   TRAINING_EVENT,
   LEVEL_UP_EVENT,
+  PROFILE_EVENT,
 ];
 
 /**
@@ -227,6 +230,14 @@ const accumulo = z.object({
   drift: z.array(drift).describe('Latest disagreements'),
 });
 
+/** An equipped item: its name and level range. */
+const equippedSchema = z
+  .object({
+    item: z.string(),
+    level: z.object({ low: z.number(), high: z.number() }).nullable(),
+  })
+  .nullable();
+
 /** A player as the state sees them: what their turns and answers in the chats it reads say. */
 const player = z.object({
   as_of: z.string().describe('Latest change'),
@@ -260,7 +271,16 @@ const player = z.object({
     .describe('Training'),
   xp: z
     .object({
-      seen: z.number().describe('XP seen gained (a fight won’s, a training’s "+N"): a floor'),
+      total: z
+        .number()
+        .nullable()
+        .describe(
+          'The XP they hold: their last profile’s, moved by each turn and training seen since (none before a profile)'
+        ),
+      exact: z
+        .boolean()
+        .describe('Every change since the profile was seen: no turn unseen, no outcome unknown'),
+      seen: z.number().describe('XP seen gained, net (turns, fights, trainings)'),
       since_level: z
         .number()
         .nullable()
@@ -279,6 +299,37 @@ const player = z.object({
         .describe('The latest level-ups seen'),
     })
     .describe('XP'),
+  profile: z
+    .object({
+      as_of: z.string().describe('Given'),
+      company: z.string().nullable().describe('Company'),
+      level: z.number().describe('Level'),
+      xp: z.number().describe('XP (⚔️)'),
+      progress: z.number().nullable().describe('Towards the next level (%)'),
+      alignment: z.enum(['Bene', 'Male', 'Neutrale']).describe('Alignment'),
+      episode: z.number().describe('Episodes: the turns they took'),
+      recipes: z.number().nullable().describe('Recipes completed'),
+      coins: z.number().describe('Coins (₭)'),
+      obsession: z
+        .object({ item: z.string(), count: z.number() })
+        .nullable()
+        .describe('Obsessed with'),
+      equipment: z
+        .object({ armour: equippedSchema, amulet: equippedSchema, weapon: equippedSchema })
+        .describe('Equipped'),
+      skills: z.record(z.string(), z.number()).describe('Skills, by name: their level (1–5)'),
+      effects: z
+        .array(z.object({ name: z.string(), until: date.describe('Ends, as the time left says') }))
+        .describe('Effects'),
+      titles: z.array(z.string()).describe('Titles'),
+      location: z
+        .object({ name: z.string(), code: z.string() })
+        .nullable()
+        .describe('Where they are'),
+      unread: z.array(z.string()).describe('Lines the grammar could not read'),
+    })
+    .nullable()
+    .describe('Their last profile (/info), as the bot gave it'),
 });
 
 /** The level-ups kept per player, newest last. */
@@ -298,7 +349,7 @@ export const stateSchema = z.object({
   owner: z
     .object({
       as_of: date.describe('Latest change'),
-      name: z.string().nullable().describe('Name in the bans, once told'),
+      name: z.string().nullable().describe('Their username, once told (a ban, a profile)'),
     })
     .describe('Owner'),
   bans: z.record(z.string(), ban).describe('Banned players'),
@@ -359,12 +410,13 @@ export function initialPlayer(at: string): Player {
     accumulo: initialAccumulo(),
     training: initialTraining(),
     xp: initialXp(),
+    profile: null,
   };
 }
 
 /** A player's XP, nothing seen. */
 export function initialXp(): Player['xp'] {
-  return { seen: 0, since_level: null, level_ups: [] };
+  return { total: null, exact: false, seen: 0, since_level: null, level_ups: [] };
 }
 
 /** A player's training, nothing known. */
@@ -420,6 +472,27 @@ const trainingSchema = z.looseObject({
   retryMs: z.number().optional(),
   learned: z.number().optional(),
   extra: z.number().optional(),
+});
+
+/** What a profile event says (the parser's `loregame.profile`). */
+const profileSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  company: z.string().nullable(),
+  level: z.number(),
+  xp: z.number(),
+  progress: z.number().nullable(),
+  alignment: z.enum(['Bene', 'Male', 'Neutrale']),
+  episode: z.number(),
+  recipes: z.number().nullable(),
+  coins: z.number(),
+  obsession: z.object({ item: z.string(), count: z.number() }).nullable(),
+  equipment: z.object({ armour: equippedSchema, amulet: equippedSchema, weapon: equippedSchema }),
+  skills: z.record(z.string(), z.number()),
+  effects: z.array(z.object({ name: z.string(), leftMs: z.number().nullable() })),
+  titles: z.array(z.string()),
+  location: z.object({ name: z.string(), code: z.string() }).nullable(),
+  unread: z.array(z.string()),
 });
 
 /** What a level-up event says (the parser's `loregame.levelUp`). */
@@ -664,6 +737,8 @@ function playerAfterTurn(p: Player, e: BusEvent): Player {
         ? {
             unseen: p.unseen + 1,
             accumulo: { ...p.accumulo, count: p.accumulo.count + 1, exact: false },
+            // A turn unseen moved their XP by what we cannot tell.
+            xp: { ...p.xp, exact: false },
           }
         : {}),
     };
@@ -711,17 +786,79 @@ function playerAfterTurn(p: Player, e: BusEvent): Player {
     last_command: command ?? p.last_command,
     rest_until: restMs === undefined ? p.rest_until : asIso(e.t + restMs),
     accumulo: afterTurn(accumulo, e),
-    xp: gained(p.xp, o.fight?.result === 'won' ? (o.fight.learned ?? 0) : 0),
+    xp: gained(p.xp, ...turnXp(o)),
   };
 }
 
-/** XP seen gained: the total and the count since the last level-up, when there was one. */
-function gained(xp: Player['xp'], n: number): Player['xp'] {
-  if (n <= 0) return xp;
+/**
+ * The XP a turn gives [M] (docs/game-bots.md §5.4): 1, plus a fight won's "+N", less 2 for a fight
+ * lost; and whether that is all of it (a draw, or a turn cut off before its fight's end, is not
+ * known to give the same).
+ */
+function turnXp(o: z.infer<typeof outcomeSchema>): [number, boolean] {
+  const fight = o.fight?.result;
+  if (fight === 'won') return [1 + (o.fight?.learned ?? 0), true];
+  if (fight === 'lost') return [-1, true];
+  if (fight === undefined) return [1, !(o.kind === 'nothing' && o.reason === 'truncated')];
+  return [1, false];
+}
+
+/**
+ * XP gained (`n`, a loss if negative): the total held, the XP seen, and since the last level-up;
+ * `known` false when the change is not known to be all of it.
+ */
+function gained(xp: Player['xp'], n: number, known = true): Player['xp'] {
+  if (n === 0 && known) return xp;
   return {
     ...xp,
+    total: xp.total === null ? null : xp.total + n,
+    exact: xp.exact && known,
     seen: xp.seen + n,
     since_level: xp.since_level === null ? null : xp.since_level + n,
+  };
+}
+
+/**
+ * A player after their profile: the profile kept, each stat as it says, the effects' time left as
+ * when they end; their level and their XP set from it (exact); their accumulo opened or closed at
+ * the level its gate names.
+ */
+function playerAfterProfile(p: Player, e: BusEvent): Player {
+  const r = profileSchema.safeParse(e);
+  if (!r.success) return p;
+  const at = asIso(e.t);
+  const d = r.data;
+  const accumulo =
+    d.level < ACCUMULO_LEVEL && p.accumulo.locked === null
+      ? { ...p.accumulo, locked: ACCUMULO_LEVEL, count: 0, exact: true, ready: false }
+      : afterLevelUp(p.accumulo, d.level, e.t);
+  return {
+    ...p,
+    as_of: at,
+    game: { ...p.game, level: d.level },
+    accumulo,
+    xp: { ...p.xp, total: d.xp, exact: true },
+    profile: {
+      as_of: at,
+      company: d.company,
+      level: d.level,
+      xp: d.xp,
+      progress: d.progress,
+      alignment: d.alignment,
+      episode: d.episode,
+      recipes: d.recipes,
+      coins: d.coins,
+      obsession: d.obsession,
+      equipment: d.equipment,
+      skills: d.skills,
+      effects: d.effects.map((f) => ({
+        name: f.name,
+        until: f.leftMs === null ? null : asIso(e.t + f.leftMs),
+      })),
+      titles: d.titles,
+      location: d.location,
+      unread: d.unread,
+    },
   };
 }
 
@@ -734,6 +871,8 @@ function playerAfterLevelUp(p: Player, e: BusEvent): Player {
   if (!u.success) return p;
   const at = asIso(e.t);
   const { level } = u.data;
+  // A level-up says they hold its threshold at least [M]: a total short of it missed a gain.
+  const short = p.xp.total !== null && p.xp.total < xpForLevel(level);
   return {
     ...p,
     as_of: at,
@@ -741,6 +880,7 @@ function playerAfterLevelUp(p: Player, e: BusEvent): Player {
     accumulo: afterLevelUp(p.accumulo, level, e.t),
     xp: {
       ...p.xp,
+      ...(short ? { total: xpForLevel(level), exact: false } : {}),
       since_level: 0,
       level_ups: [...p.xp.level_ups, { level, at, xp: p.xp.since_level }].slice(-LEVEL_UPS_KEPT),
     },
@@ -764,7 +904,8 @@ function playerAfterTraining(p: Player, e: BusEvent): Player {
     return {
       ...p,
       as_of: at,
-      xp: gained(p.xp, (t.data.learned ?? 0) + (t.data.extra ?? 0)),
+      // The "+N" is XP; the extra a skill adds is not [M] (docs/game-bots.md §5.3).
+      xp: gained(p.xp, t.data.learned ?? 0),
       training: {
         ...was,
         seen: was.seen + 1,
@@ -797,7 +938,8 @@ function reducePlayers(state: LoreState, e: BusEvent): LoreState {
     e.type !== PLAYER_TURN_EVENT &&
     e.type !== PLAYER_ACCUMULO_EVENT &&
     e.type !== TRAINING_EVENT &&
-    e.type !== LEVEL_UP_EVENT
+    e.type !== LEVEL_UP_EVENT &&
+    e.type !== PROFILE_EVENT
   )
     return state;
   const said = playerEventSchema.safeParse(e);
@@ -810,6 +952,7 @@ function reducePlayers(state: LoreState, e: BusEvent): LoreState {
   if (e.type === PLAYER_TURN_EVENT) after = playerAfterTurn(before, e);
   else if (e.type === TRAINING_EVENT) after = playerAfterTraining(before, e);
   else if (e.type === LEVEL_UP_EVENT) after = playerAfterLevelUp(before, e);
+  else if (e.type === PROFILE_EVENT) after = playerAfterProfile(before, e);
   else {
     const a = afterReply(before.accumulo, e);
     if (a !== before.accumulo) after = { ...before, as_of: at, accumulo: a };
@@ -818,9 +961,17 @@ function reducePlayers(state: LoreState, e: BusEvent): LoreState {
   return { ...state, players: { ...state.players, [name]: after } };
 }
 
+/** The owner's username, as their own profile names them. */
+function reduceOwner(state: LoreState, e: BusEvent): LoreState {
+  const player = e['player'];
+  if (e.type !== PROFILE_EVENT || e['owner'] !== true || typeof player !== 'string') return state;
+  if (player === '' || player === state.owner.name) return state;
+  return { ...state, owner: { as_of: asIso(e.t), name: player } };
+}
+
 /** The next state: an event's gains added to the inventory, a ban set or ended (pure). */
 export function reduce(state: LoreState, e: BusEvent): LoreState {
-  const withBans = reducePlayers(reduceAccumulo(reduceBans(state, e), e), e);
+  const withBans = reducePlayers(reduceAccumulo(reduceOwner(reduceBans(state, e), e), e), e);
   // The inventory is the owner's: their drops and level-ups alone, not another player's.
   const gains = gainsOf(e);
   if (gains.length === 0) return withBans;
@@ -902,6 +1053,24 @@ function announceAccumulo(before: Accumulo, after: Accumulo, e: BusEvent): Annou
 /** A player as the state keeps them, by username; none if never heard of. */
 export const playerOf = (s: LoreState, name: string): Player | null =>
   Object.hasOwn(s.players, name) ? (s.players[name] as Player) : null;
+
+/**
+ * A player's last profile (the owner's unless named), whole, or one stat of it by its dotted path
+ * (`level`, `coins`, `skills.Stoccaggio`, `equipment.weapon.level`): null if the state holds no
+ * profile of theirs, or the profile has no such stat. Read as own properties only (players name
+ * skills and items: `__proto__` is a name like any other).
+ */
+export function profileOf(s: LoreState, player?: string, stat?: string): unknown {
+  const name = player ?? s.owner.name;
+  const profile = name === null ? null : (playerOf(s, name)?.profile ?? null);
+  if (profile === null || stat === undefined || stat === '') return profile;
+  let at: unknown = profile;
+  for (const key of stat.split('.')) {
+    if (typeof at !== 'object' || at === null || !Object.hasOwn(at, key)) return null;
+    at = (at as Record<string, unknown>)[key];
+  }
+  return at ?? null;
+}
 
 /** The accumulo as the state keeps it, for an actor to read before it sends `/accumulo`. */
 export const accumuloOf = (s: LoreState): Accumulo => s.accumulo;
