@@ -29,7 +29,8 @@
  * - **The players** (`state.player({ name })`): every player's turns the account reads, the
  *   owner's included, kept by username: their name and level in the game, their turns seen, those a
  *   "too soon" told of (played in their private chat, which the account does not read), their rest,
- *   their accumulo and their trainings, each a floor of what they did (src/players.ts).
+ *   their accumulo, their trainings, their XP and level-ups, each a floor of what they did
+ *   (src/players.ts).
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -55,6 +56,7 @@ import {
   initialAccumulo,
   initialState,
   initialTraining,
+  initialXp,
   LORE_READINESS,
   LOREGAME_STATE,
   type LoreState,
@@ -76,7 +78,7 @@ type Kept = LoreState & Record<string, unknown>;
 const base = statePlugin<Kept>({
   id: LOREGAME_STATE,
   description:
-    "The owner's state at @LoreGameBot: the inventory the turns gained, the accumulo, the players' bans, and every player's turns, rest, accumulo and trainings",
+    "The owner's state at @LoreGameBot: the inventory the turns gained, the accumulo, the players' bans, and every player's turns, rest, accumulo, trainings, level and XP",
   schema: stateSchema,
   initial: initialState() as Kept,
   consumes: CONSUMES,
@@ -187,6 +189,22 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.19.0 kept no XP: each player's is added, nothing seen (from their next gain or level-up).
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const players = kept?.state?.['players'] as
+        Record<string, Record<string, unknown>> | undefined;
+      if (kept?.state === undefined || players === undefined) return;
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          players: Object.fromEntries(
+            Object.entries(players).map(([name, p]) => [name, { xp: initialXp(), ...p }])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -210,7 +228,7 @@ const base = statePlugin<Kept>({
       run: (s): Accumulo => accumuloOf(s),
     },
     player: {
-      help: 'A player as the turns and answers the account reads tell (by username): their name and level in the game, their turns seen and unseen, their rest, their accumulo, their trainings; none if never heard of',
+      help: 'A player as the turns and answers the account reads tell (by username): their name and level in the game, their turns seen and unseen, their rest, their accumulo, their trainings, the XP seen and their level-ups; none if never heard of',
       input: z.object({ name: z.string() }),
       output: z.looseObject({ turns: z.number(), unseen: z.number() }).nullable(),
       run: (s, input: { name: string }) => playerOf(s, input.name),

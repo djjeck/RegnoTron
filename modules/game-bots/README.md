@@ -129,10 +129,13 @@ default:
   (the first message after the send); in the group the parser pairs it as the accumulo's
   (`TrainingWatch`), with the same edge delivering every sender, and publishes every player's
   answers as `loregame.training` (`owner` true for the owner's). The owner's is declared the
-  command's answer, and the state starts the wait from it wherever it came, by hand too;
-- **a level-up** it brings adds its items to the inventory, as a turn's does.
+  command's answer, and the state starts the wait from it wherever it came, by hand too.
 
 Nothing else is to configure: the player's checklist offers both, and its chat-out edge follows.
+
+**Level-ups.** Any message of the bot's that ends in a level-up, whatever brought it, is published
+as `loregame.levelUp` for the player it is about (docs/game-bots.md §5.4): the owner's in private,
+else the sender of the message it replies to, else the player whose training it paired.
 
 ## The state: `loregame-state`
 
@@ -166,11 +169,12 @@ included), and announces each change as `loregame-state.changed`.
 
 It keeps the **bans** of every player the parser heard of, with when each ends (below), the owner's
 **accumulo** (below), and the **inventory**: what the owner's turns gained (a drop with its `2x`
-count, and the items a level-up gives, a training's too), per item its count, rarity, tags, when and
-by what (`drop` or `level-up`). It is an **estimate, a floor**: nothing lists the inventory yet
-(`/zaino` is paginated, and is read later), and a `/usa`, a `/dai` or a generator are not read yet,
-so a count only rises and `exact` stays false. A turn cut off at Telegram's limit may have gained
-what the reply lost: it changes no count, and marks the inventory `uncertain` in `state.freshness`.
+count, and the items the owner's level-ups give, whatever brought them), per item its count, rarity,
+tags, when and by what (`drop` or `level-up`). It is an **estimate, a floor**: nothing lists the
+inventory yet (`/zaino` is paginated, and is read later), and a `/usa`, a `/dai` or a generator are
+not read yet, so a count only rises and `exact` stays false. A turn cut off at Telegram's limit may
+have gained what the reply lost: it changes no count, and marks the inventory `uncertain` in
+`state.freshness`.
 
 | Interface                | Answers                                                          |
 | ------------------------ | ---------------------------------------------------------------- |
@@ -181,7 +185,7 @@ what the reply lost: it changes no count, and marks the inventory `uncertain` in
 | `state.ban({ player? })` | A player's ban (the owner's unless named): `{ until, since }`    |
 | `state.bans()`           | Every banned player, with their ban                              |
 | `state.accumulo()`       | The owner's accumulo: the count, the bot's word, the drift       |
-| `state.player({ name })` | A player by username: level, turns, rest, accumulo, trainings    |
+| `state.player({ name })` | A player by username: level, turns, rest, accumulo, training, XP |
 | `state.ready()`          | Each of the bot's commands' readiness, for a shell player (D141) |
 | `state.commands()`       | The bot's commands with their aliases and mechanics              |
 | `state.bot()`            | The bot's username, `LoreGameBot`                                |
@@ -223,9 +227,10 @@ if (accumuloReady(ctx.use<AccumuloInterface>('state').state.accumulo())) {
 included; docs/game-bots.md §6.1): their name and level in the game, their turns seen and those a
 "too soon" told of (played in their private chat, which the account does not read), their rest,
 their accumulo and their trainings (`training`: those seen, those a "too soon" told of, the last,
-and until when the next waits). The parser publishes them as `loregame.playerTurn`,
-`loregame.playerAccumulo` and `loregame.training`, which needs the group edge to deliver every
-sender, as the bans do.
+and until when the next waits) and their XP (`xp`: the XP seen, since their last level-up, and their
+latest level-ups with the XP seen before each). The parser publishes them as `loregame.playerTurn`,
+`loregame.playerAccumulo`, `loregame.training` and `loregame.levelUp`, which needs the group edge to
+deliver every sender, as the bans do.
 
 `loregame-state.accumuloReady` (`count`, `max`, `via`: `turn` or `reading`), `accumuloUsed` (`turns`
 since the last use, `exact`) and `accumuloDrift` (`kind`, `counted`, `said`, `max`) announce each

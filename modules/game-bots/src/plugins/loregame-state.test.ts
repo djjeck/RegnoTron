@@ -94,8 +94,9 @@ describe('the loregame-state node', () => {
       rarity: 'M1',
       tags: ['equipaggiabile 🗡'],
     });
+    // Three drops, and the level-up's items, an event of its own.
     expect(run.read('freshness', { section: 'inventory' })).toMatchObject({
-      deltas: 3,
+      deltas: 4,
       uncertain: 0,
     });
     await run.core.stop();
@@ -335,6 +336,7 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.unban',
       'loregame.accumulo',
       'loregame.training',
+      'loregame.levelUp',
       'loregame.playerTurn',
       'loregame.playerAccumulo',
     ]);
@@ -835,6 +837,50 @@ describe('the training, for a shell player', () => {
     expect(again.read('player', { name: 'bob' })).toMatchObject({
       turns: 1,
       training: { seen: 0, unseen: 0, last: null, until: null },
+    });
+    await again.core.stop();
+  });
+});
+
+describe('a level-up, whatever brought it', () => {
+  it('is the player’s whose message it replies to, any command; in private the owner’s', async () => {
+    const run = await bootState(path.join(dir, 'u1'), { group: true });
+    // A command no grammar reads, in the group: the reply's level-up is still Bob's.
+    const bobs = await run.group('bob', '/usa una pozione');
+    await run.group('LoreGameBot', `Hai usato una pozione!\n\n${LEVEL_UP}`, { replyTo: bobs });
+    // One that replies to nothing and pairs with no training: nobody's.
+    await run.group('LoreGameBot', `Qualcosa accade.\n\n${LEVEL_UP}`);
+    expect(run.of('loregame.levelUp')).toMatchObject([
+      { player: 'bob', owner: false, level: 3, coins: 30, skillPoints: 1 },
+    ]);
+    expect(run.read('player', { name: 'bob' })).toMatchObject({
+      game: { level: 3 },
+      xp: { level_ups: [{ level: 3, xp: null }] },
+    });
+    expect(run.read('held')).toEqual({});
+    // In private, the owner's, whatever it answers.
+    await run.bot(`Una ricetta completata!\n\n${LEVEL_UP}`);
+    expect(run.of('loregame.levelUp').at(-1)).toMatchObject({ player: 'alice', owner: true });
+    expect(run.read('held')).toEqual({ 'una scatola di sassi 📦': 2 });
+    await run.core.stop();
+  });
+
+  it('adds the XP to the players of a state kept before there was any (0.18.0)', async () => {
+    const dir2 = path.join(dir, 'u2');
+    const run = await bootState(dir2, { group: true });
+    const bobs = await run.group('bob', '/lore');
+    await run.group('LoreGameBot', gain('un sasso [B1]'), { replyTo: bobs });
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    delete kept.state.players.bob.xp;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 5 }));
+    const again = await bootState(dir2, { group: true });
+    expect(again.read('player', { name: 'bob' })).toMatchObject({
+      turns: 1,
+      xp: { seen: 0, since_level: null, level_ups: [] },
     });
     await again.core.stop();
   });

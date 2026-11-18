@@ -20,6 +20,24 @@ const turn = (outcome: unknown, t = T): BusEvent =>
   ({ type: 'loregame.turn', t, chat: '@LoreGameBot', outcome }) as unknown as BusEvent;
 const gain = (item: string, extra: Record<string, unknown> = {}) =>
   turn({ kind: 'gain', bot: 'LoreGameBot', item, rarity: 'B1', tags: [], sure: true, ...extra });
+/** A level-up, the owner's unless `player` names another, as the parser publishes it apart. */
+const levelUp = (
+  level: number,
+  items: { item: string; qty: number; rarity: string; tags: string[] }[] = [],
+  o: { t?: number; player?: string } = {}
+): BusEvent =>
+  ({
+    type: 'loregame.levelUp',
+    t: o.t ?? T,
+    chat: o.player === undefined ? '@LoreGameBot' : '-1001',
+    player: o.player ?? 'alice',
+    owner: o.player === undefined,
+    level,
+    coins: 40,
+    skillPoints: 1,
+    items,
+    other: [],
+  }) as unknown as BusEvent;
 
 describe('the loregame state', () => {
   it('starts empty, fits its schema, and applies the parser’s turns', () => {
@@ -32,6 +50,7 @@ describe('the loregame state', () => {
       'loregame.playerTurn',
       'loregame.playerAccumulo',
       'loregame.training',
+      'loregame.levelUp',
     ]);
   });
 
@@ -62,36 +81,17 @@ describe('the loregame state', () => {
     expect(stateSchema.safeParse(more).success).toBe(true);
   });
 
-  it('adds a level-up’s items as the level-up’s, and leaves the coins and points out', () => {
-    const e = turn({
-      kind: 'gain',
-      bot: 'LoreGameBot',
-      item: 'una pigna',
-      rarity: 'B1',
-      tags: [],
-      sure: true,
-      levelUp: {
-        level: 4,
-        coins: 40,
-        skillPoints: 1,
-        items: [{ item: 'un dado storto', qty: 3, rarity: 'M1', tags: [] }],
-        other: [],
-      },
-    });
-    const s = reduce(initialState(), e);
+  it('adds a level-up’s items as the level-up’s, from its own event alone, the owner’s only', () => {
+    const dice = [{ item: 'un dado storto', qty: 3, rarity: 'M1', tags: [] }];
+    // The turn that brought it still carries it in its outcome: it is not counted twice.
+    const s = [gain('una pigna', { levelUp: { level: 4, items: dice } }), levelUp(4, dice)].reduce(
+      reduce,
+      initialState()
+    );
     expect(held(s)).toEqual({ 'una pigna': 1, 'un dado storto': 3 });
     expect(s.inventory.items['un dado storto']).toMatchObject({ via: 'level-up', qty: 3 });
-    // A level-up with no gain before it (cut off, say) still gives its items.
-    const alone = reduce(
-      initialState(),
-      turn({
-        kind: 'nothing',
-        bot: 'LoreGameBot',
-        reason: 'defeated',
-        levelUp: { items: [{ item: 'un dado storto', qty: 1, rarity: 'M1', tags: [] }] },
-      })
-    );
-    expect(held(alone)).toEqual({ 'un dado storto': 1 });
+    // Another player's gives the owner nothing.
+    expect(held(reduce(initialState(), levelUp(4, dice, { player: 'bob' })))).toEqual({});
   });
 
   it('is the same state for what gains nothing, or reads wrong', () => {
@@ -423,10 +423,11 @@ describe('the accumulo', () => {
     expect(locked.accumulo).toMatchObject({ locked: 4, count: 0, exact: true, ready: false });
     // Turns under the level charge nothing.
     expect(run(locked, lore(), lore()).accumulo).toBe(locked.accumulo);
-    const level = (n: number) => lore(undefined, { levelUp: { level: n, items: [] } });
-    expect(run(locked, level(3)).accumulo).toBe(locked.accumulo);
-    // The turn that reaches it opens it, uncharged (it is not known to count), and not exact.
-    const open = run(locked, level(4), lore());
+    expect(run(locked, lore(), levelUp(3)).accumulo).toBe(locked.accumulo);
+    // The level-up that reaches it opens it, after the turn that brought it, which charges nothing;
+    // and not exact. Another player's opens nothing.
+    expect(run(locked, levelUp(4, [], { player: 'bob' })).accumulo).toBe(locked.accumulo);
+    const open = run(locked, lore(), levelUp(4), lore());
     expect(open.accumulo).toMatchObject({ locked: null, count: 1, exact: false });
     // The bot's counter opens it too, and an answer with no level changes nothing.
     expect(run(locked, answer('short', { count: 0, max: 20 })).accumulo).toMatchObject({
@@ -551,7 +552,8 @@ describe('the players', () => {
     };
     const s = run(
       turnOf('bob', T, { fight }),
-      turnOf('bob', T + 16 * MIN, { levelUp: { level: 6, items: [] } }),
+      turnOf('bob', T + 16 * MIN),
+      levelUp(6, [], { t: T + 16 * MIN, player: 'bob' }),
       played('carol', { kind: 'nothing', reason: 'defeated', place: PLACE }, T + MIN)
     );
     expect(playerOf(s, 'bob')).toMatchObject({
@@ -679,7 +681,8 @@ describe('the players', () => {
     // The level-up to 4: that turn charges nothing, the next does.
     const up = run(
       turnOf('bob', T, at(3)),
-      turnOf('bob', T + 16 * MIN, { levelUp: { level: 4, items: [] } }),
+      turnOf('bob', T + 16 * MIN),
+      levelUp(4, [], { t: T + 16 * MIN, player: 'bob' }),
       turnOf('bob', T + 32 * MIN)
     );
     expect(playerOf(up, 'bob')?.accumulo).toMatchObject({ locked: null, count: 1 });
@@ -690,6 +693,49 @@ describe('the players', () => {
       exact: false,
       count: 1,
     });
+  });
+
+  it('counts the XP seen, and records with each level-up how much was seen since the last', () => {
+    const won = (learned?: number) => ({
+      fight: {
+        player: { name: 'Bobby', level: 3 },
+        enemy: { name: 'un orso', level: 2 },
+        result: 'won',
+        ...(learned === undefined ? {} : { learned }),
+      },
+    });
+    const trained = (t: number, learned: number, extra = 0): BusEvent =>
+      ({
+        type: 'loregame.training',
+        t,
+        chat: '-1001',
+        player: 'bob',
+        owner: false,
+        result: 'trained',
+        gym: null,
+        learned,
+        extra,
+      }) as unknown as BusEvent;
+    const s = run(
+      // Before any level-up seen: a total, and nothing since a level-up.
+      turnOf('bob', T, won(4)),
+      levelUp(4, [], { t: T, player: 'bob' }),
+      // Then a win, a win that taught nothing, a fight lost, a training with its extra.
+      turnOf('bob', T + 16 * MIN, won(5)),
+      turnOf('bob', T + 32 * MIN, won()),
+      turnOf('bob', T + 48 * MIN, { fight: { ...won(9).fight, result: 'lost' } }),
+      trained(T + 50 * MIN, 15, 2),
+      levelUp(5, [], { t: T + 50 * MIN, player: 'bob' })
+    );
+    expect(playerOf(s, 'bob')?.xp).toEqual({
+      seen: 26,
+      since_level: 0,
+      level_ups: [
+        { level: 4, at: new Date(T).toISOString(), xp: null },
+        { level: 5, at: new Date(T + 50 * MIN).toISOString(), xp: 22 },
+      ],
+    });
+    expect(playerOf(s, 'bob')?.game.level).toBe(5);
   });
 
   it('keeps a player named like an object’s own property', () => {

@@ -24,6 +24,11 @@
  * a "too soon" with the wait left); and every player's answer, the owner's included, published as
  * `loregame.training`, paired as the accumulo's are, since the bot's success replies to nothing.
  *
+ * **Level-ups** (docs/game-bots.md §5.4): any message of the bot's that ends in one, whatever
+ * brought it (a turn, a training, anything else), is published as `loregame.levelUp`, for the player
+ * it is about: the owner's in private, else the sender of the message it replies to, else the player
+ * whose training it paired. One the parser cannot place is no one's.
+ *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
  * - To the owner's turn, it is an outcome (`banned`, with its `until`), declared a refusal
@@ -37,6 +42,7 @@
  */
 import { type Plugin } from '@megabottron1999/core';
 import {
+  isPrivate,
   type SentCommand,
   type TurnOutcome,
   type TurnParserInterface,
@@ -58,6 +64,7 @@ import {
   LOREGAMEBOT,
   loreRestMs,
   parseLoreGameBot,
+  splitLevelUp,
   TURN_COMMANDS,
 } from '#src/replies.ts';
 import {
@@ -92,6 +99,8 @@ export const BAN_EVENT = `${LOREGAME_PARSER}.ban`;
 export const UNBAN_EVENT = `${LOREGAME_PARSER}.unban`;
 /** The event that tells how the bot answered the owner's `/accumulo`. */
 export const ACCUMULO_EVENT = `${LOREGAME_PARSER}.accumulo`;
+/** The event of every player's level-up the parser can place, the owner's included (§5.4). */
+export const LEVEL_UP_EVENT = `${LOREGAME_PARSER}.levelUp`;
 /** The event of every player's answer to `/allenati`, the owner's included (§5.3). */
 export const TRAINING_EVENT = `${LOREGAME_PARSER}.training`;
 /** The events of every player's turns and `/accumulo`, the owner's included (§6.1). */
@@ -195,6 +204,29 @@ const trainingEvent = z
   })
   .describe("How @LoreGameBot answered a player's /allenati: any player's the account reads");
 
+const levelUpEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    level: z.number().describe('The level reached'),
+    coins: z.number().describe('The coins it gives'),
+    skillPoints: z.number().describe('The /abilita points it gives'),
+    items: z
+      .array(
+        z.object({
+          item: z.string(),
+          qty: z.number(),
+          rarity: z.string(),
+          tags: z.array(z.string()),
+        })
+      )
+      .describe('The items it gives'),
+    other: z.array(z.string()).describe('Lines of its list read as none of the above'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("A player's level-up, whatever brought it: any player's the account can place");
+
 const playerTurnEvent = z
   .object({
     chat: z.string(),
@@ -259,6 +291,7 @@ export const loregamePlugin: Plugin = {
       [UNBAN_EVENT]: unbanEvent,
       [ACCUMULO_EVENT]: accumuloEvent,
       [TRAINING_EVENT]: trainingEvent,
+      [LEVEL_UP_EVENT]: levelUpEvent,
       [PLAYER_TURN_EVENT]: playerTurnEvent,
       [PLAYER_ACCUMULO_EVENT]: playerAccumuloEvent,
     },
@@ -331,6 +364,19 @@ export const loregamePlugin: Plugin = {
           { chat: m.chat, player: who, owner, ...reply, ...old },
           m.time
         );
+      }
+      // A level-up, whatever brought it, for the player the message is about (§5.4).
+      if (m.own !== true && m.sender.toLowerCase() === LOREGAMEBOT.toLowerCase()) {
+        const { levelUp } = splitLevelUp(m.text.normalize('NFC'));
+        const by = isPrivate(m)
+          ? { player: self ?? '', owner: true }
+          : m.replyTo !== undefined
+            ? players.whose(m.chat, m.replyTo, self)
+            : training === undefined
+              ? undefined
+              : { player: training.player, owner: training.owner };
+        if (levelUp !== undefined && by !== undefined)
+          ctx.bus.publish(LEVEL_UP_EVENT, { chat: m.chat, ...by, ...levelUp, ...old }, m.time);
       }
     });
     const turns = instance.interface as TurnParserInterface;

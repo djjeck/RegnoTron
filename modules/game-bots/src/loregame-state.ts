@@ -9,7 +9,7 @@
  *
  * - **The inventory**, an estimate, since nothing here lists it yet (`/zaino` is paginated and
  *   comes later): what a turn gains adds to it, with the count (`2x`), and so does each item a
- *   level-up gives (`levelUp.items`). A holding is `exact: false` until a whole listing says
+ *   level-up of the owner's gives (`loregame.levelUp`, whatever brought it). A holding is `exact: false` until a whole listing says
  *   otherwise. What a turn can take away or move (a `/usa`, a `/dai`) is not read yet, so a count
  *   only ever rises, and is a floor, not the truth.
  * - **A turn cut off** at Telegram's limit (`truncated`) may have gained an item the reply lost: it
@@ -30,9 +30,14 @@
  *   not when) we count it so, or it stops being full without a use seen. The bot's word wins.
  *
  * - **The training** (src/training.ts): the owner's success in any chat (`loregame.training`, which
- *   the shell cannot pair in the group) starts its cooldown in the readiness, and a level-up it
- *   brings adds its items to the inventory, as a turn's does. Every player's trainings are kept with
- *   the players (§6.1 of docs/game-bots.md).
+ *   the shell cannot pair in the group) starts its cooldown in the readiness. Every player's
+ *   trainings are kept with the players (§6.1 of docs/game-bots.md).
+ *
+ * - **Levels and XP** (§5.4, §6.1): a level-up is an event of its own (`loregame.levelUp`), whatever
+ *   brought it: it sets a player's level, opens their accumulo at its level, and gives the owner its
+ *   items. The XP the account sees a player gain (the "+N" of a fight won, of a training) is
+ *   counted, and each level-up records how much was seen since the last one: the ground for
+ *   expecting the next, once the profile tells the thresholds.
  *
  * - **The owner's readiness** (MegaBotTron1999's bot-os.md D141): when each of the bot's commands
  *   may be played, which a shell player asks before each, in the section `readiness` the shell's
@@ -55,6 +60,7 @@ import { ACCUMULO, ACCUMULO_MAX, ACCUMULO_MECHANICS, LOCKED_RETRY_MS } from '#sr
 import {
   ACCUMULO_EVENT,
   BAN_EVENT,
+  LEVEL_UP_EVENT,
   LOREGAME_PARSER,
   LOREGAME_VOCABULARY,
   PLAYER_ACCUMULO_EVENT,
@@ -69,8 +75,8 @@ import { TRAINING, TRAINING_COOLDOWN_MIN, TRAINING_MECHANICS } from '#src/traini
 export const LOREGAME_STATE = 'loregame-state';
 
 /**
- * The parser's events it applies: the owner's turns, the bans, the accumulo, the trainings, every
- * player's.
+ * The parser's events it applies: the owner's turns, the bans, the accumulo, the trainings, the
+ * level-ups, every player's.
  */
 const TURN_EVENT = `${LOREGAME_PARSER}.turn`;
 export const CONSUMES: readonly string[] = [
@@ -81,6 +87,7 @@ export const CONSUMES: readonly string[] = [
   PLAYER_TURN_EVENT,
   PLAYER_ACCUMULO_EVENT,
   TRAINING_EVENT,
+  LEVEL_UP_EVENT,
 ];
 
 /**
@@ -201,7 +208,31 @@ const player = z.object({
       until: date.describe('The next one waits until, as their last training or "too soon" says'),
     })
     .describe('Training'),
+  xp: z
+    .object({
+      seen: z.number().describe('XP seen gained (a fight won’s, a training’s "+N"): a floor'),
+      since_level: z
+        .number()
+        .nullable()
+        .describe('XP seen since their last level-up seen (none: no level-up seen yet)'),
+      level_ups: z
+        .array(
+          z.object({
+            level: z.number().describe('The level reached'),
+            at: z.string().describe('When'),
+            xp: z
+              .number()
+              .nullable()
+              .describe('XP seen since the level-up before (none: that one was not seen)'),
+          })
+        )
+        .describe('The latest level-ups seen'),
+    })
+    .describe('XP'),
 });
+
+/** The level-ups kept per player, newest last. */
+const LEVEL_UPS_KEPT = 10;
 
 const holding = z.object({
   qty: z.number().describe('Count'),
@@ -277,7 +308,13 @@ export function initialPlayer(at: string): Player {
     rest_until: null,
     accumulo: initialAccumulo(),
     training: initialTraining(),
+    xp: initialXp(),
   };
+}
+
+/** A player's XP, nothing seen. */
+export function initialXp(): Player['xp'] {
+  return { seen: 0, since_level: null, level_ups: [] };
 }
 
 /** A player's training, nothing known. */
@@ -308,11 +345,14 @@ const outcomeSchema = z.looseObject({
   qty: z.number().optional(),
   rarity: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  levelUp: z.looseObject({ level: z.number().optional(), items: z.array(reward) }).optional(),
   place: z.looseObject({}).optional(),
   accumulo: z.object({ ready: z.boolean(), sure: z.boolean() }).optional(),
   fight: z
-    .looseObject({ player: z.object({ name: z.string(), level: z.number() }).optional() })
+    .looseObject({
+      result: z.string().optional(),
+      player: z.object({ name: z.string(), level: z.number() }).optional(),
+      learned: z.number().optional(),
+    })
     .optional(),
   retryMs: z.number().optional(),
 });
@@ -328,18 +368,27 @@ const trainingSchema = z.looseObject({
   owner: z.boolean(),
   result: z.enum(['trained', 'soon']),
   retryMs: z.number().optional(),
-  levelUp: z.looseObject({ level: z.number().optional(), items: z.array(reward) }).optional(),
+  learned: z.number().optional(),
+  extra: z.number().optional(),
+});
+
+/** What a level-up event says (the parser's `loregame.levelUp`). */
+const levelUpSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  level: z.number(),
+  items: z.array(reward),
 });
 
 /**
- * The items an event gains for the owner: a turn's drop and level-up, a training's level-up; none
- * for anything else.
+ * The items an event gains for the owner: a turn's drop, a level-up's items (whatever brought it);
+ * none for anything else.
  */
 function gainsOf(e: BusEvent): Gain[] {
-  if (e.type === TRAINING_EVENT) {
-    const t = trainingSchema.safeParse(e);
-    if (!t.success || !t.data.owner || t.data.result !== 'trained') return [];
-    return (t.data.levelUp?.items ?? [])
+  if (e.type === LEVEL_UP_EVENT) {
+    const u = levelUpSchema.safeParse(e);
+    if (!u.success || !u.data.owner) return [];
+    return u.data.items
       .map((r): Gain => ({ ...r, via: 'level-up' }))
       .filter((g) => g.qty > 0 && g.item !== '');
   }
@@ -355,7 +404,6 @@ function gainsOf(e: BusEvent): Gain[] {
       tags: o.tags ?? [],
       via: 'drop',
     });
-  for (const r of o.levelUp?.items ?? []) gains.push({ ...r, via: 'level-up' });
   return gains.filter((g) => g.qty > 0 && g.item !== '');
 }
 
@@ -436,13 +484,9 @@ function afterTurn(a: Accumulo, e: BusEvent): Accumulo {
   // A reply that is no turn (a "too soon", a ban) charges nothing: only a turn has a place.
   if (o?.place === undefined) return a;
   const at = asIso(e.t);
-  if (a.locked !== null) {
-    // Under the level the accumulo is not charged; the level that reaches it opens it, and that
-    // turn charges nothing.
-    return o.levelUp?.level !== undefined && o.levelUp.level >= a.locked
-      ? { ...a, as_of: at, locked: null, count: 0, exact: false }
-      : a;
-  }
+  // Under the level the accumulo is not charged; the level-up that reaches it opens it
+  // (`afterLevelUp`), after the turn that brought it, which charges nothing.
+  if (a.locked !== null) return a;
   const count = a.count + 1;
   const max = a.max ?? ACCUMULO_MAX;
   const charged: Accumulo = { ...a, as_of: at, count };
@@ -509,21 +553,16 @@ function afterReply(a: Accumulo, e: BusEvent): Accumulo {
   return withDrift(known, at, ...found);
 }
 
-/**
- * The accumulo after a training of the owner's: a level-up that reaches the level the gate names
- * opens it, as a turn's does.
- */
-function afterTraining(a: Accumulo, e: BusEvent): Accumulo {
-  const t = trainingSchema.safeParse(e);
-  const level = t.success && t.data.owner ? t.data.levelUp?.level : undefined;
-  return a.locked !== null && level !== undefined && level >= a.locked
-    ? { ...a, as_of: asIso(e.t), locked: null, count: 0, exact: false }
+/** The accumulo after a level-up: one that reaches the level its gate names opens it, empty. */
+function afterLevelUp(a: Accumulo, level: number, t: number): Accumulo {
+  return a.locked !== null && level >= a.locked
+    ? { ...a, as_of: asIso(t), locked: null, count: 0, exact: false }
     : a;
 }
 
 /**
  * The state after an event, as to the accumulo: a turn charges it, the bot's answer sets it, a
- * training's level-up may open it.
+ * level-up of the owner's may open it.
  */
 function reduceAccumulo(state: LoreState, e: BusEvent): LoreState {
   const a =
@@ -531,11 +570,17 @@ function reduceAccumulo(state: LoreState, e: BusEvent): LoreState {
       ? afterTurn(state.accumulo, e)
       : e.type === ACCUMULO_EVENT
         ? afterReply(state.accumulo, e)
-        : e.type === TRAINING_EVENT
-          ? afterTraining(state.accumulo, e)
+        : e.type === LEVEL_UP_EVENT
+          ? ownerLevelUp(state.accumulo, e)
           : state.accumulo;
   if (a === state.accumulo) return state;
   return { ...state, owner: { ...state.owner, as_of: asIso(e.t) }, accumulo: a };
+}
+
+/** The owner's accumulo after a level-up event, theirs or another player's (which changes none). */
+function ownerLevelUp(a: Accumulo, e: BusEvent): Accumulo {
+  const u = levelUpSchema.safeParse(e);
+  return u.success && u.data.owner ? afterLevelUp(a, u.data.level, e.t) : a;
 }
 
 /** The level that unlocks the accumulo [M] (its gate: "Devi essere almeno di livello 4!"). */
@@ -576,7 +621,8 @@ function playerAfterTurn(p: Player, e: BusEvent): Player {
   if (o.place === undefined) return p;
   const restMs = loreRestMs(o as unknown as Outcome);
   const fought = o.fight?.player;
-  const level = o.levelUp?.level ?? fought?.level ?? p.game.level;
+  // A fight's line names the level before a level-up the turn brings (`loregame.levelUp`, after).
+  const level = fought?.level ?? p.game.level;
   let accumulo = p.accumulo;
   // A turn well before the rest we predicted, with the accumulo full: it was used where we did
   // not hear (their private chat), so it starts again from 0 before this turn. Not full, the rest
@@ -602,12 +648,7 @@ function playerAfterTurn(p: Player, e: BusEvent): Player {
   // Below level 4 nothing charges it [M]: a level known from a fight or a level-up says so.
   if (level !== null && level < ACCUMULO_LEVEL && accumulo.locked === null)
     accumulo = { ...accumulo, locked: ACCUMULO_LEVEL, count: 0, exact: true, ready: false };
-  else if (
-    level !== null &&
-    level >= ACCUMULO_LEVEL &&
-    accumulo.locked !== null &&
-    o.levelUp === undefined
-  )
+  else if (level !== null && level >= ACCUMULO_LEVEL && accumulo.locked !== null)
     accumulo = { ...accumulo, locked: null, exact: false };
   return {
     ...p,
@@ -620,6 +661,39 @@ function playerAfterTurn(p: Player, e: BusEvent): Player {
     last_command: command ?? p.last_command,
     rest_until: restMs === undefined ? p.rest_until : asIso(e.t + restMs),
     accumulo: afterTurn(accumulo, e),
+    xp: gained(p.xp, o.fight?.result === 'won' ? (o.fight.learned ?? 0) : 0),
+  };
+}
+
+/** XP seen gained: the total and the count since the last level-up, when there was one. */
+function gained(xp: Player['xp'], n: number): Player['xp'] {
+  if (n <= 0) return xp;
+  return {
+    ...xp,
+    seen: xp.seen + n,
+    since_level: xp.since_level === null ? null : xp.since_level + n,
+  };
+}
+
+/**
+ * A player after a level-up, whatever brought it: their level, their accumulo opened at its level,
+ * and the XP seen since the last level-up recorded with it (none if that one was not seen).
+ */
+function playerAfterLevelUp(p: Player, e: BusEvent): Player {
+  const u = levelUpSchema.safeParse(e);
+  if (!u.success) return p;
+  const at = asIso(e.t);
+  const { level } = u.data;
+  return {
+    ...p,
+    as_of: at,
+    game: { ...p.game, level },
+    accumulo: afterLevelUp(p.accumulo, level, e.t),
+    xp: {
+      ...p.xp,
+      since_level: 0,
+      level_ups: [...p.xp.level_ups, { level, at, xp: p.xp.since_level }].slice(-LEVEL_UPS_KEPT),
+    },
   };
 }
 
@@ -628,7 +702,7 @@ const TRAINING_SLACK_MS = 2 * 60_000;
 
 /**
  * A player after their training, or a "too soon" to it: a training counted, with its wait of a day,
- * and a level-up's level; a "too soon" whose wait ends well after the one we predicted tells of a
+ * and the XP it gave; a "too soon" whose wait ends well after the one we predicted tells of a
  * training played where the account does not read (their private chat).
  */
 function playerAfterTraining(p: Player, e: BusEvent): Player {
@@ -640,7 +714,7 @@ function playerAfterTraining(p: Player, e: BusEvent): Player {
     return {
       ...p,
       as_of: at,
-      game: { ...p.game, level: t.data.levelUp?.level ?? p.game.level },
+      xp: gained(p.xp, (t.data.learned ?? 0) + (t.data.extra ?? 0)),
       training: {
         ...was,
         seen: was.seen + 1,
@@ -664,9 +738,17 @@ function playerAfterTraining(p: Player, e: BusEvent): Player {
   };
 }
 
-/** The state after an event, as to the players: any player's turn, `/accumulo` or training. */
+/**
+ * The state after an event, as to the players: any player's turn, `/accumulo`, training or
+ * level-up.
+ */
 function reducePlayers(state: LoreState, e: BusEvent): LoreState {
-  if (e.type !== PLAYER_TURN_EVENT && e.type !== PLAYER_ACCUMULO_EVENT && e.type !== TRAINING_EVENT)
+  if (
+    e.type !== PLAYER_TURN_EVENT &&
+    e.type !== PLAYER_ACCUMULO_EVENT &&
+    e.type !== TRAINING_EVENT &&
+    e.type !== LEVEL_UP_EVENT
+  )
     return state;
   const said = playerEventSchema.safeParse(e);
   if (!said.success || said.data.player === '') return state;
@@ -677,6 +759,7 @@ function reducePlayers(state: LoreState, e: BusEvent): LoreState {
   let after = before;
   if (e.type === PLAYER_TURN_EVENT) after = playerAfterTurn(before, e);
   else if (e.type === TRAINING_EVENT) after = playerAfterTraining(before, e);
+  else if (e.type === LEVEL_UP_EVENT) after = playerAfterLevelUp(before, e);
   else {
     const a = afterReply(before.accumulo, e);
     if (a !== before.accumulo) after = { ...before, as_of: at, accumulo: a };
@@ -688,7 +771,7 @@ function reducePlayers(state: LoreState, e: BusEvent): LoreState {
 /** The next state: an event's gains added to the inventory, a ban set or ended (pure). */
 export function reduce(state: LoreState, e: BusEvent): LoreState {
   const withBans = reducePlayers(reduceAccumulo(reduceBans(state, e), e), e);
-  // The inventory is the owner's: their turns and trainings alone, not another player's.
+  // The inventory is the owner's: their drops and level-ups alone, not another player's.
   const gains = gainsOf(e);
   if (gains.length === 0) return withBans;
   const at = asIso(e.t);

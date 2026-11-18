@@ -273,6 +273,44 @@ export const training: Check = {
   },
 };
 
+/**
+ * Levels and XP (docs/game-bots.md §5.4, §6.1): of the bot's messages that end in a level-up, how
+ * many the parser placed with a player; and, per level reached, the XP the state saw the player gain
+ * since their level-up before (when it saw that one): the ground for telling whether the levels'
+ * thresholds are fixed, once the profile says how much XP a player has.
+ */
+export const levels: Check = {
+  id: 'levels',
+  run: (r) => {
+    const LEVEL_UP = /🎉 Congratulazioni, hai raggiunto il livello \d+! 🎉\nOttieni:/u;
+    const said = r.inbounds.filter((m) => isBot(m) && LEVEL_UP.test(m.text)).length;
+    const placed = r.steps.filter((s) => s.event.type === 'loregame.levelUp');
+    const byLevel = new Map<number, number[]>();
+    for (const s of placed) {
+      const name = s.event['player'] as string;
+      const up = playerOf(s.after, name)?.xp.level_ups.at(-1);
+      if (up?.xp === null || up === undefined) continue;
+      byLevel.set(up.level, [...(byLevel.get(up.level) ?? []), up.xp]);
+    }
+    const last = r.steps.at(-1)?.after ?? initialState();
+    const seen = Object.values(last.players).reduce((n, p) => n + p.xp.seen, 0);
+    return {
+      title: 'Levels and XP',
+      rows: [
+        ['the bot’s level-ups', String(said)],
+        ['placed with a player', pct(placed.length, said)],
+        ['XP seen gained, every player', String(seen)],
+        ...[...byLevel]
+          .sort((a, b) => a[0] - b[0])
+          .map(([level, xp]): [string, string] => [
+            `… XP seen before reaching level ${level}`,
+            xp.sort((a, b) => a - b).join(', '),
+          ]),
+      ],
+    };
+  },
+};
+
 /** The players: how many, their turns seen and unseen, and the busiest, their name shown or not. */
 export const players: Check = {
   id: 'players',
@@ -302,7 +340,7 @@ export const players: Check = {
 };
 
 /** Every check, in the report's order: add one here as the parser learns to read more. */
-export const CHECKS: readonly Check[] = [coverage, rests, accumulo, training, players];
+export const CHECKS: readonly Check[] = [coverage, rests, accumulo, training, levels, players];
 
 /** The report's text: each check's title, then its rows. */
 export function report(findings: readonly Finding[]): string {

@@ -75,6 +75,17 @@ export class PlayerWatch {
     return player === '' ? undefined : { player, owner: to.owner, command: to.command, outcome };
   }
 
+  /**
+   * Whose message `id` of `chat` is, if the watch heard it (or the owner's account sent it): the
+   * player a bot's reply to it is about. The owner's named `self`; one without a username, none.
+   */
+  whose(chat: string, id: string, self: string | undefined): Omit<Said, 'command'> | undefined {
+    const said = this.said.get(`${chat}\n${id}`);
+    if (said === undefined) return undefined;
+    if (said.owner) return { player: self ?? said.player, owner: true };
+    return said.player === '' ? undefined : { player: said.player, owner: false };
+  }
+
   /** A command the owner's account sent (`actions.sent`), which it never hears come back. */
   sent(s: { chat: string; id?: string; command?: string }, self: string | undefined): void {
     if (s.id === undefined || s.command === undefined) return;

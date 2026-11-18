@@ -200,8 +200,7 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
   state), declares it the answer (`loregame.accumulo`), and the state frees the turn.
 
 **Not read yet**: Stoccaggio itself (the maximum is the one the bot's counter states, else the usual
-20), and the level, which a level-up elsewhere (not a turn, not a training: §5.3) raises without the
-state hearing.
+20). The level is read off any level-up the parser can place (§5.4).
 
 ### 5.3 The training
 
@@ -236,8 +235,27 @@ state hearing.
   state folds the owner's `loregame.training` into the readiness, and declares it the command's
   answer to the outbox.
 
-**Not read yet**: what `+<n>` is (the turn's fight has the same sentence, §5), and where the extra
-comes from.
+**Not read yet**: where the extra comes from. The `+<n>` is XP (§5.4): in one clean case the
+profile's ⚔️ rose by a training's +15 within three minutes, with no turn between.
+
+### 5.4 Level-ups and XP
+
+**A level-up** ends a message of the bot's: `🎉 Congratulazioni, hai raggiunto il livello <n>! 🎉`,
+then `Ottieni:` and its list (§5). In the exports since October it ends turns and trainings alone,
+but it is not tied to them: the parser reads it off **any** message of the bot's that ends in one,
+whatever brought it, and publishes it as an event of its own, `loregame.levelUp` (`player`, `owner`,
+`level`, `coins`, `skillPoints`, `items`, `other`). A level-up names nobody, so the parser places it
+as it places the rest: in private the owner's; in the group the sender of the message it replies to,
+whatever that message was; else the player whose training it paired (§5.3). One it cannot place is
+no one's (none since October: all 21 placed [M]). The turn's and the training's outcomes still carry
+the level-up they ended in, but the state reads it from `loregame.levelUp` alone, so it is counted
+once.
+
+**XP** is what `Hai imparato qualcosa di nuovo... (+<n>)` gives: after a fight won (§5, not every
+win says it) and a training (with its extra, §5.3). The state counts the XP it sees each player gain
+and, at each level-up, how much it saw since the one before (§6.1): a floor, since some wins say
+none and players play where the account does not read. Whether a level takes a fixed XP, and what
+the profile's ⚔️ counts, is for the profile to tell.
 
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
@@ -252,11 +270,11 @@ turn has its `place`, its `fight` (`enemy`, `result`, `player`, `learned`, `powe
 `loregame-state` (`modules/game-bots/`) keeps what the `loregame` parser reads of the owner's turns.
 It is a floor, not the truth, while the turns are all it reads:
 
-- **The inventory** gains what a turn drops (with its `2x`) and the items of a level-up's list. It
-  loses nothing: a `/usa`, a `/dai`, a `/give`, the generators and the recipes change the owner's
-  items and are not read yet, nor is a whole `/zaino` (paginated, and not whole in an export), which
-  will make a count exact. Until they are, a count only rises, and a real inventory is richer than
-  what turns alone bring.
+- **The inventory** gains what a turn drops (with its `2x`) and the items of the owner's level-ups'
+  lists (§5.4). It loses nothing: a `/usa`, a `/dai`, a `/give`, the generators and the recipes
+  change the owner's items and are not read yet, nor is a whole `/zaino` (paginated, and not whole
+  in an export), which will make a count exact. Until they are, a count only rises, and a real
+  inventory is richer than what turns alone bring.
 - **A turn cut off** (§5) may have gained an item the reply lost, so the inventory is marked
   uncertain, not changed.
 - **The bans** (§5.1) of every player the parser heard of, the owner's and the group's: per player,
@@ -280,20 +298,21 @@ It is a floor, not the truth, while the turns are all it reads:
   says nothing against the bot, so `early`, `late` and `used_early` need an exact count. The bot's
   word wins: the state follows it, and does not learn the maximum from a line. `state.accumulo()` is
   the section; `loregame-state.accumuloReady` and `accumuloUsed` announce the rest.
-- **The training** (§5.3): the readiness's, a day after the owner's last training; a level-up it
-  brings adds its items to the inventory, and opens the accumulo when it reaches its level.
+- **The training** (§5.3): the readiness's, a day after the owner's last training.
+- **A level-up** of the owner's (§5.4), whatever brought it, adds its items to the inventory, and
+  opens the accumulo when it reaches its level.
 - **Items and players are named by players**, anything, `__proto__` included.
 
 ### 6.1 Every player
 
 The state also keeps **every player** whose turns the account reads (`players`, by username; the
-owner's included), from three events of the parser for any player, `loregame.playerTurn` (a turn, or
-a "too soon"), `loregame.playerAccumulo` (an answer to `/accumulo`) and `loregame.training` (an
-answer to `/allenati`): the bot replies to a turn command naming nobody, so the parser names the
-player by the message it replies to, and pairs an `/accumulo` or a training answer as it does the
-owner's (§5.2, §5.3). Per player:
+owner's included), from four events of the parser for any player, `loregame.playerTurn` (a turn, or
+a "too soon"), `loregame.playerAccumulo` (an answer to `/accumulo`), `loregame.training` (an answer
+to `/allenati`) and `loregame.levelUp`: the bot replies to a turn command naming nobody, so the
+parser names the player by the message it replies to, and pairs an `/accumulo` or a training answer
+as it does the owner's (§5.2, §5.3, §5.4). Per player:
 
-- **in the game:** their name and level, as a fight's line and a level-up say;
+- **in the game:** their name and level, as a fight's line and a level-up (§5.4) say;
 - **turns seen**, the last one's time, and their **rest** (15 minutes, 30 after a fight lost, a "too
   soon"'s wait, §2);
 - **unseen turns:** players also play where the account does not read, in their private chat with
@@ -307,7 +326,11 @@ owner's (§5.2, §5.3). Per player:
   last turn, which the bot answers as a turn at times (§2: `double_turns`);
 - **their trainings** (§5.3): those seen, the last one, and until when the next waits (a day after
   it, or a "too soon"'s wait); a "too soon" whose wait ends well after the one predicted tells of a
-  training in private (`unseen`).
+  training in private (`unseen`);
+- **their XP** (§5.4): what the account saw them gain (`seen`), how much since their last level-up
+  seen (`since_level`), and their latest ten level-ups with the XP seen before each (none when the
+  level-up before was not seen): the ground for expecting the next level-up once the profile tells
+  the thresholds.
 
 Measured [M] with `npm run lore-check` (tools/lore-check/README.md) on the exports of Oct–Nov 2026,
 every player of the group: the counter the bot gives agrees with the state's in 97% of its readings,

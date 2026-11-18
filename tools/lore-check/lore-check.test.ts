@@ -59,7 +59,7 @@ function chat(): Inbound[] {
 describe('the lore check', () => {
   it('replays a chat through the real parser and state, and checks what they made of it', async () => {
     const run = await replayLore(chat(), { self: 'alice' });
-    const [coverage, rests, accumulo, , players] = CHECKS.map((c) => c.run(run));
+    const [coverage, rests, accumulo, , , players] = CHECKS.map((c) => c.run(run));
     const row = (f: typeof coverage, label: string) =>
       f?.rows.find(([k]) => k.startsWith(label))?.[1];
     expect(row(coverage, 'replies to a turn command')).toBe('5');
@@ -144,6 +144,38 @@ describe('the lore check', () => {
     expect(row('answers paired')).toBe('3 of 3 (100.0%)');
     expect(row('… trainings')).toBe('1');
     expect(row('by verdict')).toBe('agrees ×1, a training unseen ×1');
+  });
+
+  it('places the level-ups, and gives the XP seen before each level reached', async () => {
+    const UP = (level: number) =>
+      `\n\n🎉 Congratulazioni, hai raggiunto il livello ${level}! 🎉\nOttieni:\n> 10 monete`;
+    const WON = (learned: number) =>
+      [
+        'Lore - Il Bosco Inventato ⛅️ [B1]',
+        '',
+        'Una storia.',
+        'Durante il tuo cammino compare un orso [L2]!',
+        'Il combattimento inizia...',
+        `Bobby [L3] sconfigge un orso [L2]! Hai imparato qualcosa di nuovo... (+${learned})`,
+        'Hai ottenuto un sasso [B1]!',
+      ].join('\n');
+    const run = await replayLore(
+      [
+        ...asked(0, 'bob', '/lore', WON(4) + UP(4)),
+        ...asked(20, 'bob', '/lore', WON(5)),
+        ...asked(40, 'bob', '/lore', WON(6) + UP(5)),
+        // One that replies to nothing: not placed.
+        say(60, 'LoreGameBot', 'Qualcosa accade.' + UP(9)),
+      ],
+      { self: 'alice' }
+    );
+    const found = CHECKS.find((c) => c.id === 'levels')?.run(run);
+    const row = (label: string) => found?.rows.find(([k]) => k.startsWith(label))?.[1];
+    expect(row('the bot’s level-ups')).toBe('3');
+    expect(row('placed with a player')).toBe('2 of 3 (66.7%)');
+    expect(row('XP seen gained')).toBe('15');
+    expect(row('… XP seen before reaching level 5')).toBe('11');
+    expect(row('… XP seen before reaching level 4')).toBeUndefined();
   });
 
   it('reads its command line, and says what it needs', () => {
