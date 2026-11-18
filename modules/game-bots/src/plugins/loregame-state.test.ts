@@ -334,6 +334,7 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.ban',
       'loregame.unban',
       'loregame.accumulo',
+      'loregame.training',
       'loregame.playerTurn',
       'loregame.playerAccumulo',
     ]);
@@ -487,6 +488,8 @@ describe('the accumulo, for a shell player', () => {
         unlock: {},
         effects: [{ command: '/lore', clear: true }],
       },
+      // The training, its cooldown of a day.
+      { command: '/allenati', cooldownMin: 1440 },
     ]);
   });
 
@@ -709,5 +712,130 @@ describe('a player that plays in the group', () => {
     ]);
     const short = readAnswer(answers, 'loregame.accumulo', { chat: '-1001', result: 'short' }, T0);
     expect(short?.answer).toMatchObject({ status: 'refused', reason: 'not_ready' });
+  });
+});
+
+describe('the training, for a shell player', () => {
+  const DAY = 24 * 60 * MIN;
+  const TRAINED = '🏋🏼 Ti sei allenato! Hai imparato qualcosa di nuovo... (+10)';
+  const SOON = (wait: string) =>
+    `Non è passato abbastanza tempo dal tuo ultimo allenamento! Riprova fra ${wait}.`;
+  const ready = (run: { ready: () => Record<string, { ready: boolean; until?: number }> }) =>
+    run.ready()['/allenati'];
+  /** The player's send of /allenati, as it tells the parser. */
+  const sent = async (run: Awaited<ReturnType<typeof bootState>>, chat: string) => {
+    const id = `sent-${String(run.clock.now())}`;
+    const r = await run.core.controls.act('loregame', 'sent', {
+      chat,
+      id,
+      t: run.clock.now(),
+      command: '/allenati',
+    });
+    expect(r).not.toHaveProperty('error');
+    return id;
+  };
+
+  it('is ready until a training, then held a day; a "too soon" holds it for the wait it states', async () => {
+    const run = await bootState(path.join(dir, 't1'));
+    expect(ready(run)).toMatchObject({ ready: true });
+    // In private the bot's success replies to nothing; the shell pairs it, the first after the send.
+    await sent(run, '@LoreGameBot');
+    run.clock.advance(1000);
+    const at = run.clock.now();
+    await run.bot(TRAINED);
+    expect(run.of('loregame.answer').at(-1)).toMatchObject({
+      command: '/allenati',
+      outcome: { kind: 'training', learned: 10, extra: 0, gym: null },
+    });
+    expect(run.of('loregame.training')).toMatchObject([
+      { player: 'alice', owner: true, result: 'trained', learned: 10 },
+    ]);
+    expect(ready(run)).toMatchObject({ ready: false, until: at + DAY, why: 'its cooldown' });
+    // By hand, a little later: "too soon", with the wait left.
+    run.clock.advance(MIN);
+    const mine = await sent(run, '@LoreGameBot');
+    await run.bot(SOON('23 ore e 59 minuti'), { replyTo: mine });
+    expect(ready(run)).toMatchObject({ ready: false, until: at + DAY });
+    expect(run.core.drift().find((d) => d.parser === 'loregame')).toMatchObject({ unread: 0 });
+    run.clock.advance(DAY);
+    expect(ready(run)).toMatchObject({ ready: true });
+    await run.core.stop();
+  });
+
+  it('pairs a training in the group, which replies to nothing, and holds it a day', async () => {
+    const run = await bootState(path.join(dir, 't2'), { group: true });
+    // Bob trains first; his is not the owner's.
+    await run.group('bob', '/allenati');
+    await run.group('LoreGameBot', TRAINED.replace('!', ' nella palestra di Una Fazione 🏛!'));
+    expect(ready(run)).toMatchObject({ ready: true });
+    run.clock.advance(5000);
+    await sent(run, '-1001');
+    run.clock.advance(1000);
+    const at = run.clock.now();
+    await run.group('LoreGameBot', `${TRAINED}\n\n💪🏻 +2 extra`);
+    expect(run.of('loregame.training')).toMatchObject([
+      { player: 'bob', owner: false, result: 'trained', gym: 'Una Fazione 🏛', learned: 10 },
+      { player: 'alice', owner: true, result: 'trained', gym: null, extra: 2 },
+    ]);
+    expect(ready(run)).toMatchObject({ ready: false, until: at + DAY });
+    expect(run.read('player', { name: 'bob' })).toMatchObject({
+      training: { seen: 1, unseen: 0 },
+    });
+    // Bob's "too soon", a day after a training of his the account did not see.
+    run.clock.advance(DAY);
+    const bobs = await run.group('bob', '/allenati@LoreGameBot');
+    await run.group('LoreGameBot', SOON('10 ore'), { replyTo: bobs });
+    expect(run.read('player', { name: 'bob' })).toMatchObject({
+      training: { seen: 1, unseen: 1 },
+    });
+    expect(ready(run)).toMatchObject({ ready: true });
+    await run.core.stop();
+  });
+
+  it('adds what a level-up of the owner’s training gives, and nothing of another player’s', async () => {
+    const run = await bootState(path.join(dir, 't3'), { group: true });
+    await run.group('bob', '/allenati');
+    await run.group('LoreGameBot', `${TRAINED}\n\n${LEVEL_UP}`);
+    expect(run.read('held')).toEqual({});
+    expect(run.read('player', { name: 'bob' })).toMatchObject({ game: { level: 3 } });
+    await run.group('alice', '/allenati', { own: true });
+    await run.group('LoreGameBot', `${TRAINED}\n\n${LEVEL_UP}`);
+    expect(run.read('held')).toEqual({ 'una scatola di sassi 📦': 2 });
+    await run.core.stop();
+  });
+
+  it('declares the owner’s answer to the outbox: a training is the ok, "too soon" a refusal', () => {
+    const { answers } = parseManifest(loregamePlugin.manifest);
+    const at = (payload: object) =>
+      readAnswer(answers, 'loregame.training', { chat: '-1001', player: 'p', ...payload }, T0);
+    const ok = at({ owner: true, result: 'trained' });
+    expect(ok?.answer).toMatchObject({ status: 'ok', reason: 'trained' });
+    expect(ok?.commands).toEqual(['/allenati', '/allenati@LoreGameBot']);
+    expect(at({ owner: true, result: 'soon' })?.answer).toMatchObject({
+      status: 'refused',
+      reason: 'cooldown',
+    });
+    // Another player's training answers none of the owner's sends.
+    expect(at({ owner: false, result: 'trained' })).toBeUndefined();
+  });
+
+  it('adds the trainings to the players of a state kept before there were any (0.17.0)', async () => {
+    const dir2 = path.join(dir, 't4');
+    const run = await bootState(dir2, { group: true });
+    const bobs = await run.group('bob', '/lore');
+    await run.group('LoreGameBot', gain('un sasso [B1]'), { replyTo: bobs });
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    delete kept.state.players.bob.training;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 4 }));
+    const again = await bootState(dir2, { group: true });
+    expect(again.read('player', { name: 'bob' })).toMatchObject({
+      turns: 1,
+      training: { seen: 0, unseen: 0, last: null, until: null },
+    });
+    await again.core.stop();
   });
 });

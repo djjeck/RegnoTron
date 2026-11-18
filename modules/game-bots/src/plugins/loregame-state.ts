@@ -4,15 +4,15 @@
  * the reducer of `src/loregame-state.ts`, which says what it keeps and how.
  *
  * - **Its inputs:** `events`, required, bound to the `loregame` parser's events output (the
- *   namespace `loregame`): its turns, sends, answers, bans and accumulo. It resumes from its cursor
+ *   namespace `loregame`): its turns, sends, answers, bans, accumulo and trainings. It resumes from its cursor
  *   in the event log, so nothing is applied twice, and what the parser published while it was down
  *   is applied at its next start. `parser`, required, bound to the `loregame` parser's interface:
  *   the sends a shell player tells it of, handed on (MegaBotTron1999's bot-os.md D141).
  * - **The owner's readiness** (D141): each of @LoreGameBot's commands' readiness, the section
  *   `readiness`, which a shell player binds to (`state.ready`, `state.commands`, `state.bot`,
- *   `actions.sent`): reduced from the parser's events by the shell, with the accumulo's mechanics,
- *   and the owner's ban and their `/accumulo` answers folded in (`foldReadiness`), so no wrapper of
- *   the parser's patches it.
+ *   `actions.sent`): reduced from the parser's events by the shell, with the accumulo's and the
+ *   training's mechanics, and the owner's ban, their `/accumulo` answers and their trainings folded
+ *   in (`foldReadiness`), so no wrapper of the parser's patches it.
  * - **Its sections:** `owner` (when its state last changed, and the owner's name in the bans),
  *   `bans` (the banned players, with when each ban ends) and `inventory` (an estimate: the items
  *   the turns gained, `exact` once a listing says so).
@@ -28,8 +28,8 @@
  *   `accumuloDrift` announce each change from live news.
  * - **The players** (`state.player({ name })`): every player's turns the account reads, the
  *   owner's included, kept by username: their name and level in the game, their turns seen, those a
- *   "too soon" told of (played in their private chat, which the account does not read), their rest
- *   and their accumulo, each a floor of what they did (src/players.ts).
+ *   "too soon" told of (played in their private chat, which the account does not read), their rest,
+ *   their accumulo and their trainings, each a floor of what they did (src/players.ts).
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -54,6 +54,7 @@ import {
   held,
   initialAccumulo,
   initialState,
+  initialTraining,
   LORE_READINESS,
   LOREGAME_STATE,
   type LoreState,
@@ -75,7 +76,7 @@ type Kept = LoreState & Record<string, unknown>;
 const base = statePlugin<Kept>({
   id: LOREGAME_STATE,
   description:
-    "The owner's state at @LoreGameBot: the inventory the turns gained, the accumulo, the players' bans, and every player's turns, rest and accumulo",
+    "The owner's state at @LoreGameBot: the inventory the turns gained, the accumulo, the players' bans, and every player's turns, rest, accumulo and trainings",
   schema: stateSchema,
   initial: initialState() as Kept,
   consumes: CONSUMES,
@@ -167,6 +168,25 @@ const base = statePlugin<Kept>({
         state: { ...kept.state, readiness: LORE_READINESS.initial() },
       });
     },
+    // 0.18.0 kept no trainings: each player's is added, nothing known (from their next one).
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const players = kept?.state?.['players'] as
+        Record<string, Record<string, unknown>> | undefined;
+      if (kept?.state === undefined || players === undefined) return;
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          players: Object.fromEntries(
+            Object.entries(players).map(([name, p]) => [
+              name,
+              { training: initialTraining(), ...p },
+            ])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -190,7 +210,7 @@ const base = statePlugin<Kept>({
       run: (s): Accumulo => accumuloOf(s),
     },
     player: {
-      help: 'A player as the turns and answers the account reads tell (by username): their name and level in the game, their turns seen and unseen, their rest, their accumulo; none if never heard of',
+      help: 'A player as the turns and answers the account reads tell (by username): their name and level in the game, their turns seen and unseen, their rest, their accumulo, their trainings; none if never heard of',
       input: z.object({ name: z.string() }),
       output: z.looseObject({ turns: z.number(), unseen: z.number() }).nullable(),
       run: (s, input: { name: string }) => playerOf(s, input.name),

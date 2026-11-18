@@ -31,6 +31,7 @@ describe('the loregame state', () => {
       'loregame.accumulo',
       'loregame.playerTurn',
       'loregame.playerAccumulo',
+      'loregame.training',
     ]);
   });
 

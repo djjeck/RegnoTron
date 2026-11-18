@@ -3,10 +3,10 @@ import {
   ACCUMULO_COMMANDS,
   accumuloReady,
   AccumuloWatch,
-  ANSWER_WINDOW_MS,
   isAccumuloCommand,
   parseAccumulo,
 } from './accumulo.ts';
+import { ANSWER_WINDOW_MS } from './answer-watch.ts';
 import { type Heard } from './bans.ts';
 
 const T = Date.parse('2026-11-06T12:00:00Z');

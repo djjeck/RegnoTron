@@ -59,7 +59,7 @@ function chat(): Inbound[] {
 describe('the lore check', () => {
   it('replays a chat through the real parser and state, and checks what they made of it', async () => {
     const run = await replayLore(chat(), { self: 'alice' });
-    const [coverage, rests, accumulo, players] = CHECKS.map((c) => c.run(run));
+    const [coverage, rests, accumulo, , players] = CHECKS.map((c) => c.run(run));
     const row = (f: typeof coverage, label: string) =>
       f?.rows.find(([k]) => k.startsWith(label))?.[1];
     expect(row(coverage, 'replies to a turn command')).toBe('5');
@@ -119,6 +119,31 @@ describe('the lore check', () => {
     expect(row('… telling of a use unseen')).toBe('1');
     expect(row('… not a use')).toBe('1');
     expect(report([rests as NonNullable<typeof rests>])).toMatch(/^## Rest model\n- /u);
+  });
+
+  it('checks each training "too soon" against the day after the last training seen', async () => {
+    const TRAINED = '🏋🏼 Ti sei allenato! Hai imparato qualcosa di nuovo... (+10)';
+    const SOON = (wait: string) =>
+      `Non è passato abbastanza tempo dal tuo ultimo allenamento! Riprova fra ${wait}.`;
+    const run = await replayLore(
+      [
+        // Bob trains, in a message of the bot's own; then a "too soon" that agrees.
+        say(0, 'bob', '/allenati'),
+        say(0, 'LoreGameBot', TRAINED),
+        ...asked(60, 'bob', '/allenati', SOON('23 ore')),
+        // A day and a half later, a wait that tells of a training in private.
+        ...asked(36 * 60, 'bob', '/allenati@LoreGameBot', SOON('20 ore')),
+        // Carol's answer the parser cannot pair: nobody's command was heard.
+        say(37 * 60, 'LoreGameBot', TRAINED),
+      ],
+      { self: 'alice' }
+    );
+    const found = CHECKS.find((c) => c.id === 'training')?.run(run);
+    const row = (label: string) => found?.rows.find(([k]) => k.startsWith(label))?.[1];
+    expect(row('/allenati sent')).toBe('3');
+    expect(row('answers paired')).toBe('3 of 3 (100.0%)');
+    expect(row('… trainings')).toBe('1');
+    expect(row('by verdict')).toBe('agrees ×1, a training unseen ×1');
   });
 
   it('reads its command line, and says what it needs', () => {

@@ -13,17 +13,13 @@
  *
  * The answer to `/accumulo` does not say whose it is. In private it is the owner's; in the group it
  * is a message of its own that follows the command (not a reply to it, since 7 Feb 2026 [M]),
- * so `AccumuloWatch` pairs each answer with the oldest command waiting, the way the bot answers
- * them (measured over 5,400 answers: 99.8% within 10 seconds, and the counter then follows the
+ * so `AccumuloWatch` (`src/answer-watch.ts`) pairs each answer with the oldest command waiting, the
+ * way the bot answers them (measured over 5,400 answers: 99.8% within 10 seconds, and the counter then follows the
  * player's own turns in 99% of the readings).
  */
 import { type CommandMechanics } from '@megabottron1999/turns/readiness.ts';
-import {
-  isPrivate,
-  type TurnOutcome,
-  type TurnReading,
-} from '@megabottron1999/turns/turn-parser.ts';
-import { type Heard } from '#src/bans.ts';
+import { type TurnOutcome, type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
+import { AnswerWatch, isCommandOf, type PlayerAnswer } from '#src/answer-watch.ts';
 import { LOREGAMEBOT, TURN_REST_MS } from '#src/replies.ts';
 
 /** The commands of the accumulo, as a player types them (`/acc` is the one they use most). */
@@ -34,9 +30,6 @@ export const ACCUMULO_COMMANDS: readonly string[] = ['/accumulo', '/acc'];
  * (`/abilita`) lowers it, to 19 and 17 in the exports, and every counter the bot gives states it.
  */
 export const ACCUMULO_MAX = 20;
-
-/** How long a command waits for its answer: the bot answers within seconds [M]. */
-export const ANSWER_WINDOW_MS = 10_000;
 
 /** What @LoreGameBot answers to `/accumulo`. */
 export type AccumuloReply =
@@ -77,107 +70,24 @@ export function parseAccumulo(raw: string): AccumuloReply | undefined {
 
 /** Whether `text` is the accumulo's command, bare or addressed to `bot`. */
 export function isAccumuloCommand(text: string, bot: string): boolean {
-  const m = /^(\/\w+)(?:@(\w+))?$/u.exec(text.trim());
-  if (m === null) return false;
-  if (m[2] !== undefined && m[2].toLowerCase() !== bot.toLowerCase()) return false;
-  return ACCUMULO_COMMANDS.includes((m[1] as string).toLowerCase());
-}
-
-/** An accumulo command heard, waiting for its answer. */
-interface Asked {
-  chat: string;
-  id: string | undefined;
-  /** Who asked: the owner (theirs is the one `hear` keeps), or a player by username. */
-  owner: boolean;
-  player: string;
-  time: number;
+  return isCommandOf(text, ACCUMULO_COMMANDS, bot);
 }
 
 /** A player's answer to `/accumulo`: whose, and what the bot said. */
-export interface PlayerAccumulo {
-  player: string;
-  owner: boolean;
-  reply: AccumuloReply;
-}
+export type PlayerAccumulo = PlayerAnswer<AccumuloReply>;
 
 /**
- * The `/accumulo` answers, out of everything the parser hears. It keeps the commands that wait for
- * an answer (any player's in the group, as it hears them) and gives each answer to the command it
- * belongs to: the one it replies to, else the oldest waiting in that chat.
+ * The `/accumulo` answers, out of everything the parser hears (`src/answer-watch.ts`). The level
+ * gate is every command's, so in private it counts only as the answer to a command waiting.
  */
-export class AccumuloWatch {
-  private readonly bot: string;
-  private asked: Asked[] = [];
-
+export class AccumuloWatch extends AnswerWatch<AccumuloReply> {
   constructor(bot: string) {
-    this.bot = bot.toLowerCase();
-  }
-
-  /**
-   * A command the owner's account sent, as the shell's player tells its parser (`actions.sent`):
-   * the account never hears its own sends come back, so the watch would not know it waits.
-   */
-  sent(s: { chat: string; id?: string; t: number; command?: string }): void {
-    if (s.command === undefined || !isAccumuloCommand(s.command, this.bot)) return;
-    this.asked.push({ chat: s.chat, id: s.id, owner: true, player: '', time: s.t });
-  }
-
-  /** The owner's answer, if `m` is the bot's answer to the owner's accumulo command. */
-  hear(m: Heard): AccumuloReply | undefined {
-    const a = this.answer(m, undefined);
-    return a?.owner === true ? a.reply : undefined;
-  }
-
-  /**
-   * Any player's answer, if `m` is the bot's answer to a player's accumulo command: the owner's
-   * named `self` (their username once the account knows it), a player without a username no
-   * one's.
-   */
-  answer(m: Heard, self: string | undefined): PlayerAccumulo | undefined {
-    this.asked = this.asked.filter((a) => m.time - a.time <= ANSWER_WINDOW_MS);
-    const inPrivate = isPrivate(m);
-    if (m.own === true || m.sender.toLowerCase() !== this.bot) {
-      if (isAccumuloCommand(m.text, this.bot)) {
-        const owner = m.own === true || inPrivate;
-        this.asked.push({
-          chat: m.chat,
-          id: m.id,
-          owner,
-          player: owner ? '' : m.sender,
-          time: m.time,
-        });
-      }
-      return undefined;
-    }
-    const whose = (command: Asked, reply: AccumuloReply): PlayerAccumulo | undefined => {
-      const player = command.owner ? (self ?? '') : command.player;
-      return player === '' && !command.owner ? undefined : { player, owner: command.owner, reply };
-    };
-    // A reply to a command waiting ends its wait, whatever it says (a ban, a gate).
-    const to =
-      m.replyTo === undefined
-        ? -1
-        : this.asked.findIndex((a) => a.chat === m.chat && a.id === m.replyTo);
-    const reply = parseAccumulo(m.text);
-    if (to >= 0) {
-      const [command] = this.asked.splice(to, 1) as [Asked];
-      return reply === undefined ? undefined : whose(command, reply);
-    }
-    if (reply === undefined) return undefined;
-    if (m.replyTo === undefined) {
-      // A message of its own: the oldest command waiting in that chat is the one it answers.
-      const next = this.asked.findIndex((a) => a.chat === m.chat);
-      if (next >= 0) {
-        const [command] = this.asked.splice(next, 1) as [Asked];
-        return whose(command, reply);
-      }
-    }
-    // No command known to be waiting: in private it is the owner's all the same (a command sent
-    // before the parser started, or from elsewhere), when it says what it is; the level gate is
-    // any command's. In the group it is no one's.
-    return inPrivate && reply.result !== 'locked'
-      ? { player: self ?? '', owner: true, reply }
-      : undefined;
+    super({
+      bot,
+      commands: ACCUMULO_COMMANDS,
+      parse: parseAccumulo,
+      ownerless: (reply) => reply.result !== 'locked',
+    });
   }
 }
 

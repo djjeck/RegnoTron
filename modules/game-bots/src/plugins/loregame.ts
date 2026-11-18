@@ -19,6 +19,11 @@
  * answer to the owner's `/accumulo` (in private, or the one that follows the command in the
  * group) is published as `loregame.accumulo`, for `loregame-state` to count against.
  *
+ * **The training** (docs/game-bots.md §5.3), `/allenati`, a command a shell player plays: named in
+ * the vocabulary (its cooldown of a day is the state's mechanics), its answer read (a training, or
+ * a "too soon" with the wait left); and every player's answer, the owner's included, published as
+ * `loregame.training`, paired as the accumulo's are, since the bot's success replies to nothing.
+ *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
  * - To the owner's turn, it is an outcome (`banned`, with its `until`), declared a refusal
@@ -55,17 +60,27 @@ import {
   parseLoreGameBot,
   TURN_COMMANDS,
 } from '#src/replies.ts';
+import {
+  parseTraining,
+  TRAINING,
+  TRAINING_COMMANDS,
+  trainingReading,
+  TrainingWatch,
+} from '#src/training.ts';
 
 export const LOREGAME_PARSER = 'loregame';
 /**
  * @LoreGameBot's vocabulary (MegaBotTron1999's D140, D141): its turn, by its own command first and
- * its aliases after, and the accumulo, by its full name, with `/acc` its alias, as the bot takes
- * both. The parser's, and given to `loregame-state`'s readiness too.
+ * its aliases after; the accumulo, by its full name, with `/acc` its alias, as the bot takes
+ * both; and the training. The parser's, and given to `loregame-state`'s readiness too.
  */
 export const LOREGAME_VOCABULARY = {
   bot: LOREGAMEBOT,
   turnCommands: TURN_COMMANDS[LOREGAMEBOT],
-  commands: { [ACCUMULO]: { aliases: ACCUMULO_COMMANDS.slice(1) } },
+  commands: {
+    [ACCUMULO]: { aliases: ACCUMULO_COMMANDS.slice(1) },
+    [TRAINING]: { aliases: TRAINING_COMMANDS.slice(1) },
+  },
 };
 /** Every form of `names` a player may send (D139, D140): each bare, then addressed to the bot. */
 const formsOf = (names: readonly string[]): string[] => [
@@ -77,11 +92,18 @@ export const BAN_EVENT = `${LOREGAME_PARSER}.ban`;
 export const UNBAN_EVENT = `${LOREGAME_PARSER}.unban`;
 /** The event that tells how the bot answered the owner's `/accumulo`. */
 export const ACCUMULO_EVENT = `${LOREGAME_PARSER}.accumulo`;
+/** The event of every player's answer to `/allenati`, the owner's included (§5.3). */
+export const TRAINING_EVENT = `${LOREGAME_PARSER}.training`;
 /** The events of every player's turns and `/accumulo`, the owner's included (§6.1). */
 export const PLAYER_TURN_EVENT = `${LOREGAME_PARSER}.playerTurn`;
 export const PLAYER_ACCUMULO_EVENT = `${LOREGAME_PARSER}.playerAccumulo`;
 /** The store's document of the bans it knows. */
 const BANS_DOC = 'bans';
+
+/** A ban, as an answer to a command other than the turn: nothing spent, every command held. */
+const bannedReading = (until: number): TurnReading => ({
+  outcome: { kind: 'nothing', bot: LOREGAMEBOT, reason: 'cooldown', banned: until } as TurnOutcome,
+});
 
 const parser: Plugin = turnParserPlugin({
   id: LOREGAME_PARSER,
@@ -89,22 +111,19 @@ const parser: Plugin = turnParserPlugin({
   ...LOREGAME_VOCABULARY,
   read: (m): TurnReading => {
     // By its name, whichever alias was sent (D140).
-    if (m.command === ACCUMULO) {
-      // The answer to the owner's /accumulo: used (the success), or a "too soon" of some kind.
-      const said = parseAccumulo(m.text);
-      if (said !== undefined) return accumuloReading(said);
+    if (m.command === ACCUMULO || m.command === TRAINING) {
+      // The answer to the owner's /accumulo (used, the success, or a "too soon" of some kind), or
+      // to their /allenati (a training, or a "too soon").
+      if (m.command === ACCUMULO) {
+        const said = parseAccumulo(m.text);
+        if (said !== undefined) return accumuloReading(said);
+      } else {
+        const said = parseTraining(m.text);
+        if (said !== undefined) return trainingReading(said);
+      }
       const outcome = parseLoreGameBot(m.text);
       // Banned: nothing spent; the ban holds every command (`loregame-state`'s readiness).
-      if (outcome.kind === 'banned')
-        return {
-          outcome: {
-            kind: 'nothing',
-            bot: LOREGAMEBOT,
-            reason: 'cooldown',
-            banned: outcome.until,
-          } as TurnOutcome,
-        };
-      return { unread: true };
+      return outcome.kind === 'banned' ? bannedReading(outcome.until) : { unread: true };
     }
     if (!m.answers && !(m.private && m.replies)) return undefined;
     const outcome = parseLoreGameBot(m.text);
@@ -158,6 +177,24 @@ const accumuloEvent = z
   })
   .describe("How @LoreGameBot answered the owner's /accumulo");
 
+const trainingEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    result: z.enum(['trained', 'soon']).describe('Trained, or too soon'),
+    gym: z.string().nullable().optional().describe("trained: the faction's gym, none without one"),
+    learned: z.number().optional().describe('trained: the "+N" it taught'),
+    extra: z.number().optional().describe('trained: the "+N extra" a bonus added; 0 without'),
+    levelUp: z
+      .looseObject({ level: z.number() })
+      .optional()
+      .describe("trained: the level-up it brought, as a turn's (src/replies.ts's LoreLevelUp)"),
+    retryMs: z.number().optional().describe('soon: the wait left, as the bot states it (ms)'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("How @LoreGameBot answered a player's /allenati: any player's the account reads");
+
 const playerTurnEvent = z
   .object({
     chat: z.string(),
@@ -195,7 +232,24 @@ const ACCUMULO_ANSWERS = (
   reason,
 }));
 
-/** The parser, with the bans and the accumulo it watches for, beside the turns it reads. */
+/**
+ * What the bot's answer to the owner's `/allenati` tells a node that sent it (D98), paired by the
+ * parser's own watch, as the accumulo's: a training is the `ok`, "too soon" a refusal.
+ */
+const TRAINING_ANSWERS = (
+  [
+    ['trained', 'ok', 'trained'],
+    ['soon', 'refused', 'cooldown'],
+  ] as const
+).map(([result, status, reason]) => ({
+  event: TRAINING_EVENT,
+  commands: formsOf(TRAINING_COMMANDS),
+  when: { result, owner: true },
+  status,
+  reason,
+}));
+
+/** The parser, with the bans, the accumulo and the training it watches for, beside the turns. */
 export const loregamePlugin: Plugin = {
   manifest: {
     ...parser.manifest,
@@ -204,6 +258,7 @@ export const loregamePlugin: Plugin = {
       [BAN_EVENT]: banEvent,
       [UNBAN_EVENT]: unbanEvent,
       [ACCUMULO_EVENT]: accumuloEvent,
+      [TRAINING_EVENT]: trainingEvent,
       [PLAYER_TURN_EVENT]: playerTurnEvent,
       [PLAYER_ACCUMULO_EVENT]: playerAccumuloEvent,
     },
@@ -218,6 +273,7 @@ export const loregamePlugin: Plugin = {
       },
       ...(parser.manifest.answers ?? []),
       ...ACCUMULO_ANSWERS,
+      ...TRAINING_ANSWERS,
     ],
   },
   create: async (ctx) => {
@@ -229,6 +285,7 @@ export const loregamePlugin: Plugin = {
     );
     const asked = new AccumuloWatch(LOREGAMEBOT);
     const players = new PlayerWatch(LOREGAMEBOT);
+    const trained = new TrainingWatch(LOREGAMEBOT);
     chat.onMessage((m) => {
       const old = m.playback ? { playback: true as const } : {};
       const news = watch.hear(m, chat.self());
@@ -264,6 +321,17 @@ export const loregamePlugin: Plugin = {
         // the turns' rest there, and nowhere else (D142).
         ctx.bus.publish(ACCUMULO_EVENT, { chat: m.chat, ...answer, ...old }, m.time);
       }
+      // Any player's training, the owner's in any chat: `loregame-state` folds the owner's success
+      // into the readiness (the shell pairs it in private alone).
+      const training = trained.answer(m, self);
+      if (training !== undefined) {
+        const { player: who, owner, reply } = training;
+        ctx.bus.publish(
+          TRAINING_EVENT,
+          { chat: m.chat, player: who, owner, ...reply, ...old },
+          m.time
+        );
+      }
     });
     const turns = instance.interface as TurnParserInterface;
     return {
@@ -275,6 +343,7 @@ export const loregamePlugin: Plugin = {
           sent: (sent: SentCommand) => {
             turns.actions.sent(sent);
             asked.sent(sent);
+            trained.sent(sent);
             players.sent(sent, chat.self());
           },
         },

@@ -227,6 +227,52 @@ export const accumulo: Check = {
   },
 };
 
+/**
+ * The training (docs/game-bots.md §5.3): each "too soon" the bot gave a player's `/allenati`
+ * against the wait the state predicted from their last training (a day): it agrees within two
+ * minutes, ends later (a training unseen, played in private), or sooner (a wait the model does not
+ * know). And how many of the bot's answers to `/allenati` the parser paired with a player.
+ */
+export const training: Check = {
+  id: 'training',
+  run: (r) => {
+    const commands = r.inbounds.filter(
+      (m) => !isBot(m) && /^\/allenati(?:@loregamebot)?$/iu.test(m.text.trim())
+    ).length;
+    const answers = r.steps.filter((s) => s.event.type === 'loregame.training');
+    const verdicts: string[] = [];
+    for (const s of answers) {
+      const retryMs = s.event['retryMs'];
+      if (s.event['result'] !== 'soon' || typeof retryMs !== 'number') continue;
+      const before = playerOf(s.before, s.event['player'] as string)?.training;
+      if (before?.last === null || before?.until === null || before === undefined) continue;
+      const off = s.event.t + retryMs - Date.parse(before.until);
+      verdicts.push(
+        Math.abs(off) <= TWO_MIN
+          ? 'agrees'
+          : off > 0
+            ? 'a training unseen'
+            : 'sooner than predicted'
+      );
+    }
+    const trained = answers.filter((s) => s.event['result'] === 'trained').length;
+    return {
+      title: 'Training',
+      rows: [
+        ['/allenati sent, any player’s', String(commands)],
+        ['answers paired with a player', pct(answers.length, commands)],
+        ['… trainings', String(trained)],
+        ['"too soon"s after a training seen', String(verdicts.length)],
+        [
+          'agree with the day predicted (±2 min)',
+          pct(verdicts.filter((v) => v === 'agrees').length, verdicts.length),
+        ],
+        ['by verdict', tally(verdicts)],
+      ],
+    };
+  },
+};
+
 /** The players: how many, their turns seen and unseen, and the busiest, their name shown or not. */
 export const players: Check = {
   id: 'players',
@@ -256,7 +302,7 @@ export const players: Check = {
 };
 
 /** Every check, in the report's order: add one here as the parser learns to read more. */
-export const CHECKS: readonly Check[] = [coverage, rests, accumulo, players];
+export const CHECKS: readonly Check[] = [coverage, rests, accumulo, training, players];
 
 /** The report's text: each check's title, then its rows. */
 export function report(findings: readonly Finding[]): string {

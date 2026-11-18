@@ -200,7 +200,44 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
   state), declares it the answer (`loregame.accumulo`), and the state frees the turn.
 
 **Not read yet**: Stoccaggio itself (the maximum is the one the bot's counter states, else the usual
-20), and the level, which a training or a level-up elsewhere raises without the state hearing.
+20), and the level, which a level-up elsewhere (not a turn, not a training: §5.3) raises without the
+state hearing.
+
+### 5.3 The training
+
+`/allenati` trains the player once a day [M]: measured over 225 commands of the exports' players
+(Oct–Nov 2026), in private and in the group.
+
+- **Its wait is a day after the last success**, to the second: every "too soon" states the time
+  left, and of the 99 that follow a training seen, 97 end within two minutes of a day after it, and
+  the other two later (a training in private, which the account does not read); none sooner. The day
+  is not a calendar one: a training at 15:30 allows the next at 15:30.
+- **The answers**, each the whole message:
+
+| Reply                                                                                      | Means                                                       |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `🏋🏼 Ti sei allenato nella palestra di <faction>! Hai imparato qualcosa di nuovo... (+<n>)` | Trained, in their faction's gym (+15 in the exports)        |
+| `🏋🏼 Ti sei allenato! Hai imparato qualcosa di nuovo... (+<n>)`                             | Trained, with no faction (+10)                              |
+| then `💪🏻 +<n> extra`, or a level-up (§5) after a blank line                                | A bonus [?] (7 of 118), and the level it reached (4 of 118) |
+| `Non è passato abbastanza tempo dal tuo ultimo allenamento! Riprova fra <wait>.`           | Too soon: the wait left, written as the turn's (§5)         |
+
+- **Whose answer it is.** The success is a message of its own, **not a reply**, in private and in
+  the group alike (all 118), within two seconds of the command; "too soon" replies to it. So it is
+  paired as the accumulo's answers are (§5.2): in private it is the owner's, in the group the oldest
+  command waiting in that chat, which needs the group's chat edge to deliver every sender. Nothing
+  in it says who trained.
+- **`loregame.training`** carries every player's answer the parser pairs, the owner's included
+  (`player`, `owner`, `result`: `trained` with `gym`, `learned`, `extra` and its `levelUp`, or
+  `soon` with `retryMs`).
+- **Played by the shell's `player`**, as the accumulo (§5.2): the parser names `/allenati` in its
+  vocabulary, and `loregame-state` declares its mechanics, a cooldown of a day (`cooldownMin: 1440`)
+  after each success. A training is the success; "too soon" holds it for the wait it states. The
+  owner's training, by hand or in the group, where the shell cannot pair it, counts the same: the
+  state folds the owner's `loregame.training` into the readiness, and declares it the command's
+  answer to the outbox.
+
+**Not read yet**: what `+<n>` is (the turn's fight has the same sentence, §5), and where the extra
+comes from.
 
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
@@ -243,15 +280,18 @@ It is a floor, not the truth, while the turns are all it reads:
   says nothing against the bot, so `early`, `late` and `used_early` need an exact count. The bot's
   word wins: the state follows it, and does not learn the maximum from a line. `state.accumulo()` is
   the section; `loregame-state.accumuloReady` and `accumuloUsed` announce the rest.
+- **The training** (§5.3): the readiness's, a day after the owner's last training; a level-up it
+  brings adds its items to the inventory, and opens the accumulo when it reaches its level.
 - **Items and players are named by players**, anything, `__proto__` included.
 
 ### 6.1 Every player
 
 The state also keeps **every player** whose turns the account reads (`players`, by username; the
-owner's included), from two events of the parser for any player, `loregame.playerTurn` (a turn, or a
-"too soon") and `loregame.playerAccumulo` (an answer to `/accumulo`): the bot replies to a turn
-command naming nobody, so the parser names the player by the message it replies to, and pairs an
-`/accumulo` answer as it does the owner's (§5.2). Per player:
+owner's included), from three events of the parser for any player, `loregame.playerTurn` (a turn, or
+a "too soon"), `loregame.playerAccumulo` (an answer to `/accumulo`) and `loregame.training` (an
+answer to `/allenati`): the bot replies to a turn command naming nobody, so the parser names the
+player by the message it replies to, and pairs an `/accumulo` or a training answer as it does the
+owner's (§5.2, §5.3). Per player:
 
 - **in the game:** their name and level, as a fight's line and a level-up say;
 - **turns seen**, the last one's time, and their **rest** (15 minutes, 30 after a fight lost, a "too
@@ -264,13 +304,17 @@ command naming nobody, so the parser names the player by the message it replies 
   turn tells: **below level 4** (known from a fight's line or a level-up) nothing charges it, and
   **a turn well before the rest was over** while the accumulo was full tells of a use the account
   did not hear (in private: `unseen_uses`), which empties it, unless it came within a minute of the
-  last turn, which the bot answers as a turn at times (§2: `double_turns`).
+  last turn, which the bot answers as a turn at times (§2: `double_turns`);
+- **their trainings** (§5.3): those seen, the last one, and until when the next waits (a day after
+  it, or a "too soon"'s wait); a "too soon" whose wait ends well after the one predicted tells of a
+  training in private (`unseen`).
 
 Measured [M] with `npm run lore-check` (tools/lore-check/README.md) on the exports of Oct–Nov 2026,
 every player of the group: the counter the bot gives agrees with the state's in 97% of its readings,
-and a "too soon" with the rest predicted in 99%. Every turn seen before the rest was over is
-explained: after a use of the accumulo the account heard, a second turn within a minute (§2), or,
-rarely, a use in private.
+and a "too soon" with the rest predicted in 99%; a training's "too soon" with the day predicted in
+98% (the rest are trainings in private). Every turn seen before the rest was over is explained:
+after a use of the accumulo the account heard, a second turn within a minute (§2), or, rarely, a use
+in private.
 
 What it keeps of a player is a floor of what they did, and better as they play in the group. A
 player is known by the username the connector gives; one without a username is not kept (the

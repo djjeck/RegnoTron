@@ -29,6 +29,11 @@
  *   announces it: the bot's counter is not our count, a full accumulo is announced before (or
  *   not when) we count it so, or it stops being full without a use seen. The bot's word wins.
  *
+ * - **The training** (src/training.ts): the owner's success in any chat (`loregame.training`, which
+ *   the shell cannot pair in the group) starts its cooldown in the readiness, and a level-up it
+ *   brings adds its items to the inventory, as a turn's does. Every player's trainings are kept with
+ *   the players (§6.1 of docs/game-bots.md).
+ *
  * - **The owner's readiness** (MegaBotTron1999's bot-os.md D141): when each of the bot's commands
  *   may be played, which a shell player asks before each, in the section `readiness` the shell's
  *   `ReadinessModel` (`LORE_READINESS`) reduces from the parser's events, with the accumulo's
@@ -54,14 +59,19 @@ import {
   LOREGAME_VOCABULARY,
   PLAYER_ACCUMULO_EVENT,
   PLAYER_TURN_EVENT,
+  TRAINING_EVENT,
   UNBAN_EVENT,
 } from '#src/plugins/loregame.ts';
 import { loreRestMs, type Outcome } from '#src/replies.ts';
+import { TRAINING, TRAINING_COOLDOWN_MIN, TRAINING_MECHANICS } from '#src/training.ts';
 
 /** The plugin's id, and the namespace of its events (`loregame-state.changed`). */
 export const LOREGAME_STATE = 'loregame-state';
 
-/** The parser's events it applies: the owner's turns, the bans, the accumulo, every player's. */
+/**
+ * The parser's events it applies: the owner's turns, the bans, the accumulo, the trainings, every
+ * player's.
+ */
 const TURN_EVENT = `${LOREGAME_PARSER}.turn`;
 export const CONSUMES: readonly string[] = [
   TURN_EVENT,
@@ -70,15 +80,16 @@ export const CONSUMES: readonly string[] = [
   ACCUMULO_EVENT,
   PLAYER_TURN_EVENT,
   PLAYER_ACCUMULO_EVENT,
+  TRAINING_EVENT,
 ];
 
 /**
- * The owner's readiness at @LoreGameBot (D141): the parser's vocabulary, and the accumulo's
- * mechanics, declared here, on the state's side.
+ * The owner's readiness at @LoreGameBot (D141): the parser's vocabulary, and the accumulo's and the
+ * training's mechanics, declared here, on the state's side.
  */
 export const LORE_READINESS = new ReadinessModel({
   parser: { id: LOREGAME_PARSER, ...LOREGAME_VOCABULARY },
-  mechanics: { [ACCUMULO]: ACCUMULO_MECHANICS },
+  mechanics: { [ACCUMULO]: ACCUMULO_MECHANICS, [TRAINING]: TRAINING_MECHANICS },
 });
 
 /** The key of the owner's ban, and of the level gate, among the readiness's holds. */
@@ -89,7 +100,8 @@ const LEVEL_HOLD = 'level';
  * The facts this state knows besides the parser's answers, folded into the owner's readiness
  * (D141, pure): the owner's ban holds every command until it ends, or until the bot serves them
  * again; the bot's answer to the owner's `/accumulo`, wherever it came, uses it or withdraws its
- * unlock (the level gate also holding it for `LOCKED_RETRY_MS`).
+ * unlock (the level gate also holding it for `LOCKED_RETRY_MS`); the owner's training, wherever it
+ * came, starts its cooldown (a "too soon" replies to the command, which the shell pairs).
  */
 export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
   if ((e.type === BAN_EVENT || e.type === UNBAN_EVENT) && e['owner'] === true) {
@@ -105,6 +117,10 @@ export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
           }
     );
   }
+  if (e.type === TRAINING_EVENT)
+    return e['owner'] === true && e['result'] === 'trained'
+      ? LORE_READINESS.succeed(r, TRAINING, e.t)
+      : r;
   if (e.type !== ACCUMULO_EVENT) return r;
   const result = e['result'];
   if (result === 'used') return LORE_READINESS.succeed(r, ACCUMULO, e.t);
@@ -175,6 +191,16 @@ const player = z.object({
   last_command: z.string().nullable().describe('The turn command of the last turn seen'),
   rest_until: date.describe('Rests until, as their last turn or "too soon" says'),
   accumulo: accumulo.describe('Accumulo'),
+  training: z
+    .object({
+      seen: z.number().describe('Trainings seen'),
+      unseen: z
+        .number()
+        .describe('Trainings a "too soon" told of, played where the account does not read'),
+      last: date.describe('Last training seen'),
+      until: date.describe('The next one waits until, as their last training or "too soon" says'),
+    })
+    .describe('Training'),
 });
 
 const holding = z.object({
@@ -250,7 +276,13 @@ export function initialPlayer(at: string): Player {
     last_command: null,
     rest_until: null,
     accumulo: initialAccumulo(),
+    training: initialTraining(),
   };
+}
+
+/** A player's training, nothing known. */
+export function initialTraining(): Player['training'] {
+  return { seen: 0, unseen: 0, last: null, until: null };
 }
 
 /** What a turn brought into the inventory: one item, how many, and by what. */
@@ -290,8 +322,28 @@ function outcomeOf(e: BusEvent): z.infer<typeof outcomeSchema> | undefined {
   return o.success ? o.data : undefined;
 }
 
-/** The items an event gains, none for anything that is not a turn that gave one. */
+/** What a player's training event says (the parser's `loregame.training`). */
+const trainingSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  result: z.enum(['trained', 'soon']),
+  retryMs: z.number().optional(),
+  levelUp: z.looseObject({ level: z.number().optional(), items: z.array(reward) }).optional(),
+});
+
+/**
+ * The items an event gains for the owner: a turn's drop and level-up, a training's level-up; none
+ * for anything else.
+ */
 function gainsOf(e: BusEvent): Gain[] {
+  if (e.type === TRAINING_EVENT) {
+    const t = trainingSchema.safeParse(e);
+    if (!t.success || !t.data.owner || t.data.result !== 'trained') return [];
+    return (t.data.levelUp?.items ?? [])
+      .map((r): Gain => ({ ...r, via: 'level-up' }))
+      .filter((g) => g.qty > 0 && g.item !== '');
+  }
+  if (e.type !== TURN_EVENT) return [];
   const o = outcomeOf(e);
   if (o === undefined) return [];
   const gains: Gain[] = [];
@@ -457,14 +509,31 @@ function afterReply(a: Accumulo, e: BusEvent): Accumulo {
   return withDrift(known, at, ...found);
 }
 
-/** The state after an event, as to the accumulo: a turn charges it, the bot's answer sets it. */
+/**
+ * The accumulo after a training of the owner's: a level-up that reaches the level the gate names
+ * opens it, as a turn's does.
+ */
+function afterTraining(a: Accumulo, e: BusEvent): Accumulo {
+  const t = trainingSchema.safeParse(e);
+  const level = t.success && t.data.owner ? t.data.levelUp?.level : undefined;
+  return a.locked !== null && level !== undefined && level >= a.locked
+    ? { ...a, as_of: asIso(e.t), locked: null, count: 0, exact: false }
+    : a;
+}
+
+/**
+ * The state after an event, as to the accumulo: a turn charges it, the bot's answer sets it, a
+ * training's level-up may open it.
+ */
 function reduceAccumulo(state: LoreState, e: BusEvent): LoreState {
   const a =
     e.type === TURN_EVENT
       ? afterTurn(state.accumulo, e)
       : e.type === ACCUMULO_EVENT
         ? afterReply(state.accumulo, e)
-        : state.accumulo;
+        : e.type === TRAINING_EVENT
+          ? afterTraining(state.accumulo, e)
+          : state.accumulo;
   if (a === state.accumulo) return state;
   return { ...state, owner: { ...state.owner, as_of: asIso(e.t) }, accumulo: a };
 }
@@ -554,9 +623,51 @@ function playerAfterTurn(p: Player, e: BusEvent): Player {
   };
 }
 
-/** The state after an event, as to the players: any player's turn or `/accumulo` answer. */
+/** How much later than the wait we predicted a training "too soon" may end, and agree. */
+const TRAINING_SLACK_MS = 2 * 60_000;
+
+/**
+ * A player after their training, or a "too soon" to it: a training counted, with its wait of a day,
+ * and a level-up's level; a "too soon" whose wait ends well after the one we predicted tells of a
+ * training played where the account does not read (their private chat).
+ */
+function playerAfterTraining(p: Player, e: BusEvent): Player {
+  const t = trainingSchema.safeParse(e);
+  if (!t.success) return p;
+  const at = asIso(e.t);
+  const was = p.training;
+  if (t.data.result === 'trained')
+    return {
+      ...p,
+      as_of: at,
+      game: { ...p.game, level: t.data.levelUp?.level ?? p.game.level },
+      training: {
+        ...was,
+        seen: was.seen + 1,
+        last: at,
+        until: asIso(e.t + TRAINING_COOLDOWN_MIN * 60_000),
+      },
+    };
+  if (t.data.retryMs === undefined) return p;
+  // The bot's wait ends well after the one we predicted: a training since, which we did not see.
+  const end = e.t + t.data.retryMs;
+  const missed =
+    was.last !== null && (was.until === null || end - Date.parse(was.until) > TRAINING_SLACK_MS);
+  return {
+    ...p,
+    as_of: at,
+    training: {
+      ...was,
+      ...(missed ? { unseen: was.unseen + 1 } : {}),
+      until: asIso(e.t + t.data.retryMs),
+    },
+  };
+}
+
+/** The state after an event, as to the players: any player's turn, `/accumulo` or training. */
 function reducePlayers(state: LoreState, e: BusEvent): LoreState {
-  if (e.type !== PLAYER_TURN_EVENT && e.type !== PLAYER_ACCUMULO_EVENT) return state;
+  if (e.type !== PLAYER_TURN_EVENT && e.type !== PLAYER_ACCUMULO_EVENT && e.type !== TRAINING_EVENT)
+    return state;
   const said = playerEventSchema.safeParse(e);
   if (!said.success || said.data.player === '') return state;
   const name = said.data.player;
@@ -565,6 +676,7 @@ function reducePlayers(state: LoreState, e: BusEvent): LoreState {
   const before = known ? (state.players[name] as Player) : initialPlayer(at);
   let after = before;
   if (e.type === PLAYER_TURN_EVENT) after = playerAfterTurn(before, e);
+  else if (e.type === TRAINING_EVENT) after = playerAfterTraining(before, e);
   else {
     const a = afterReply(before.accumulo, e);
     if (a !== before.accumulo) after = { ...before, as_of: at, accumulo: a };
@@ -576,8 +688,8 @@ function reducePlayers(state: LoreState, e: BusEvent): LoreState {
 /** The next state: an event's gains added to the inventory, a ban set or ended (pure). */
 export function reduce(state: LoreState, e: BusEvent): LoreState {
   const withBans = reducePlayers(reduceAccumulo(reduceBans(state, e), e), e);
-  // The inventory is the owner's: their turns alone, not another player's.
-  const gains = e.type === TURN_EVENT ? gainsOf(e) : [];
+  // The inventory is the owner's: their turns and trainings alone, not another player's.
+  const gains = gainsOf(e);
   if (gains.length === 0) return withBans;
   const at = asIso(e.t);
   let items = withBans.inventory.items;

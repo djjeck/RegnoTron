@@ -15,11 +15,11 @@ launch.
 
 ## The modules
 
-| Module          | Provides                   | What it holds                                                                                                                                                                                                                |
-| --------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `norelec`       | `@regnotron/norelec`       | NorelecBot's game: its grammar (read and written), its parser over IRC, Telegram and Telegram exports, the game state; the `norelec` parser plugin and the `norelec-state` record                                            |
-| `norelec-tools` | `@regnotron/norelec-tools` | The map of the players' homes (`/map`) and the nuclear clock (`/nuclear_warning`), as the plugins `norelec-map` and `nuclear-clock`; imports `norelec`                                                                       |
-| `game-bots`     | `@regnotron/game-bots`     | @LoreGameBot's and @EpicLorelecBot's parser plugins (`loregame`, `epiclorelec`), `loregame-state`, the owner's state at @LoreGameBot (the inventory, the accumulo, and every player's turns, rest, accumulo and ban, so far) |
+| Module          | Provides                   | What it holds                                                                                                                                                                                                                                         |
+| --------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `norelec`       | `@regnotron/norelec`       | NorelecBot's game: its grammar (read and written), its parser over IRC, Telegram and Telegram exports, the game state; the `norelec` parser plugin and the `norelec-state` record                                                                     |
+| `norelec-tools` | `@regnotron/norelec-tools` | The map of the players' homes (`/map`) and the nuclear clock (`/nuclear_warning`), as the plugins `norelec-map` and `nuclear-clock`; imports `norelec`                                                                                                |
+| `game-bots`     | `@regnotron/game-bots`     | @LoreGameBot's and @EpicLorelecBot's parser plugins (`loregame`, `epiclorelec`), `loregame-state`, the owner's state at @LoreGameBot (the inventory, the accumulo, the training, and every player's turns, rest, accumulo, trainings and ban, so far) |
 
 @InventoryBot's parser plugin, `inventorybot`, is the module `inventorybot` of
 [InventoryBotTron](https://github.com/djjeck/InventoryBotTron), beside the bot's grammar. Each

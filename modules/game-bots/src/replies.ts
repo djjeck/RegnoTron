@@ -261,6 +261,17 @@ function levelUpOf(level: number, list: string): LoreLevelUp {
   return up;
 }
 
+/**
+ * A reply's level-up, when it ends with one (a turn's, a training's), and the text before it; the
+ * whole text and none when it has none, or one a story quotes.
+ */
+export function splitLevelUp(raw: string): { text: string; levelUp?: LoreLevelUp } {
+  const up = levelUpAt(raw);
+  return up === null
+    ? { text: raw }
+    : { text: raw.slice(0, up.at).trimEnd(), levelUp: levelUpOf(up.level, up.list) };
+}
+
 /** The accumulo line of a turn, if it has one: its copies are counted, a story may quote it. */
 function accumuloOf(text: string): LoreAccumulo | undefined {
   const copies = text.split('\n').filter((l) => l.trim() === ACCUMULO_MARK).length;
@@ -436,7 +447,7 @@ function unknownLore(text: string): Outcome {
 }
 
 /** The wait of a "Riprova fra …." line, if it states one. */
-function retryOf(text: string): number | undefined {
+export function retryOf(text: string): number | undefined {
   const m = /Riprova fra ([^.!\n]+)/u.exec(text);
   return m === null ? undefined : italianWait(m[1] as string);
 }
