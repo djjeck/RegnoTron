@@ -212,7 +212,10 @@ const trainingEvent = z
     result: z.enum(['trained', 'soon']).describe('Trained, or too soon'),
     gym: z.string().nullable().optional().describe("trained: the faction's gym, none without one"),
     learned: z.number().optional().describe('trained: the "+N" it taught'),
-    extra: z.number().optional().describe('trained: the "+N extra" a bonus added; 0 without'),
+    extra: z
+      .number()
+      .optional()
+      .describe('trained: how much of the "+N" Calistenico added ("+N extra"); 0 without'),
     levelUp: z
       .looseObject({ level: z.number() })
       .optional()

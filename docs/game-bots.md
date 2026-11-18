@@ -243,12 +243,13 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
   state folds the owner's `loregame.training` into the readiness, and declares it the command's
   answer to the outbox.
 
-**What it gives** [M]: the `+<n>` is XP, kept for good (the profile's ⚔️, §5.4, §5.5). The extra is
-not XP: over every interval between the owner's profiles since October, a training with
-`💪🏻 +2 extra` rose their ⚔️ by its `+<n>` alone. It comes with the skill 💪🏻 Calistenico, whose menu
-says what it is: `+2 Forza extra dall'allenamento` a level (§5.6), strength, which no line of the
-profile shows (all 5 trainings with Calistenico I had `+2 extra`). The `+<n>` has been 10 without a
-faction, 15 in a faction's gym, 17 since mid November.
+**What it gives** [M]: the `+<n>` is XP, kept for good (the profile's ⚔️, §5.4, §5.5): 10 without a
+faction, 15 in a faction's gym. **The extra is part of it**: the skill 💪🏻 Calistenico raises what a
+training gives (`+2 Forza extra dall'allenamento` a level, §5.6: "Forza" is the training's award,
+not a stat of the player), and `💪🏻 +2 extra` says how much of the `+<n>` it added. Every training
+with `+2 extra` gave 2 more than its kind without: 17 in a gym (5 of them), 12 without one (2); and
+over every interval between the owner's profiles since October, a training rose their ⚔️ by its
+`+<n>`, the extra no more.
 
 ### 5.4 Level-ups and XP
 
@@ -329,7 +330,7 @@ Punti disponibili: 1
 
 A level a step each, the same in every menu since February: Sciacallaggio +5% (+10% in January),
 Creatività, Ispirazione after it (September), +10%, Ricercato +6%, **Stoccaggio −1 to what the
-accumulo needs** (§5.2), **Calistenico +2 strength from each training** (§5.3, since October). `Ø`
+accumulo needs** (§5.2), **Calistenico +2 to what each training gives** (§5.3, since October). `Ø`
 is no level. A level-up gives the points (§5).
 
 **A point is spent with the menu's buttons**, which the bot answers by editing the menu: no message

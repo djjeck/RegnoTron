@@ -1156,7 +1156,7 @@ function playerAfterTraining(p: Player, e: BusEvent): Player {
     return {
       ...p,
       as_of: at,
-      // The "+N" is XP; the extra a skill adds is not [M] (docs/game-bots.md §5.3).
+      // The "+N" is the XP it gives, Calistenico's extra included [M] (docs/game-bots.md §5.3).
       xp: gained(p.xp, t.data.learned ?? 0),
       stats: levelled(
         move(p.stats, 'xp', (v) => Number(v) + (t.data.learned ?? 0), true, at),

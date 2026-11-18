@@ -35,7 +35,8 @@ export const TRAINING_MECHANICS: CommandMechanics = { cooldownMin: TRAINING_COOL
 /** What @LoreGameBot answers to `/allenati`. */
 export type TrainingReply =
   /**
-   * Trained: what it `learned` (the "+N"), the `extra` a bonus adds ("💪🏻 +N extra"; 0 without),
+   * Trained: what it `learned` (the "+N", the XP it gives), how much of it the skill Calistenico
+   * added (`extra`, "💪🏻 +N extra"; 0 without),
    * the gym it trained in (its faction's, none without one), and the level-up it brought.
    */
   | {
