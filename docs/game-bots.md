@@ -410,9 +410,8 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
 - **`/vai <place>`** moves (its answer replies to the command):
   `WOOSH! Sei arrivato alla Stagione <place> [<code>]!`, then, when entering took items,
   `Per entrare, hai consumato i seguenti oggetti` and the items, one each (91 of the 158 arrivals in
-  the exports; the others took none, a move down among them, so the state takes what the bot lists,
-  and needs no rule of up and down). Refused: `Non hai accesso a <place> [<code>]!` and the place's
-  requirements; `Stagione non trovata!`.
+  the exports). Refused: `Non hai accesso a <place> [<code>]!` and the place's requirements;
+  `Stagione non trovata!`.
 - **`/v`** says where one is: `Ti trovi nella stagione <place> [<code>]`, its requirements, then
   where one can go (`Puoi andare in:`, each place, `🔒` if locked to them) or
   `Nessuna stagione disponibile!`.
@@ -421,23 +420,58 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
   and the items, under `Ti serve:` and `Hai già:` in a refusal) are read wherever the bot states
   them: a refusal, and an answer that changed them
   (`La modalità d'accesso alla stagione [<code>] è cambiata!`, a generator's). An item's name may
-  run over several lines. Every answer and block in the exports is read: 714 answers, 280 blocks,
-  859 items.
+  run over several lines. A requirement may be a condition, not an item:
+  `> Almeno un guardiano [generato da] [<code>]` (57 in the exports), a guardian of the player's
+  from that place, under `Hai già:` once they have one; entering does not consume it, and what makes
+  a guardian is not read yet. Every answer and block in the exports is read: 714 answers, 280
+  blocks, 859 items.
+
+**The rules of a move** [M], from every arrival in the exports with the player's place before it:
+
+- **Entering a place takes its items, whichever way one comes**, up or down: every arrival since
+  March 2026 whose place's requirements had been told in the 3 days before it consumed exactly those
+  items, one each, guardians aside (41 of 41: 35 up, 6 down; three in February 2026, under older
+  rules, did not). A move down is refused too, for the items one lacks. A requirements list older
+  than that misleads: the items change as players generate (an item added for a faction's place at a
+  season the game picks), so each place's are as last told, and an arrival tells them anew (what it
+  consumed is what the place takes; nothing consumed, nothing).
+- **The ladders:** the places are three ladders, the good's `B1`, `B2`, …, the evil's `M1`, …, and
+  the neutral `N1`, …; each place leads to the step before and after it in its own (`/v`'s exits,
+  every one in the exports), and some neutral places to the same step of the factions' ladders (`N1`
+  to `B1` and `M1`; `N2`, `N5`, `N10` seen too). A place whose requirements a player does not meet
+  is listed with `🔒`.
+- **Neutrality:** a faction's player enters the neutral ladder only while the effect `Neutralizzato`
+  lasts (`N1` is listed locked otherwise, and open with it). A
+  `un biglietto neutralizzante 🎫 [X] [usabile]` (the shop sells it, 300₭) gives it, used with
+  `/usa`:
+  `<username>, prendi il biglietto ma ti sbriciola in mano! Aspetta, ti sta succedendo qualcosa di strano... perché hai perso colore?`,
+  a message of its own, naming its player (23 in the exports). It does not move them: they go with
+  `/vai`. It lasts **10 hours, and each ticket more adds 10** (two used a few seconds apart ended 20
+  hours later; a profile's time left agrees). At its end, at the next whole minute, the bot tells
+  the player alone, in private: `[N] Hai ripreso colore e sei stato buttato fuori dalla neutralità!`
+  (4 of 4 of the owner's), and a player in a neutral place is back in their faction's: from `N1`,
+  `B1` or `M1` (their next turn's place, every time). The `[N] ` is the bot's mark of a notification
+  (a gift's, §5.10).
 
 **`loregame.travel`** carries a player's answer (the one whose `/vai` or `/v` it replies to): `kind`
 (`arrived`, with what entering `consumed`; `here`, with the place's `requirements` and its `exits`;
 `refused`, with the `requirements`), and `place`. **`loregame.requirements`** carries any place's:
-`place`, `level`, `items`. **Not read yet:** the neutral places, which a "biglietto neutralizzante"
-lets one step aside to, and how one leaves them.
+`place`, `level`, `items`, `guardians` (each a place's code). **`loregame.neutral`** carries a
+ticket used (`neutralized`, its player by the name the answer gives) and the owner's neutrality
+ended (`restored`, heard in private alone): `player`, `owner`, `kind`. **Not read yet:** what a
+guardian is, and where a player thrown out of a neutral place above `N1` lands (the state guesses
+the same step of their faction's ladder).
 
 ### 5.10 Gifts
 
 `/give` and `/dai` [M] send items or coins to another player:
 `Hai inviato <n>x <item> [<rarity>] [<tag>]… a <username>!`, or
-`Hai inviato <n> monete a <username>!`, at times after `[N] ` [?]. The receiver is named as the
-giver typed them (an `@`, any case). The answer names the receiver, not the giver, and since August
-2026 it replies to no command (all 209 since then): the parser pairs it with the command waiting, as
-the accumulo's answers (§5.2). The receiver is told nothing. Its refusals (`Formato non valido!`,
+`Hai inviato <n> monete a <username>!`, at times after `[N] ` (the bot's mark of a notification,
+§5.9). The receiver is named as the giver typed them (an `@`, any case). The answer names the
+receiver, not the giver, and since August 2026 it replies to no command (all 209 since then): the
+parser pairs it with the command waiting, as the accumulo's answers (§5.2). The receiver is told in
+private, at times: `[N] Hai ricevuto <n>x <item> … da <username>!` [M], not read yet (the owner
+would count a gift twice that they also saw sent in the group). Its refusals (`Formato non valido!`,
 `Oggetto non trovato!`, `Non possiedi l'oggetto!`, `Elemento non trovato o utente non registrato!`,
 …) change nothing, and are not read. All 388 gifts in the exports are read, 45 of coins.
 
@@ -495,9 +529,22 @@ It is a floor, not the truth, while the turns are all it reads:
 - **The training** (§5.3): the readiness's, a day after the owner's last training.
 - **A level-up** of the owner's (§5.4), whatever brought it, adds its items to the inventory, and
   opens the accumulo when it reaches its level.
-- **The places** (§5.9, `places`): each place's level, the items entering it takes, and where one
-  can go from it, the game's, from any player's answers. An arrival sets a player's `location`, and
+- **The places** (§5.9, `places`): each place's level, the items entering it takes, the guardians it
+  asks, and where one can go from it, the game's, from any player's answers, each as last told
+  (`as_of`); an arrival tells what its place takes now. An arrival sets a player's `location`, and
   takes the items entering consumed from their inventory, one each; `/v` sets it too.
+- **Neutrality** (§5.9): a ticket used is gone from its player's inventory, and adds 10 hours to
+  their `Neutralizzato` (in their `effects`, exact); its end, told the owner, takes it off, and
+  moves them out of a neutral place to the same step of their faction's ladder, not exactly (their
+  next turn tells). Another player's end is not told: their effect's time ends it, and their next
+  turn their place.
+- **A trip, planned** (`state.trip({ to, player?, at? })`, `src/trips.ts`): the way from where a
+  player is (the owner unless named) to a place, through the exits told and each ladder's next
+  steps, and each step's level, the items it takes (those an earlier step took are not there for the
+  next), those the player is known to lack (`missing`) or not known to hold (`unsure`), the
+  guardians it asks, and for a neutral place entered from a faction's, whether `Neutralizzato`
+  holds; `ok` is true, false (something known lacking), or none (a step it cannot tell: a place
+  whose requirements were never told, a guardian, an inventory not listed).
 - **Their profile** (§5.5), and their username (`owner.name`), as with every player's (§6.1).
 - **Items and players are named by players**, anything, `__proto__` included.
 

@@ -63,6 +63,7 @@ import {
 import { type Announcement, type Mark } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
 import { ACCUMULO, ACCUMULO_MAX, ACCUMULO_MECHANICS, LOCKED_RETRY_MS } from '#src/accumulo.ts';
+import { ladderOf, NEUTRAL_EFFECT, NEUTRAL_MS, NEUTRAL_TICKET } from '#src/places.ts';
 import {
   ACCUMULO_EVENT,
   BAN_EVENT,
@@ -72,6 +73,7 @@ import {
   LEVEL_UP_EVENT,
   LOREGAME_PARSER,
   LOREGAME_VOCABULARY,
+  NEUTRAL_EVENT,
   PLAYER_ACCUMULO_EVENT,
   PLAYER_TURN_EVENT,
   PROFILE_EVENT,
@@ -119,6 +121,7 @@ export const CONSUMES: readonly string[] = [
   TRAVEL_EVENT,
   REQUIREMENTS_EVENT,
   GIFT_EVENT,
+  NEUTRAL_EVENT,
 ];
 
 /**
@@ -439,14 +442,21 @@ export const stateSchema = z.object({
               level: z.object({ low: z.number(), high: z.number() }).nullable(),
             })
           )
-          .describe('The items entering takes, one each'),
+          .describe('The items entering takes, one each, whichever way one comes'),
+        guardians: z
+          .array(z.string())
+          .describe(
+            'The places a guardian of the player must come from: a condition, not consumed'
+          ),
         exits: z
           .array(z.object({ name: z.string(), code: z.string() }))
           .describe('Where one can go'),
         as_of: z.string().describe('Told'),
       })
     )
-    .describe("The game's places, by code: what entering each takes, and where one can go from it"),
+    .describe(
+      "The game's places, by code: what entering each takes, and where one can go from it (as last told)"
+    ),
 });
 
 export type Holding = z.infer<typeof holding>;
@@ -1318,6 +1328,7 @@ const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
   reduceListing,
   reducePlaces,
   reduceGift,
+  reduceNeutral,
 ];
 
 export function reduce(state: LoreState, e: BusEvent): LoreState {
@@ -1399,26 +1410,45 @@ const requirementsSchema = z.looseObject({
   place: placeOf,
   level: z.number().nullable(),
   items: z.array(placeItem),
+  guardians: z.array(z.string()).optional(),
 });
+
+/** A place as the state keeps it. */
+type PlaceState = LoreState['places'][string];
+
+/** A place the state knows, or one it knows nothing of yet, by its name. */
+function placeIn(s: LoreState, place: { name: string; code: string }): PlaceState {
+  const was = Object.hasOwn(s.places, place.code) ? s.places[place.code] : undefined;
+  return was ?? { name: place.name, level: null, items: [], guardians: [], exits: [], as_of: '' };
+}
 
 /**
  * The state after a move or a place (docs/game-bots.md §5.9): a player arrived at a place, or told
  * where they are, is there (`location`, exact), and an arrival takes from their inventory the items
  * entering consumed, as the bot lists them, one each; a place's requirements, wherever the bot
- * states them, and where one can go from it, are the game's (`places`).
+ * states them, and where one can go from it, are the game's (`places`). Entering takes the place's
+ * items whichever way one comes, up or down [M]: what an arrival consumed is what the place takes
+ * now, none if it consumed none.
  */
 function reducePlaces(state: LoreState, e: BusEvent): LoreState {
   const at = asIso(e.t);
   if (e.type === REQUIREMENTS_EVENT) {
     const r = requirementsSchema.safeParse(e);
     if (!r.success) return state;
-    const { place, level, items } = r.data;
-    const was = Object.hasOwn(state.places, place.code) ? state.places[place.code] : undefined;
+    const { place, level, items, guardians } = r.data;
+    const was = placeIn(state, place);
     return {
       ...state,
       places: {
         ...state.places,
-        [place.code]: { name: place.name, level, items, exits: was?.exits ?? [], as_of: at },
+        [place.code]: {
+          ...was,
+          name: place.name,
+          level,
+          items,
+          guardians: guardians ?? [],
+          as_of: at,
+        },
       },
     };
   }
@@ -1428,18 +1458,27 @@ function reducePlaces(state: LoreState, e: BusEvent): LoreState {
   const d = r.data;
   let s = state;
   if (d.kind === 'here' && d.exits !== undefined) {
-    const was = Object.hasOwn(s.places, d.place.code) ? s.places[d.place.code] : undefined;
+    const was = placeIn(s, d.place);
     s = {
       ...s,
       places: {
         ...s.places,
         [d.place.code]: {
+          ...was,
           name: d.place.name,
-          level: was?.level ?? null,
-          items: was?.items ?? [],
           exits: d.exits.map((x) => ({ name: x.name, code: x.code })),
           as_of: at,
         },
+      },
+    };
+  }
+  if (d.kind === 'arrived') {
+    const was = placeIn(s, d.place);
+    s = {
+      ...s,
+      places: {
+        ...s.places,
+        [d.place.code]: { ...was, name: d.place.name, items: d.consumed ?? [], as_of: at },
       },
     };
   }
@@ -1556,6 +1595,85 @@ function reduceGift(state: LoreState, e: BusEvent): LoreState {
     ...(d.level === undefined ? {} : { level: d.level }),
   });
   return withInventory(s, receiver, { ...inv, items, held: heldOf(items) }, at);
+}
+
+/** What a neutrality event says (the parser's `loregame.neutral`). */
+const neutralSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  kind: z.enum(['neutralized', 'restored']),
+});
+
+/** A player's effects, as their stats hold them. */
+type Effect = { name: string; until: string | null };
+
+/**
+ * The state after a neutrality (docs/game-bots.md §5.9): a ticket used is gone from its player's
+ * inventory, and adds 10 hours to their "Neutralizzato" (from now, if none held); its end, told the
+ * owner alone, takes it off, and a player in a neutral place is back in their faction's ladder, at
+ * the same step [M]: there, not exactly (their next turn tells).
+ */
+function reduceNeutral(state: LoreState, e: BusEvent): LoreState {
+  if (e.type !== NEUTRAL_EVENT) return state;
+  const r = neutralSchema.safeParse(e);
+  if (!r.success || r.data.player === '') return state;
+  const d = r.data;
+  const at = asIso(e.t);
+  let s = state;
+  if (playerOf(s, d.player) === null)
+    s = { ...s, players: { ...s.players, [d.player]: initialPlayer(at) } };
+  const p = playerOf(s, d.player) as Player;
+  const effects = (v: unknown): Effect[] =>
+    (Array.isArray(v) ? (v as Effect[]) : []).filter((f) => f.name !== NEUTRAL_EFFECT);
+  let stats = p.stats;
+  if (d.kind === 'neutralized') {
+    const held = Object.hasOwn(stats, 'effects') ? stats['effects']?.value : undefined;
+    const was = (Array.isArray(held) ? (held as Effect[]) : []).find(
+      (f) => f.name === NEUTRAL_EFFECT && f.until !== null && Date.parse(f.until) > e.t
+    );
+    const until = asIso(
+      Math.max(e.t, was === undefined ? e.t : Date.parse(was.until as string)) + NEUTRAL_MS
+    );
+    stats = move(
+      stats,
+      'effects',
+      (v) => [...effects(v), { name: NEUTRAL_EFFECT, until }],
+      true,
+      at
+    );
+  } else {
+    stats = move(stats, 'effects', effects, true, at);
+    const location = Object.hasOwn(stats, 'location') ? stats['location'] : undefined;
+    const here = location?.value as { code?: unknown } | null | undefined;
+    const step = typeof here?.code === 'string' ? ladderOf(here.code) : undefined;
+    const alignment = Object.hasOwn(stats, 'alignment') ? stats['alignment']?.value : undefined;
+    const ladder = alignment === 'Bene' ? 'B' : alignment === 'Male' ? 'M' : undefined;
+    if (step?.ladder === 'N')
+      stats = move(
+        stats,
+        'location',
+        (v) => {
+          if (ladder === undefined) return v;
+          const code = `${ladder}${step.step}`;
+          return { name: Object.hasOwn(s.places, code) ? s.places[code]?.name : null, code };
+        },
+        false,
+        at
+      );
+  }
+  s = { ...s, players: { ...s.players, [d.player]: { ...p, as_of: at, stats } } };
+  if (d.kind !== 'neutralized') return s;
+  const whose: Whose = d.owner ? { owner: true } : { owner: false, player: d.player };
+  const inv = inventoryOf(s, whose);
+  const h = inv === undefined ? undefined : own(inv.items, NEUTRAL_TICKET);
+  if (inv === undefined || h === undefined) return s;
+  const items = withItem(inv.items, NEUTRAL_TICKET, {
+    ...h,
+    qty: Math.max(0, h.qty - 1),
+    exact: h.exact && h.qty > 0,
+    date: at,
+  });
+  return withInventory(s, whose, { ...inv, items, held: heldOf(items) }, at);
 }
 
 /** Every place the state knows of, by code. */

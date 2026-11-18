@@ -58,6 +58,7 @@ describe('the loregame-state node', () => {
       'bans',
       'inventory',
       'places',
+      'trip',
       'holders',
       'count',
       'held',
@@ -349,6 +350,7 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.inventory',
       'loregame.travel',
       'loregame.gift',
+      'loregame.neutral',
       'loregame.requirements',
       'loregame.playerTurn',
       'loregame.playerAccumulo',
@@ -1551,9 +1553,79 @@ describe('the places, as /vai and /v answer', () => {
       M5: { level: 5, exits: [{ code: 'M6' }, { code: 'B1' }] },
       M6: { level: 6 },
     });
-    // Down, nothing taken.
+    // An arrival tells what the place takes now: M5 takes what it consumed.
+    expect(run.read('places')).toMatchObject({
+      M5: { items: [{ item: 'un sasso' }, { item: 'una pigna' }], guardians: [] },
+    });
+    // Down, nothing taken: the place takes nothing.
     await play('/vai bosco', 'WOOSH! Sei arrivato alla Stagione Il Bosco Inventato ⛅️ [B1]!');
     expect(run.read('held')).toEqual({ 'un sasso': 1 });
+    expect(run.read('places')).toMatchObject({ B1: { items: [] } });
+    await run.core.stop();
+  });
+
+  it('plans a trip: its way, and what each step takes of the player, up or down', async () => {
+    const run = await bootState(path.join(dir, 'v11'), { group: true });
+    await run.owner('/me');
+    await run.bot(
+      [
+        '👤 alice',
+        '',
+        '👥 Nessuna azienda',
+        '',
+        'Livello 5 (900 ⚔️)',
+        '▓░░░░░░░░░ 10.90%',
+        '',
+        'Il Bene 😇',
+        'Episodio 700',
+        '0 ₭',
+        '',
+        'Armatura 🛡 - (vuoto)',
+        'Amuleto 🩺 - (vuoto)',
+        'Arma 🗡 - (vuoto)',
+        '',
+        '',
+        'Attualmente in Il Bosco Inventato ⛅️ [B1]',
+      ].join('\n')
+    );
+    const play = async (command: string, answer: string) => {
+      const id = await run.group('alice', command, { own: true });
+      await run.group('LoreGameBot', answer, { replyTo: id, buttons: [] });
+    };
+    await play('/zaino', 'alice, hai:\n> un sasso [B2] x1\n> una pigna [B3] x1');
+    await play(
+      '/v',
+      "Ti trovi nella stagione Il Bosco Inventato ⛅️ [B1]\n\nRequisiti d'accesso (oggetti consumati all'arrivo)\n> Livello 1\n\nPuoi andare in:\n> 🔒 Il Prato Finto 🌾 [B2]\n> 🔒 Il Limbo Inventato 🕑 [N1]"
+    );
+    // B2 and B3 told by refusals; B3 asks a guardian as well.
+    await play(
+      '/vai prato',
+      "Non hai accesso a Il Prato Finto 🌾 [B2]!\n\nRequisiti d'accesso per Il Prato Finto 🌾 [B2] (oggetti consumati all'arrivo)\n> Livello 2\nTi serve:\n> un sasso [B2]"
+    );
+    await run.group(
+      'LoreGameBot',
+      "Requisiti d'accesso per Il Colle Finto ⛰ [B3] (oggetti consumati all'arrivo)\n> Livello 3\nTi serve:\n> una pigna [B3]\n> un sasso [B2]\n> Almeno un guardiano generato da [B2]"
+    );
+    const at = new Date(run.clock.now()).toISOString();
+    expect(run.read('places')).toMatchObject({ B3: { guardians: ['B2'] } });
+    expect(run.read('trip', { to: 'B2', at })).toMatchObject({
+      from: 'B1',
+      route: ['B2'],
+      routed: true,
+      ok: true,
+      steps: [{ code: 'B2', level_ok: true, takes: [{ item: 'un sasso' }], missing: [] }],
+    });
+    // Two steps: the stone B2 takes is not there for B3 too; its guardian is not checked.
+    expect(run.read('trip', { to: 'B3', at })).toMatchObject({
+      route: ['B2', 'B3'],
+      ok: false,
+      steps: [{ missing: [] }, { missing: [{ item: 'un sasso' }], guardians: ['B2'] }],
+    });
+    // A neutral place: open only while "Neutralizzato" lasts; and what N1 takes is not known.
+    expect(run.read('trip', { to: 'N1', at })).toMatchObject({
+      steps: [{ code: 'N1', neutral: true, neutral_ok: false, as_of: null }],
+      ok: false,
+    });
     await run.core.stop();
   });
 
@@ -1572,6 +1644,132 @@ describe('the places, as /vai and /v answer', () => {
     expect(again.read('places')).toEqual({});
     expect(again.read('held')).toEqual({ 'un sasso': 1 });
     await again.core.stop();
+  });
+
+  it('adds the guardians to the places kept before they were read (0.29.0)', async () => {
+    const dir2 = path.join(dir, 'v12');
+    const run = await bootState(dir2, { group: true });
+    await run.group(
+      'LoreGameBot',
+      "Requisiti d'accesso per Il Prato Finto 🌾 [B2] (oggetti consumati all'arrivo)\n> Livello 2\n> un sasso [B2]"
+    );
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    delete kept.state.places.B2.guardians;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 11 }));
+    const again = await bootState(dir2, { group: true });
+    expect(again.read('places')).toMatchObject({ B2: { level: 2, guardians: [] } });
+    await again.core.stop();
+  });
+});
+
+describe('neutrality, as a ticket gives it and its end takes it', () => {
+  it('adds 10 hours a ticket, takes the ticket, and puts the owner back in their ladder', async () => {
+    const run = await bootState(path.join(dir, 'n1'), { group: true });
+    await run.owner('/me');
+    await run.bot(
+      [
+        '👤 alice',
+        '',
+        '👥 Nessuna azienda',
+        '',
+        'Livello 2 (60 ⚔️)',
+        '▓░░░░░░░░░ 10.90%',
+        '',
+        'Il Bene 😇',
+        'Episodio 70',
+        '0 ₭',
+        '',
+        'Armatura 🛡 - (vuoto)',
+        'Amuleto 🩺 - (vuoto)',
+        'Arma 🗡 - (vuoto)',
+        '',
+        '',
+        'Attualmente in Il Bosco Inventato ⛅️ [B1]',
+      ].join('\n')
+    );
+    await run.owner('/zaino');
+    await run.bot('alice, hai:\n> un biglietto neutralizzante 🎫 [X] [usabile] x2', {
+      buttons: [],
+    });
+    const TICKET =
+      'alice, prendi il biglietto ma ti sbriciola in mano! Aspetta, ti sta succedendo qualcosa di strano... perché hai perso colore?';
+    const t0 = run.clock.now();
+    await run.owner('/usa neutralizzante');
+    await run.bot(TICKET);
+    await run.owner('/usa neutralizzante');
+    await run.bot(TICKET);
+    expect(run.of('loregame.neutral')).toMatchObject([
+      { player: 'alice', owner: true, kind: 'neutralized' },
+      { player: 'alice', owner: true, kind: 'neutralized' },
+    ]);
+    // Two tickets: 20 hours, exactly; both gone.
+    expect(run.read('stat', { stat: 'effects' })).toMatchObject({
+      value: [{ name: 'Neutralizzato', until: new Date(t0 + 20 * 3_600_000).toISOString() }],
+      exact: true,
+    });
+    expect(
+      run.read('get', { path: 'inventory.items.un biglietto neutralizzante 🎫' })
+    ).toMatchObject({ qty: 0, exact: true });
+    await run.owner('/vai limbo');
+    await run.bot('WOOSH! Sei arrivato alla Stagione Il Limbo Inventato 🕑 [N1]!');
+    // Its end, told in private: the effect gone, and back in the good's ladder, not exactly.
+    await run.bot('[N] Hai ripreso colore e sei stato buttato fuori dalla neutralità!');
+    expect(run.read('stat', { stat: 'effects' })).toMatchObject({ value: [], exact: true });
+    expect(run.read('stat', { stat: 'location' })).toMatchObject({
+      value: { code: 'B1' },
+      exact: false,
+    });
+    await run.core.stop();
+  });
+
+  it('keeps another player’s ticket, and moves none whose place is not neutral', async () => {
+    const run = await bootState(path.join(dir, 'n2'), { group: true });
+    await run.group(
+      'LoreGameBot',
+      'bob, prendi il biglietto ma ti sbriciola in mano! Aspetta, ti sta succedendo qualcosa di strano... perché hai perso colore?'
+    );
+    expect(run.of('loregame.neutral')).toMatchObject([
+      { player: 'bob', owner: false, kind: 'neutralized' },
+    ]);
+    expect(run.read('player', { name: 'bob' })).not.toBeNull();
+    // The end, in the group, is no one's; in private, the owner's, who is not in a neutral place.
+    await run.group(
+      'LoreGameBot',
+      '[N] Hai ripreso colore e sei stato buttato fuori dalla neutralità!'
+    );
+    expect(run.of('loregame.neutral')).toHaveLength(1);
+    await run.owner('/me');
+    await run.bot(
+      [
+        '👤 alice',
+        '',
+        '👥 Nessuna azienda',
+        '',
+        'Livello 2 (60 ⚔️)',
+        '▓░░░░░░░░░ 10.90%',
+        '',
+        'Il Male 👿',
+        'Episodio 70',
+        '0 ₭',
+        '',
+        'Armatura 🛡 - (vuoto)',
+        'Amuleto 🩺 - (vuoto)',
+        'Arma 🗡 - (vuoto)',
+        '',
+        '',
+        'Attualmente in L’Inferno [M1]',
+      ].join('\n')
+    );
+    await run.bot('[N] Hai ripreso colore e sei stato buttato fuori dalla neutralità!');
+    expect(run.read('stat', { stat: 'location' })).toMatchObject({
+      value: { code: 'M1' },
+      exact: true,
+    });
+    await run.core.stop();
   });
 });
 

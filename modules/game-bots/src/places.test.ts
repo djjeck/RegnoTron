@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTravel, placeRequirements } from './places.ts';
+import { ladderOf, parseNeutrality, parseTravel, placeRequirements } from './places.ts';
 
 // Invented places and items; the bot's own words are the game's.
 describe('/vai and /v', () => {
@@ -52,6 +52,7 @@ describe('/vai and /v', () => {
       requirements: {
         level: 5,
         items: [{ item: 'un sasso', rarity: 'M4', tags: [], level: null }],
+        guardians: [],
       },
       exits: [
         { name: 'Il Monte Finto 🗻', code: 'M6', locked: true },
@@ -87,5 +88,50 @@ describe('/vai and /v', () => {
       { place: { name: 'Il Monte Finto 🗻', code: 'M6' }, requirements: { level: 6 } },
     ]);
     expect(parseTravel('Stagione non trovata!')).toBeUndefined();
+  });
+
+  it('reads a guardian asked as a condition, not as an item entering takes', () => {
+    const block = [
+      "Requisiti d'accesso per Il Monte Finto 🗻 [M6] (oggetti consumati all'arrivo)",
+      '> Livello 6',
+      'Ti serve:',
+      '> una pigna [M5]',
+      '> Almeno un guardiano generato da [M5]',
+      'Hai già:',
+      '> Almeno un guardiano [M4]',
+      '> un sasso [M4]',
+    ].join('\n');
+    expect(placeRequirements(block)).toEqual([
+      {
+        place: { name: 'Il Monte Finto 🗻', code: 'M6' },
+        requirements: {
+          level: 6,
+          items: [
+            { item: 'una pigna', rarity: 'M5', tags: [], level: null },
+            { item: 'un sasso', rarity: 'M4', tags: [], level: null },
+          ],
+          guardians: ['M5', 'M4'],
+        },
+      },
+    ]);
+  });
+});
+
+describe('neutrality', () => {
+  it('reads a ticket used, naming its player, and the end of the neutrality', () => {
+    expect(
+      parseNeutrality(
+        'Pinco, prendi il biglietto ma ti sbriciola in mano! Aspetta, ti sta succedendo qualcosa di strano... perché hai perso colore?'
+      )
+    ).toEqual({ kind: 'neutralized', player: 'Pinco' });
+    expect(
+      parseNeutrality('[N] Hai ripreso colore e sei stato buttato fuori dalla neutralità!')
+    ).toEqual({ kind: 'restored' });
+    expect(parseNeutrality('Oggetto non trovato o non usabile!')).toBeUndefined();
+  });
+
+  it('tells a place’s ladder and step', () => {
+    expect(ladderOf('M10')).toEqual({ ladder: 'M', step: 10 });
+    expect(ladderOf('X')).toBeUndefined();
   });
 });

@@ -15,7 +15,16 @@
  *   cambiata!").
  *
  * An item's name may run over several lines (players write them): it ends at the line that ends in
- * its rarity and tags.
+ * its rarity and tags. A requirement may be no item but a condition: "Almeno un guardiano [generato
+ * da] [<code>]", a condition on the player (a guardian of theirs from that place: what makes one is
+ * not read yet), listed under "Hai già:" once they meet it; entering does not consume it.
+ *
+ * **Neutrality** (the ticket, "un biglietto neutralizzante 🎫", `/usa`): "<username>, prendi il
+ * biglietto ma ti sbriciola in mano! … perché hai perso colore?", a message of its own, naming its
+ * player; the effect "Neutralizzato" for 10 hours, each ticket more adding 10 [M]. While it lasts,
+ * the neutral ladder (`N1`, …) is open to them; at its end the bot tells them alone, in private, "[N]
+ * Hai ripreso colore e sei stato buttato fuori dalla neutralità!", and a player in a neutral place
+ * is back in their faction's ladder [M].
  */
 import { type Listed } from '#src/inventory.ts';
 
@@ -25,10 +34,14 @@ export interface Place {
   code: string;
 }
 
-/** What entering a place takes: a level, and items, one each, consumed at the arrival. */
+/**
+ * What entering a place takes: a level, and items, one each, consumed at the arrival; and the
+ * places a guardian must have been made from (`guardians`), which nothing consumes.
+ */
 export interface Requirements {
   level: number | null;
   items: Omit<Listed, 'qty'>[];
+  guardians: string[];
 }
 
 /** What an answer to `/vai` or `/v` says. */
@@ -56,6 +69,35 @@ const EXIT = new RegExp(String.raw`^> (🔒 )?(.+) ${CODE}$`, 'u');
 const ITEM = /^(.*?) \[([A-Z]+\d*\+?)\]((?: ?\[[a-z][^\]\n]*\])*)$/su;
 const RANGE = /^(.+) \((\d+)(?: - (\d+))?\)$/su;
 const LEVEL = /^> Livello (\d+)$/u;
+const GUARDIAN = new RegExp(String.raw`^> Almeno un guardiano (?:generato da )?${CODE}$`, 'u');
+
+/** How long a neutralizing ticket lasts, each one used adding as much [M]. */
+export const NEUTRAL_MS = 10 * 3_600_000;
+/** The effect a ticket gives, as the profile lists it. */
+export const NEUTRAL_EFFECT = 'Neutralizzato';
+/** The ticket, as the inventory lists it. */
+export const NEUTRAL_TICKET = 'un biglietto neutralizzante 🎫';
+
+/** A player neutralized by a ticket (naming them), or the owner's neutrality ended. */
+export type Neutrality = { kind: 'neutralized'; player: string } | { kind: 'restored' };
+
+const NEUTRALIZED =
+  /^(\w+), prendi il biglietto ma ti sbriciola in mano! Aspetta, ti sta succedendo qualcosa di strano\.\.\. perché hai perso colore\?$/u;
+const RESTORED = /^(?:\[N\] )?Hai ripreso colore e sei stato buttato fuori dalla neutralità!$/u;
+
+/** The ticket's answer, or the end of the neutrality, that `raw` is, if one: the whole message. */
+export function parseNeutrality(raw: string): Neutrality | undefined {
+  const text = raw.normalize('NFC').trim();
+  const m = NEUTRALIZED.exec(text);
+  if (m !== null) return { kind: 'neutralized', player: m[1] as string };
+  return RESTORED.test(text) ? { kind: 'restored' } : undefined;
+}
+
+/** A place's ladder and step (`M3`: `M`, 3); none for a code of no number. */
+export function ladderOf(code: string): { ladder: string; step: number } | undefined {
+  const m = /^([A-Z]+)(\d+)$/u.exec(code);
+  return m === null ? undefined : { ladder: m[1] as string, step: Number(m[2]) };
+}
 
 /**
  * The items of a list ("> <item> [<rarity>] [<tag>]…", a name perhaps over several lines), from
@@ -67,7 +109,7 @@ function itemsOf(lines: readonly string[]): { items: Omit<Listed, 'qty'>[]; read
   let read = 0;
   for (const line of lines) {
     if (name === undefined) {
-      if (!line.startsWith('> ') || LEVEL.test(line)) break;
+      if (!line.startsWith('> ') || LEVEL.test(line) || GUARDIAN.test(line)) break;
       name = [line.slice(2)];
     } else name.push(line);
     read++;
@@ -89,12 +131,17 @@ function itemsOf(lines: readonly string[]): { items: Omit<Listed, 'qty'>[]; read
 function requirementsOf(lines: readonly string[]): Requirements {
   let level: number | null = null;
   const items: Omit<Listed, 'qty'>[] = [];
+  const guardians: string[] = [];
   let i = 0;
   while (i < lines.length) {
     const l = lines[i] as string;
     const lv = LEVEL.exec(l);
+    const g = GUARDIAN.exec(l);
     if (lv !== null) {
       level = Number(lv[1]);
+      i++;
+    } else if (g !== null) {
+      guardians.push(g[1] as string);
       i++;
     } else if (l === 'Ti serve:' || l === 'Hai già:') i++;
     else if (l.startsWith('> ')) {
@@ -104,7 +151,7 @@ function requirementsOf(lines: readonly string[]): Requirements {
       i += read;
     } else break;
   }
-  return { level, items };
+  return { level, items, guardians };
 }
 
 /** The answer to `/vai` or `/v` that `raw` is, if one: its every line read. */

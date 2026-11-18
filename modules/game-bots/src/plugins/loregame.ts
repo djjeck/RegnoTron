@@ -40,7 +40,9 @@
  *
  * **The inventory and the places** (docs/game-bots.md §5.8, §5.9): `/zaino` and `/i`, a page at a
  * time (its pages are its edits, its buttons tell which), as `loregame.inventory`; `/vai` and `/v`,
- * as `loregame.travel`; and any place's requirements the bot states, as `loregame.requirements`.
+ * as `loregame.travel`; and any place's requirements the bot states, as `loregame.requirements`. A
+ * neutralizing ticket used (its answer names its player) and, in private, the owner's neutrality
+ * ended, as `loregame.neutral`.
  * A gift (`/give`, `/dai`, §5.10), paired with its giver as the accumulo's answers are, as
  * `loregame.gift`.
  *
@@ -76,7 +78,7 @@ import { BanWatch } from '#src/bans.ts';
 import { parseEquip } from '#src/equipment.ts';
 import { GiftWatch } from '#src/gifts.ts';
 import { pageOf, parseInventory } from '#src/inventory.ts';
-import { parseTravel, placeRequirements, type Requirements } from '#src/places.ts';
+import { parseNeutrality, parseTravel, placeRequirements, type Requirements } from '#src/places.ts';
 import { PlayerWatch } from '#src/players.ts';
 import { parseProfile } from '#src/profile.ts';
 import {
@@ -137,6 +139,8 @@ export const TRAVEL_EVENT = `${LOREGAME_PARSER}.travel`;
 export const REQUIREMENTS_EVENT = `${LOREGAME_PARSER}.requirements`;
 /** The event of every player's gift (`/give`, `/dai`, §5.10). */
 export const GIFT_EVENT = `${LOREGAME_PARSER}.gift`;
+/** The event of a player neutralized by a ticket, or of the owner's neutrality ended (§5.9). */
+export const NEUTRAL_EVENT = `${LOREGAME_PARSER}.neutral`;
 /** The event of every player's inventory listing, or page of one (§5.8). */
 export const INVENTORY_EVENT = `${LOREGAME_PARSER}.inventory`;
 export const EQUIPMENT_EVENT = `${LOREGAME_PARSER}.equipment`;
@@ -351,7 +355,11 @@ const travelEvent = z
       .optional()
       .describe('arrived: the items entering took, one each'),
     requirements: z
-      .object({ level: z.number().nullable(), items: z.array(requiredItem) })
+      .object({
+        level: z.number().nullable(),
+        items: z.array(requiredItem),
+        guardians: z.array(z.string()),
+      })
       .nullable()
       .optional()
       .describe("here, refused: the place's requirements"),
@@ -368,9 +376,23 @@ const requirementsEvent = z
     place: placeSchema,
     level: z.number().nullable().describe('The level it asks'),
     items: z.array(requiredItem).describe('The items it takes at the arrival, one each'),
+    guardians: z
+      .array(z.string())
+      .describe('"Almeno un guardiano [generato da] [<code>]": a condition, consumed by none'),
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("A place's requirements, wherever @LoreGameBot states them");
+const neutralEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    kind: z
+      .enum(['neutralized', 'restored'])
+      .describe('A ticket used (10 hours more of "Neutralizzato"), or the neutrality ended'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("A player's neutrality, as @LoreGameBot told it (a ticket used; its end, in private)");
 const giftEvent = z
   .object({
     chat: z.string(),
@@ -504,6 +526,7 @@ export const loregamePlugin: Plugin = {
       [INVENTORY_EVENT]: inventoryEvent,
       [TRAVEL_EVENT]: travelEvent,
       [GIFT_EVENT]: giftEvent,
+      [NEUTRAL_EVENT]: neutralEvent,
       [REQUIREMENTS_EVENT]: requirementsEvent,
       [PLAYER_TURN_EVENT]: playerTurnEvent,
       [PLAYER_ACCUMULO_EVENT]: playerAccumuloEvent,
@@ -710,6 +733,24 @@ export const loregamePlugin: Plugin = {
         if (equip !== undefined && equipOf !== undefined)
           ctx.bus.publish(EQUIPMENT_EVENT, { chat: m.chat, ...equipOf, ...equip, ...old }, m.time);
         listed(m, self);
+        // Neutrality (§5.9): a ticket's answer names its player; its end is told the owner alone, in
+        // private.
+        const neutral = parseNeutrality(m.text);
+        const neutralOf =
+          neutral?.kind === 'neutralized'
+            ? {
+                player: neutral.player,
+                owner: self !== undefined && neutral.player.toLowerCase() === self.toLowerCase(),
+              }
+            : neutral?.kind === 'restored' && isPrivate(m)
+              ? { player: self ?? '', owner: true }
+              : undefined;
+        if (neutral !== undefined && neutralOf !== undefined)
+          ctx.bus.publish(
+            NEUTRAL_EVENT,
+            { chat: m.chat, ...neutralOf, kind: neutral.kind, ...old },
+            m.time
+          );
         // A move or a place (/vai, /v), the player's whose command it replies to; and any place's
         // requirements the bot states, whoever asked (they are the game's).
         const travel = parseTravel(m.text);

@@ -34,6 +34,10 @@
  *   now (`state.stat({ player?, stat })`: the profile's, moved by each command read since, each with
  *   whether it is still exact), each a floor of what they did (src/players.ts, src/stats.ts). A
  *   profile that says otherwise of a stat held exactly is announced as `loregame-state.statsDrift`.
+ * - **Inventories and places:** `state.inventory({ player? })` and `state.holders({ item })`
+ *   (every player's items, and who holds one); `state.places()` (each place's level, items and
+ *   guardians asked, and its exits) and `state.trip({ to, player?, at? })` (a trip planned before it
+ *   is made: its way, and what each step takes of the player, src/trips.ts).
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -75,6 +79,7 @@ import {
   statOf,
 } from '#src/loregame-state.ts';
 import { statsOf } from '#src/stats.ts';
+import { tripOf } from '#src/trips.ts';
 
 /** What a migration works on: a staged copy of the plugin's store. */
 interface Store {
@@ -329,6 +334,22 @@ const base = statePlugin<Kept>({
       if (kept?.state === undefined || kept.state['places'] !== undefined) return;
       store.write('state', { ...kept, state: { ...kept.state, places: {} } });
     },
+    // 0.30.0 keeps each place's guardians asked (a condition, not an item): none known of those
+    // kept; the next requirements told say.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const places = kept?.state?.['places'] as Record<string, Record<string, unknown>> | undefined;
+      if (kept?.state === undefined || places === undefined) return;
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          places: Object.fromEntries(
+            Object.entries(places).map(([code, p]) => [code, { guardians: [], ...p }])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -384,6 +405,18 @@ const base = statePlugin<Kept>({
       help: "The game's places, by code: the level and the items entering each takes, one each, and where one can go from it",
       output: z.record(z.string(), z.looseObject({ name: z.string() })),
       run: (s) => placesOf(s),
+    },
+    trip: {
+      help: 'A trip planned (the owner\'s unless a player is named) to a place, by its code: the way from where they are through the places known, and each step\'s level, the items it takes (one each, up or down alike) and those they are known to lack or not known to hold, the guardians it asks, and for a neutral place whether "Neutralizzato" holds; ok true, false, or none when it cannot be told. `at` (ISO) is when, now by default',
+      input: z.object({ to: z.string(), player: z.string().optional(), at: z.string().optional() }),
+      output: z.looseObject({ to: z.string(), ok: z.boolean().nullable() }),
+      run: (s, input: { to: string; player?: string; at?: string }) =>
+        tripOf(
+          s,
+          input.to,
+          input.at === undefined ? Date.now() : Date.parse(input.at),
+          input.player
+        ),
     },
     holders: {
       help: 'Who holds an item, by its exact name: each player the state knows of (the owner too), with how many and whether it is exact, most first',
