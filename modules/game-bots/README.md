@@ -153,8 +153,9 @@ line read, one it cannot read kept in `unread`.
 
 **The inventory.** `/zaino` and `/i` are published as `loregame.inventory`, a page at a time: the
 first from the message, each turned from its edit (MegaBotTron1999's D144), with which page it is
-from its ◀️ ▶️ buttons (D145). The state takes a listing followed to its last page as the whole
-inventory, and keeps every player's (docs/game-bots.md §5.8, §6).
+from its ◀️ ▶️ buttons (D145; a short one has none, and is whole). The state takes a listing
+followed to its last page as the whole inventory, and keeps every player's (docs/game-bots.md §5.8,
+§6).
 
 **Gifts.** `/give` and `/dai` are published as `loregame.gift`, paired with the giver's command (the
 answer replies to none): the state moves the items or the coins from the giver to the receiver, each

@@ -1584,10 +1584,11 @@ const listingSchema = z.looseObject({
 /**
  * The state after an inventory listing, or a page of one (docs/game-bots.md §5.8): each item it
  * lists held exactly as it says. Its pages are read in turn, from the first, as its buttons turn
- * them (one at a time, so reaching the last saw them all): with the last, the listing is whole, and
- * the inventory is it alone, every item exact, those it does not list gone; an item held exactly
- * that it says otherwise is a mismatch (`stats_drift`, `inventory`). A filtered listing (`/i
- * <text>`), a page with no buttons (an export, a shell before D145), a chain whose first page was
+ * them (one at a time, so reaching the last saw them all; one without buttons is a page alone): with
+ * the last, the listing is whole, and the inventory is it alone, every item exact, those it does not
+ * list gone; an item held exactly that it says otherwise is a mismatch (`stats_drift`, `inventory`).
+ * A filtered listing (`/i <text>`), a page whose buttons are not known (an export, a shell before
+ * MegaBotTron1999 0.1.47), a chain whose first page was
  * not read, or an item cut between two pages, is a part: exact for what it lists, and no more. An
  * empty inventory has no pages: it is whole.
  */

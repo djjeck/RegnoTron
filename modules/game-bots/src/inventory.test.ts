@@ -81,7 +81,8 @@ describe('the inventory', () => {
     expect(pageOf([['◀️', '▶️']])).toEqual({ first: false, last: false });
     expect(pageOf([['◀️', '🔒']])).toEqual({ first: false, last: true });
     expect(pageOf([['🔒', '🔒']])).toEqual({ first: true, last: true });
+    // A short inventory shows no buttons: one page, all of it. Unknown buttons tell nothing.
+    expect(pageOf([])).toEqual({ first: true, last: true });
     expect(pageOf(undefined)).toBeNull();
-    expect(pageOf([['Compra']])).toBeNull();
   });
 });

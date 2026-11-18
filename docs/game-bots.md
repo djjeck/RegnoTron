@@ -387,17 +387,21 @@ ends in its rarity, tags and count. The items come sorted [owner]: the generator
 season's level whatever its faction, then the special ones, each by count, most first.
 
 **Its pages.** A long inventory is paged: its ◀️ and ▶️ buttons turn the page, which the bot does by
-editing the message, each button a 🔒 at the first and the last page [owner]; the text says nothing
-of its page, and only the first names its player. A page is cut by lines, so a name running over
+editing the message, each button a 🔒 at the first and the last page [owner]; an inventory short
+enough for one page shows no buttons at all [owner]; the text says nothing of its page, and only the
+first names its player (the pages' length varies, 27 to 35 lines for a first page in the exports, so
+the text cannot tell a full page from a whole list). A page is cut by lines, so a name running over
 several lines may be cut between two pages (6 of the exports' listings). The parser reads every page
 as it comes, the first from the message and each turned from its edit (MegaBotTron1999's D144), and
-which page it is from its buttons (D145: the first has no ◀️, the last no ▶️); a later page is the
-player's whose first page it follows, or whose command it replies to.
+which page it is from its buttons (D145: the first has no ◀️, the last no ▶️; none at all, `[]`, is
+one page, the whole list); a later page is the player's whose first page it follows, or whose
+command it replies to.
 
 **`loregame.inventory`** carries every listing and page the parser reads: `player`, `owner`,
 `filter`, `items` (each `item`, `qty`, `rarity`, `tags`, `level`), `cut` (an item cut between this
-page and another, not read), `page` (`first`, `last`; none without its buttons: an export, a shell
-before D145), `message` (whose edits its pages are) and `edited`.
+page and another, not read), `page` (`first`, `last`, both for a listing without buttons; none when
+its buttons are not known: an export, a shell before MegaBotTron1999 0.1.47), `message` (whose edits
+its pages are) and `edited`.
 
 ### 5.9 The places
 
@@ -458,12 +462,13 @@ It is a floor, not the truth, while the turns are all it reads:
 - **The inventory** gains what a turn drops (with its `2x`) and the items of the owner's level-ups'
   lists (§5.4), and a listing (§5.8) sets it: each item a page lists is held exactly as it says; a
   listing followed from its first page to its last (its pages turn one at a time, so reaching the
-  last saw them all) is the whole inventory, every item exact and those it does not list gone, as of
-  then (`listed`). An item dropped into an inventory listed whole is exact too (none was held). A
-  filtered listing, a page without its buttons, a chain whose first page was missed, or one with an
-  item cut between two pages is a part: exact for what it lists, no more. An item held exactly that
-  a whole listing says otherwise is a mismatch (`stats_drift`, `inventory`: each count expected and
-  said). The generators, the recipes, `/usa` and the shop change items and are not read yet.
+  last saw them all; a listing without buttons is one page) is the whole inventory, every item exact
+  and those it does not list gone, as of then (`listed`). An item dropped into an inventory listed
+  whole is exact too (none was held). A filtered listing, a page whose buttons are not known (an
+  export), a chain whose first page was missed, or one with an item cut between two pages is a part:
+  exact for what it lists, no more. An item held exactly that a whole listing says otherwise is a
+  mismatch (`stats_drift`, `inventory`: each count expected and said). The generators, the recipes,
+  `/usa` and the shop change items and are not read yet.
 - **A turn cut off** (§5) may have gained an item the reply lost, so the inventory is marked
   uncertain, not changed.
 - **The bans** (§5.1) of every player the parser heard of, the owner's and the group's: per player,

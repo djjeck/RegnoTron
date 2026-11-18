@@ -1427,10 +1427,11 @@ describe('the inventory, as /zaino and /i list it', () => {
 
   it('keeps every player’s, tells who holds an item, and takes a part for a part', async () => {
     const run = await bootState(path.join(dir, 'z2'), { group: true });
+    // A short inventory shows no buttons at all: one page, all of it (D145's `[]`).
     const bobs = await run.group('bob', '/i');
     await run.group('LoreGameBot', ['bob, hai:', ITEM('un sasso', 7)].join('\n'), {
       replyTo: bobs,
-      buttons: PAGE(true, true),
+      buttons: [],
     });
     // The owner's, from an export: no buttons, a part; and filtered, a part.
     const mine = await run.group('alice', '/zaino', { own: true });

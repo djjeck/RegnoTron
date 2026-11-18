@@ -7,8 +7,8 @@
  * line: "> <item> [<rarity>] [<tag>]… x<n>", an equippable item's name ending in its level range
  * ("(2 - 6)", "(4)"). A name may run over several lines (players write them): an item ends at the
  * line that ends in its rarity, tags and count. A long inventory is paged: its ◀️ and ▶️ buttons
- * turn the page (an edit of the message), each a lock at the first and the last page; the text says
- * nothing of its page. A later page starts with its items, and a page is cut by lines, so a name
+ * turn the page (an edit of the message), each a lock at the first and the last page; a short one
+ * shows no buttons; the text says nothing of its page. A later page starts with its items, and a page is cut by lines, so a name
  * running over several lines may be cut between two pages: its part on each is not read (`cut`).
  */
 import { type Equipped } from '#src/profile.ts';
@@ -101,15 +101,17 @@ export function parseInventory(raw: string): InventoryListing | undefined {
 
 /**
  * Which page a listing's buttons say it is (MegaBotTron1999's D145): the first when it offers no
- * ◀️ (a lock instead), the last when it offers no ▶️; none when it shows no paging buttons (a shell
- * that gives none, an export).
+ * ◀️ (a lock instead), the last when it offers no ▶️; a listing short enough for one page shows no
+ * buttons at all [M], so one without any is both. None when its buttons are not known (an export, a
+ * shell before D145 0.1.47, which gives no `buttons`): a first page may then be all of it, or not.
  */
 export function pageOf(
   buttons: readonly (readonly string[])[] | undefined
 ): { first: boolean; last: boolean } | null {
-  const labels = (buttons ?? []).flat();
-  const back = labels.some((l) => l.includes('◀'));
-  const next = labels.some((l) => l.includes('▶'));
-  if (!back && !next && !labels.some((l) => l.includes('🔒'))) return null;
-  return { first: !back, last: !next };
+  if (buttons === undefined) return null;
+  const labels = buttons.flat();
+  return {
+    first: !labels.some((l) => l.includes('◀')),
+    last: !labels.some((l) => l.includes('▶')),
+  };
 }
