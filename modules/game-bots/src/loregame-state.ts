@@ -74,8 +74,10 @@ import {
   PLAYER_ACCUMULO_EVENT,
   PLAYER_TURN_EVENT,
   PROFILE_EVENT,
+  REQUIREMENTS_EVENT,
   SKILLS_EVENT,
   TRAINING_EVENT,
+  TRAVEL_EVENT,
   UNBAN_EVENT,
 } from '#src/plugins/loregame.ts';
 import { levelForXp, xpForLevel } from '#src/profile.ts';
@@ -113,6 +115,8 @@ export const CONSUMES: readonly string[] = [
   SKILLS_EVENT,
   EQUIPMENT_EVENT,
   INVENTORY_EVENT,
+  TRAVEL_EVENT,
+  REQUIREMENTS_EVENT,
 ];
 
 /**
@@ -418,6 +422,29 @@ export const stateSchema = z.object({
   accumulo: accumulo.describe('Accumulo'),
   players: z.record(z.string(), player).describe('Players'),
   inventory: inventorySchema.describe('Inventory'),
+  places: z
+    .record(
+      z.string(),
+      z.object({
+        name: z.string(),
+        level: z.number().nullable().describe('The level it asks'),
+        items: z
+          .array(
+            z.object({
+              item: z.string(),
+              rarity: z.string(),
+              tags: z.array(z.string()),
+              level: z.object({ low: z.number(), high: z.number() }).nullable(),
+            })
+          )
+          .describe('The items entering takes, one each'),
+        exits: z
+          .array(z.object({ name: z.string(), code: z.string() }))
+          .describe('Where one can go'),
+        as_of: z.string().describe('Told'),
+      })
+    )
+    .describe("The game's places, by code: what entering each takes, and where one can go from it"),
 });
 
 export type Holding = z.infer<typeof holding>;
@@ -450,6 +477,7 @@ export function initialState(): LoreState {
     accumulo: initialAccumulo(),
     players: {},
     inventory: initialInventory(),
+    places: {},
   };
 }
 
@@ -1280,8 +1308,8 @@ function reduceOwner(state: LoreState, e: BusEvent): LoreState {
 
 /** The next state: an event's gains added to the inventory, a ban set or ended (pure). */
 export function reduce(state: LoreState, e: BusEvent): LoreState {
-  const next = reduceListing(
-    reducePlayers(reduceAccumulo(reduceOwner(reduceBans(state, e), e), e), e),
+  const next = reducePlaces(
+    reduceListing(reducePlayers(reduceAccumulo(reduceOwner(reduceBans(state, e), e), e), e), e),
     e
   );
   // Each inventory: the owner's drops and level-ups in theirs, another player's in theirs.
@@ -1339,6 +1367,106 @@ function withInventory(s: LoreState, whose: Whose, inv: Inventory, at: string): 
   if (p === null) return s;
   return { ...s, players: { ...s.players, [whose.player]: { ...p, as_of: at, inventory: inv } } };
 }
+
+const placeItem = z.object({
+  item: z.string(),
+  rarity: z.string(),
+  tags: z.array(z.string()),
+  level: z.object({ low: z.number(), high: z.number() }).nullable(),
+});
+const placeOf = z.object({ name: z.string(), code: z.string() });
+/** What a move event says (the parser's `loregame.travel`). */
+const travelSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  kind: z.enum(['arrived', 'here', 'refused']),
+  place: placeOf,
+  consumed: z.array(placeItem).optional(),
+  exits: z.array(placeOf.extend({ locked: z.boolean() })).optional(),
+});
+/** What a requirements event says (the parser's `loregame.requirements`). */
+const requirementsSchema = z.looseObject({
+  place: placeOf,
+  level: z.number().nullable(),
+  items: z.array(placeItem),
+});
+
+/**
+ * The state after a move or a place (docs/game-bots.md §5.9): a player arrived at a place, or told
+ * where they are, is there (`location`, exact), and an arrival takes from their inventory the items
+ * entering consumed, as the bot lists them, one each; a place's requirements, wherever the bot
+ * states them, and where one can go from it, are the game's (`places`).
+ */
+function reducePlaces(state: LoreState, e: BusEvent): LoreState {
+  const at = asIso(e.t);
+  if (e.type === REQUIREMENTS_EVENT) {
+    const r = requirementsSchema.safeParse(e);
+    if (!r.success) return state;
+    const { place, level, items } = r.data;
+    const was = Object.hasOwn(state.places, place.code) ? state.places[place.code] : undefined;
+    return {
+      ...state,
+      places: {
+        ...state.places,
+        [place.code]: { name: place.name, level, items, exits: was?.exits ?? [], as_of: at },
+      },
+    };
+  }
+  if (e.type !== TRAVEL_EVENT) return state;
+  const r = travelSchema.safeParse(e);
+  if (!r.success || r.data.player === '' || r.data.kind === 'refused') return state;
+  const d = r.data;
+  let s = state;
+  if (d.kind === 'here' && d.exits !== undefined) {
+    const was = Object.hasOwn(s.places, d.place.code) ? s.places[d.place.code] : undefined;
+    s = {
+      ...s,
+      places: {
+        ...s.places,
+        [d.place.code]: {
+          name: d.place.name,
+          level: was?.level ?? null,
+          items: was?.items ?? [],
+          exits: d.exits.map((x) => ({ name: x.name, code: x.code })),
+          as_of: at,
+        },
+      },
+    };
+  }
+  const p = playerOf(s, d.player) ?? initialPlayer(at);
+  s = {
+    ...s,
+    players: {
+      ...s.players,
+      [d.player]: {
+        ...p,
+        as_of: at,
+        stats: set(p.stats, 'location', { name: d.place.name, code: d.place.code }, true, at),
+      },
+    },
+  };
+  const consumed = d.consumed ?? [];
+  if (consumed.length === 0) return s;
+  const whose: Whose = d.owner ? { owner: true } : { owner: false, player: d.player };
+  const inv = inventoryOf(s, whose);
+  if (inv === undefined) return s;
+  let items = inv.items;
+  for (const c of consumed) {
+    const h = own(items, c.item);
+    // One taken; an item the state held none of leaves its count at none, and not exact.
+    if (h === undefined) continue;
+    items = withItem(items, c.item, {
+      ...h,
+      qty: Math.max(0, h.qty - 1),
+      exact: h.exact && h.qty > 0,
+      date: at,
+    });
+  }
+  return withInventory(s, whose, { ...inv, items, held: heldOf(items) }, at);
+}
+
+/** Every place the state knows of, by code. */
+export const placesOf = (s: LoreState): LoreState['places'] => s.places;
 
 /** What an inventory listing event says (the parser's `loregame.inventory`). */
 const listingSchema = z.looseObject({

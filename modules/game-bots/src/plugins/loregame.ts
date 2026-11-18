@@ -38,6 +38,10 @@
  * as `loregame.skills` and `loregame.equipment`. The menu is followed as its buttons change it: the
  * parser asks for edits (MegaBotTron1999's D144), of the menu alone.
  *
+ * **The inventory and the places** (docs/game-bots.md §5.8, §5.9): `/zaino` and `/i`, a page at a
+ * time (its pages are its edits, its buttons tell which), as `loregame.inventory`; `/vai` and `/v`,
+ * as `loregame.travel`; and any place's requirements the bot states, as `loregame.requirements`.
+ *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
  * - To the owner's turn, it is an outcome (`banned`, with its `until`), declared a refusal
@@ -69,6 +73,7 @@ import {
 import { BanWatch } from '#src/bans.ts';
 import { parseEquip } from '#src/equipment.ts';
 import { pageOf, parseInventory } from '#src/inventory.ts';
+import { parseTravel, placeRequirements, type Requirements } from '#src/places.ts';
 import { PlayerWatch } from '#src/players.ts';
 import { parseProfile } from '#src/profile.ts';
 import {
@@ -122,6 +127,11 @@ const INVENTORY_COMMAND = '/zaino';
 const INVENTORY_ALIAS = '/i';
 /** The inventory listings remembered, to name a later page's player. */
 const KEPT_LISTINGS = 200;
+const TRAVEL_COMMAND = '/vai';
+const TRAVEL_ALIAS = '/v';
+/** The events of every player's move or place (§5.9), and of every place's requirements. */
+export const TRAVEL_EVENT = `${LOREGAME_PARSER}.travel`;
+export const REQUIREMENTS_EVENT = `${LOREGAME_PARSER}.requirements`;
 /** The event of every player's inventory listing, or page of one (§5.8). */
 export const INVENTORY_EVENT = `${LOREGAME_PARSER}.inventory`;
 export const EQUIPMENT_EVENT = `${LOREGAME_PARSER}.equipment`;
@@ -315,6 +325,47 @@ const skillsEvent = z
   .describe(
     "A player's skills menu (/abilita), as @LoreGameBot gave it, before any button pressed"
   );
+const placeSchema = z.object({ name: z.string(), code: z.string() });
+const requiredItem = z.object({
+  item: z.string(),
+  rarity: z.string(),
+  tags: z.array(z.string()),
+  level: z.object({ low: z.number(), high: z.number() }).nullable(),
+});
+const travelEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    kind: z
+      .enum(['arrived', 'here', 'refused'])
+      .describe('Arrived at `place`, is at it (/v), or was refused it'),
+    place: placeSchema,
+    consumed: z
+      .array(requiredItem)
+      .optional()
+      .describe('arrived: the items entering took, one each'),
+    requirements: z
+      .object({ level: z.number().nullable(), items: z.array(requiredItem) })
+      .nullable()
+      .optional()
+      .describe("here, refused: the place's requirements"),
+    exits: z
+      .array(placeSchema.extend({ locked: z.boolean() }))
+      .optional()
+      .describe('here: where they can go, each locked to them or not'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("A player's move (/vai) or place (/v), as @LoreGameBot answered it");
+const requirementsEvent = z
+  .object({
+    chat: z.string(),
+    place: placeSchema,
+    level: z.number().nullable().describe('The level it asks'),
+    items: z.array(requiredItem).describe('The items it takes at the arrival, one each'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("A place's requirements, wherever @LoreGameBot states them");
 const inventoryEvent = z
   .object({
     chat: z.string(),
@@ -429,6 +480,8 @@ export const loregamePlugin: Plugin = {
       [SKILLS_EVENT]: skillsEvent,
       [EQUIPMENT_EVENT]: equipmentEvent,
       [INVENTORY_EVENT]: inventoryEvent,
+      [TRAVEL_EVENT]: travelEvent,
+      [REQUIREMENTS_EVENT]: requirementsEvent,
       [PLAYER_TURN_EVENT]: playerTurnEvent,
       [PLAYER_ACCUMULO_EVENT]: playerAccumuloEvent,
     },
@@ -616,6 +669,23 @@ export const loregamePlugin: Plugin = {
         if (equip !== undefined && equipOf !== undefined)
           ctx.bus.publish(EQUIPMENT_EVENT, { chat: m.chat, ...equipOf, ...equip, ...old }, m.time);
         listed(m, self);
+        // A move or a place (/vai, /v), the player's whose command it replies to; and any place's
+        // requirements the bot states, whoever asked (they are the game's).
+        const travel = parseTravel(m.text);
+        const traveller =
+          travel === undefined ? undefined : (to(TRAVEL_COMMAND) ?? to(TRAVEL_ALIAS));
+        if (travel !== undefined && traveller !== undefined)
+          ctx.bus.publish(TRAVEL_EVENT, { chat: m.chat, ...traveller, ...travel, ...old }, m.time);
+        const here = travel?.kind === 'here' && travel.requirements !== null ? [travel] : [];
+        for (const r of [
+          ...here.map((h) => ({ place: h.place, requirements: h.requirements as Requirements })),
+          ...placeRequirements(m.text),
+        ])
+          ctx.bus.publish(
+            REQUIREMENTS_EVENT,
+            { chat: m.chat, place: r.place, ...r.requirements, ...old },
+            m.time
+          );
       }
     });
     // The skills menu, as its buttons change it (D144): the bot edits the menu at each point spent.

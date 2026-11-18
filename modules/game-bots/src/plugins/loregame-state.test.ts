@@ -57,6 +57,7 @@ describe('the loregame-state node', () => {
       'profile',
       'bans',
       'inventory',
+      'places',
       'holders',
       'count',
       'held',
@@ -346,6 +347,8 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.skills',
       'loregame.equipment',
       'loregame.inventory',
+      'loregame.travel',
+      'loregame.requirements',
       'loregame.playerTurn',
       'loregame.playerAccumulo',
     ]);
@@ -1483,6 +1486,89 @@ describe('the inventory, as /zaino and /i list it', () => {
       items: {},
       listed: null,
     });
+    await again.core.stop();
+  });
+});
+
+describe('the places, as /vai and /v answer', () => {
+  it('moves a player, takes what entering consumed, and keeps what each place takes', async () => {
+    const run = await bootState(path.join(dir, 'v9'), { group: true });
+    await run.owner('/me');
+    await run.bot(
+      [
+        '👤 alice',
+        '',
+        '👥 Nessuna azienda',
+        '',
+        'Livello 5 (900 ⚔️)',
+        '▓░░░░░░░░░ 10.90%',
+        '',
+        'Il Bene 😇',
+        'Episodio 700',
+        '0 ₭',
+        '',
+        'Armatura 🛡 - (vuoto)',
+        'Amuleto 🩺 - (vuoto)',
+        'Arma 🗡 - (vuoto)',
+        '',
+        '',
+        'Attualmente in Il Bosco Inventato ⛅️ [B1]',
+      ].join('\n')
+    );
+    const play = async (command: string, answer: string) => {
+      const id = await run.group('alice', command, { own: true });
+      await run.group('LoreGameBot', answer, { replyTo: id });
+    };
+    await play('/zaino', 'alice, hai:\n> un sasso [M4] x2\n> una pigna [M5] x1');
+    await play(
+      '/vai monte',
+      "Non hai accesso a Il Monte Finto 🗻 [M6]!\n\nRequisiti d'accesso per Il Monte Finto 🗻 [M6] (oggetti consumati all'arrivo)\n> Livello 6\nTi serve:\n> una piuma [M5]\nHai già:\n> un sasso [M4]"
+    );
+    expect(run.read('places')).toMatchObject({
+      M6: { level: 6, items: [{ item: 'una piuma' }, { item: 'un sasso' }] },
+    });
+    await play(
+      '/vai valle',
+      'WOOSH! Sei arrivato alla Stagione La Valle Finta 🌄 [M5]!\n\nPer entrare, hai consumato i seguenti oggetti\n> un sasso [M4]\n> una pigna [M5]'
+    );
+    expect(run.read('stat', { stat: 'location' })).toMatchObject({
+      value: { name: 'La Valle Finta 🌄', code: 'M5' },
+      exact: true,
+    });
+    expect(run.read('held')).toEqual({ 'un sasso': 1 });
+    expect(run.read('get', { path: 'inventory.items.una pigna' })).toMatchObject({
+      qty: 0,
+      exact: true,
+    });
+    // Where one is, and where one can go.
+    await play(
+      '/v',
+      "Ti trovi nella stagione La Valle Finta 🌄 [M5]\n\nRequisiti d'accesso (oggetti consumati all'arrivo)\n> Livello 5\n> un sasso [M4]\n> una pigna [M5]\n\nPuoi andare in:\n> 🔒 Il Monte Finto 🗻 [M6]\n> Il Bosco Inventato ⛅️ [B1]"
+    );
+    expect(run.read('places')).toMatchObject({
+      M5: { level: 5, exits: [{ code: 'M6' }, { code: 'B1' }] },
+      M6: { level: 6 },
+    });
+    // Down, nothing taken.
+    await play('/vai bosco', 'WOOSH! Sei arrivato alla Stagione Il Bosco Inventato ⛅️ [B1]!');
+    expect(run.read('held')).toEqual({ 'un sasso': 1 });
+    await run.core.stop();
+  });
+
+  it('adds the places to a state kept before there were any (0.26.0)', async () => {
+    const dir2 = path.join(dir, 'v10');
+    const run = await bootState(dir2);
+    await run.turn(gain('un sasso [B1]'));
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    delete kept.state.places;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 10 }));
+    const again = await bootState(dir2);
+    expect(again.read('places')).toEqual({});
+    expect(again.read('held')).toEqual({ 'un sasso': 1 });
     await again.core.stop();
   });
 });

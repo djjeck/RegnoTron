@@ -67,6 +67,7 @@ import {
   LOREGAME_STATE,
   type LoreState,
   PINS,
+  placesOf,
   playerOf,
   profileOf,
   reduce,
@@ -322,6 +323,12 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.27.0 keeps the game's places: added, none known.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined || kept.state['places'] !== undefined) return;
+      store.write('state', { ...kept, state: { ...kept.state, places: {} } });
+    },
   ],
   queries: {
     ban: {
@@ -372,6 +379,11 @@ const base = statePlugin<Kept>({
       input: z.object({ player: z.string().optional() }),
       output: z.looseObject({ held: z.number(), listed: z.string().nullable() }).nullable(),
       run: (s, input: { player?: string }) => inventoryOfPlayer(s, input.player),
+    },
+    places: {
+      help: "The game's places, by code: the level and the items entering each takes, one each, and where one can go from it",
+      output: z.record(z.string(), z.looseObject({ name: z.string() })),
+      run: (s) => placesOf(s),
     },
     holders: {
       help: 'Who holds an item, by its exact name: each player the state knows of (the owner too), with how many and whether it is exact, most first',

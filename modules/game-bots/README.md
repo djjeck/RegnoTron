@@ -156,6 +156,12 @@ first from the message, each turned from its edit (MegaBotTron1999's D144), with
 from its ◀️ ▶️ buttons (D145). The state takes a listing followed to its last page as the whole
 inventory, and keeps every player's (docs/game-bots.md §5.8, §6).
 
+**The places.** `/vai` and `/v` are published as `loregame.travel` (an arrival with what it
+consumed, where one is, a refusal), each the player's whose command it replies to, and any place's
+requirements as `loregame.requirements`; the state keeps the places (`state.places()`), sets a
+player's `location`, and takes what an arrival consumed from their inventory (docs/game-bots.md
+§5.9).
+
 **Skills and equipment.** The `/abilita` menu and the answers to `/equipaggia` that change or list
 the equipment are published as `loregame.skills` and `loregame.equipment`, each the player's whose
 command it replies to (docs/game-bots.md §5.6, §5.7). A point spent with the menu's buttons makes
@@ -214,6 +220,7 @@ have gained what the reply lost: it changes no count, and marks the inventory `u
 | `state.count({ name })`             | How many of an item the owner holds, as the state estimates it                     |
 | `state.held()`                      | Every item held, with its count                                                    |
 | `state.inventory({ player? })`      | A player's inventory (the owner's unless named), and when it was listed whole      |
+| `state.places()`                    | The game's places: what entering each takes, where one can go from it              |
 | `state.holders({ item })`           | Who holds an item, by its exact name, with how many                                |
 | `state.ban({ player? })`            | A player's ban (the owner's unless named): `{ until, since }`                      |
 | `state.bans()`                      | Every banned player, with their ban                                                |

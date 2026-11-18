@@ -399,6 +399,33 @@ player's whose first page it follows, or whose command it replies to.
 page and another, not read), `page` (`first`, `last`; none without its buttons: an export, a shell
 before D145), `message` (whose edits its pages are) and `edited`.
 
+### 5.9 The places
+
+The game's places ("stagioni") ask a level and items to enter, consumed at the arrival [M]:
+
+- **`/vai <place>`** moves (its answer replies to the command):
+  `WOOSH! Sei arrivato alla Stagione <place> [<code>]!`, then, when entering took items,
+  `Per entrare, hai consumato i seguenti oggetti` and the items, one each (91 of the 158 arrivals in
+  the exports; the others took none, a move down among them, so the state takes what the bot lists,
+  and needs no rule of up and down). Refused: `Non hai accesso a <place> [<code>]!` and the place's
+  requirements; `Stagione non trovata!`.
+- **`/v`** says where one is: `Ti trovi nella stagione <place> [<code>]`, its requirements, then
+  where one can go (`Puoi andare in:`, each place, `🔒` if locked to them) or
+  `Nessuna stagione disponibile!`.
+- **A place's requirements**
+  (`Requisiti d'accesso per <place> [<code>] (oggetti consumati all'arrivo)`, then `> Livello <n>`
+  and the items, under `Ti serve:` and `Hai già:` in a refusal) are read wherever the bot states
+  them: a refusal, and an answer that changed them
+  (`La modalità d'accesso alla stagione [<code>] è cambiata!`, a generator's). An item's name may
+  run over several lines. Every answer and block in the exports is read: 714 answers, 280 blocks,
+  859 items.
+
+**`loregame.travel`** carries a player's answer (the one whose `/vai` or `/v` it replies to): `kind`
+(`arrived`, with what entering `consumed`; `here`, with the place's `requirements` and its `exits`;
+`refused`, with the `requirements`), and `place`. **`loregame.requirements`** carries any place's:
+`place`, `level`, `items`. **Not read yet:** the neutral places, which a "biglietto neutralizzante"
+lets one step aside to, and how one leaves them.
+
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
 
@@ -447,6 +474,9 @@ It is a floor, not the truth, while the turns are all it reads:
 - **The training** (§5.3): the readiness's, a day after the owner's last training.
 - **A level-up** of the owner's (§5.4), whatever brought it, adds its items to the inventory, and
   opens the accumulo when it reaches its level.
+- **The places** (§5.9, `places`): each place's level, the items entering it takes, and where one
+  can go from it, the game's, from any player's answers. An arrival sets a player's `location`, and
+  takes the items entering consumed from their inventory, one each; `/v` sets it too.
 - **Their profile** (§5.5), and their username (`owner.name`), as with every player's (§6.1).
 - **Items and players are named by players**, anything, `__proto__` included.
 
