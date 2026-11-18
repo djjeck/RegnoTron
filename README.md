@@ -78,11 +78,12 @@ Each module's README lists its plugins' config fields.
 
 ## Developing
 
-MegaBotTron1999 is vendored as a git submodule, `vendor/MegaBotTron1999`, pinned to a tag (now
-`v0.1.46`, with D144's message edits, which a plugin asks for), or to a commit past it when the
-modules need a change not tagged yet. The shell's packages are workspaces here, beside the modules,
-which are workspaces too (each `@regnotron/<id>`, with `exports` `./*` → `./src/*`), so that imports
-and tests resolve as the loader will resolve them.
+MegaBotTron1999 is vendored as a git submodule, `vendor/MegaBotTron1999`, pinned to a tag
+(`v0.1.46`, with D144's message edits, which a plugin asks for), or to a commit past it when the
+modules need a change not tagged yet (now `2cdb371`, with D145's buttons, as labels). The shell's
+packages are workspaces here, beside the modules, which are workspaces too (each `@regnotron/<id>`,
+with `exports` `./*` → `./src/*`), so that imports and tests resolve as the loader will resolve
+them.
 
 ```sh
 git clone --recurse-submodules https://github.com/djjeck/RegnoTron.git
