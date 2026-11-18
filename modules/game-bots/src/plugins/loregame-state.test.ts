@@ -575,9 +575,33 @@ describe('the accumulo, for a shell player', () => {
     // Sent by hand all the same: "already ready", refused, and nothing spent.
     await play(run, 'La lore è già pronta!\n\nIl tuo accumulo: 20/20');
     expect(ready(run)).toMatchObject({ ready: false });
-    // The next turn rests, and it is legal again: still full.
+    // The next turn rests, and it is legal again: still full, its line says.
     await run.owner('/lore');
-    await run.bot(gain('un sasso [B1]'));
+    await run.bot(lit('un sasso [B1]'));
+    expect(ready(run)).toMatchObject({ ready: true });
+    await run.core.stop();
+  });
+
+  it('is withdrawn by a turn without the line: a use it did not hear, or a start that knew nothing', async () => {
+    const run = await bootState(path.join(dir, 'l2'), { group: true });
+    await run.owner('/lore');
+    await run.bot(lit('un sasso [B1]'));
+    expect(ready(run)).toMatchObject({ ready: true });
+    // Its /accumulo in the group, whose answer the account never reads; then a turn, unlit.
+    await run.group('alice', '/acc', { own: true });
+    run.clock.advance(MIN);
+    const mine = await run.group('alice', '/lore', { own: true });
+    await run.group('LoreGameBot', gain('una perla [B1]'), { replyTo: mine });
+    expect(ready(run)).toMatchObject({ ready: false, why: 'waits for an unlock' });
+    // A turn cut off, or one quoting the line, says nothing either way.
+    run.clock.advance(16 * MIN);
+    await run.owner('/lore');
+    await run.bot(lit('un sasso [B1]'));
+    run.clock.advance(MIN);
+    await run.owner('/lore');
+    await run.bot(
+      `${HEADER}\n\n🔋 /accumulo pronto!\n🔋 /accumulo pronto!\nHai ottenuto un sasso [B1]!`
+    );
     expect(ready(run)).toMatchObject({ ready: true });
     await run.core.stop();
   });

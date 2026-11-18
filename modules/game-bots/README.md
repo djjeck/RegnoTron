@@ -102,7 +102,8 @@ D137, D141), so the `player` bound to the `loregame-state` node lists it, one ro
 beside the turn, ticked by default, with its mechanics:
 
 - **unlocked by the bot's word:** a turn with the bot's own line (one copy) makes it ready; never
-  our count, and never a line a story quotes;
+  our count, and never a line a story quotes; a whole turn without the line withdraws it (a use
+  whose answer was missed, a start that knew nothing);
 - **legal only while `/lore` rests:** the bot refuses it otherwise ("La lore è già pronta!", nothing
   spent), so the state reports it not ready while the turn is free, and ready again at the next
   turn; there is no condition in the player, which plays it as soon as it is legal;

@@ -148,9 +148,17 @@ const LEVEL_HOLD = 'level';
  * (D141, pure): the owner's ban holds every command until it ends, or until the bot serves them
  * again; the bot's answer to the owner's `/accumulo`, wherever it came, uses it or withdraws its
  * unlock (the level gate also holding it for `LOCKED_RETRY_MS`); the owner's training, wherever it
- * came, starts its cooldown (a "too soon" replies to the command, which the shell pairs).
+ * came, starts its cooldown (a "too soon" replies to the command, which the shell pairs); and a
+ * turn of the owner's without the accumulo's line withdraws its unlock: the bot's word that it is
+ * not full, whatever the state believed (a use it did not hear, a start that knew nothing).
  */
 export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
+  if (e.type === TURN_EVENT) {
+    const o = outcomeOf(e);
+    // A turn says it only when whole (one cut off lost its line) and not quoting it (a story's).
+    const whole = o?.place !== undefined && !(o.kind === 'nothing' && o.reason === 'truncated');
+    return whole && o.accumulo === undefined ? LORE_READINESS.lock(r, ACCUMULO) : r;
+  }
   if ((e.type === BAN_EVENT || e.type === UNBAN_EVENT) && e['owner'] === true) {
     const until = e['until'];
     return LORE_READINESS.hold(
