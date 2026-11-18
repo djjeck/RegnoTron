@@ -158,6 +158,15 @@ const base = statePlugin<Kept>({
         state: { ...kept.state, players: kept.state['players'] ?? {} },
       });
     },
+    // 0.16.0 kept no readiness: the section is added, nothing known yet (from the next event).
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined || kept.state['readiness'] !== undefined) return;
+      store.write('state', {
+        ...kept,
+        state: { ...kept.state, readiness: LORE_READINESS.initial() },
+      });
+    },
   ],
   queries: {
     ban: {

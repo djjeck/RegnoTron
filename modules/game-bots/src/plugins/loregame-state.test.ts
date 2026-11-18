@@ -446,6 +446,23 @@ describe('the loregame parser’s accumulo', () => {
     expect(migrated.read('held')).toEqual({ 'un sasso': 1 });
     await migrated.core.stop();
   });
+
+  it('adds the readiness to a state kept before there was one (0.15.0)', async () => {
+    const dir2 = path.join(dir, 'k');
+    const run = await bootState(dir2);
+    await run.turn(lit('un sasso [B1]'));
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    expect(kept.state.readiness).toBeDefined();
+    delete kept.state.readiness;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 3 }));
+    const migrated = await bootState(dir2);
+    expect(migrated.read('held')).toEqual({ 'un sasso': 1 });
+    await migrated.core.stop();
+  });
 });
 
 describe('the accumulo, for a shell player', () => {
