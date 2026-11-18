@@ -141,8 +141,8 @@ a ban is read off any reply of the bot:
   every sender, not only the bot's and the owner's. A reply to a message it did not hear is no
   one's.
 - **The owner's turn** answered with a ban is the outcome `banned` (with its `until`), declared a
-  refusal (`reason: banned`, MegaBotTron1999's bot-os.md D98) that holds the bot's commands
-  (`LORE_COMMANDS`) back in that chat until `until`, not an `ok`.
+  refusal (`reason: banned`, MegaBotTron1999's bot-os.md D98), not an `ok`; the state below holds
+  the bot's commands until `until` (the shell's outbox holds nothing back, its D142).
 - **The owner's readiness in `loregame-state`** (MegaBotTron1999's bot-os.md D141), which the
   shell's `player` asks before each command (`state.ready`), holds every command until the owner's
   ban ends: the state folds the owner's `loregame.ban` in, and lifts it on their `loregame.unban`.
@@ -197,8 +197,7 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
   shell cannot pair it), counts the same: the state folds `loregame.accumulo` into the readiness, a
   use ending the turns' rest. A player in the group (D139): the bot answers its `/accumulo` with a
   message of its own, so the parser pairs it with the send the player tells it of (through the
-  state), declares it the answer (`loregame.accumulo`, with the turns' `holds` for the outbox), and
-  the state frees the turn.
+  state), declares it the answer (`loregame.accumulo`), and the state frees the turn.
 
 **Not read yet**: Stoccaggio itself (the maximum is the one the bot's counter states, else the usual
 20), and the level, which a training or a level-up elsewhere raises without the state hearing.

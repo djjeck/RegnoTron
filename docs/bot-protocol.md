@@ -278,8 +278,9 @@ a wording fix serves the Telegram exports, the live IRC side and the live Telegr
   (`!raid` on IRC, `/raid` on Telegram), so that it pairs with a command sent to either chat: `ok`
   (a departure, a purchase, a move, a turn back, …) or `refused` (`travelling`, `frozen`, `locked`
   for a baby's slot, `disabled` for /give, /burn and the ☢️, `invalid`, `missing`, …), with
-  `retryAt` where the bot states a time (already travelling, frozen, buying on the way back). Each
-  rule names only the commands that can draw it (`non hai X in casa.` answers /take,
+  `retryAt` in the event where the bot states a time (already travelling, frozen, buying on the way
+  back), for a node that reads it: the shell's outbox holds nothing back on it (its D142). Each rule
+  names only the commands that can draw it (`non hai X in casa.` answers /take,
   `nel posto # della casa non c'è nessuna emoji.` /move, `nel posto # c'è già X` /buy,
   `la casa è piena` /store, `non hai X, né con te né in casa.` /throw, …; only the way back,
   `shopAway`, answers all the house's commands): the core pairs an answer with the oldest send of

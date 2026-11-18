@@ -381,21 +381,20 @@ describe("the bot's answers to the owner's commands (D93, D98)", () => {
     await core.stop();
   });
 
-  it('holds a command back for the time the bot says, and refuses as it does', async () => {
+  it('refuses as the bot does, with the time it says in the event, and holds nothing back', async () => {
     const { core, out, hear } = await answering();
     const q = out().enqueue(channel, '!raid Bravo');
     await flush();
     hear('alice sei già in viaggio, torni tra 2 minuti.');
     await expect(q).resolves.toMatchObject({
-      answer: { status: 'refused', reason: 'travelling', retryAt: T0 + 120_000 },
+      answer: {
+        status: 'refused',
+        reason: 'travelling',
+        event: { rule: 'travelling', retryAt: T0 + 120_000 },
+      },
     });
-    // Its cooldown holds the trips, in both forms.
-    expect(out().held(channel, '/throw')).toMatchObject({ until: T0 + 120_000 });
-    expect(out().held(channel, '!buy')).toBeUndefined();
-    const r = out().enqueue(channel, '!throw Juno 💣');
-    await flush();
-    expect(r.status()).not.toBe('sent');
-    r.cancel();
+    // The shell's outbox keeps no cooldown (MegaBotTron1999's D142).
+    expect(out().held(channel, '/throw')).toBeUndefined();
     await core.stop();
   });
 

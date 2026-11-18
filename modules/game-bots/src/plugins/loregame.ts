@@ -21,8 +21,9 @@
  *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
- * - To the owner's turn, it is an outcome (`banned`, with its `until`), declared a refusal that
- *   holds the bot's commands back until then (bot-os.md D98), not an `ok`.
+ * - To the owner's turn, it is an outcome (`banned`, with its `until`), declared a refusal
+ *   (bot-os.md D98), not an `ok`; `loregame-state` holds the commands until it ends (the outbox
+ *   holds nothing back, D142).
  * - The parser also watches every message of the chats it reads for bans (`src/bans.ts`), the
  *   owner's and the group's players' (named by the message the bot replies to), and publishes
  *   `loregame.ban` and `loregame.unban` when one starts, changes or ends, `loregame-state` keeps
@@ -48,7 +49,6 @@ import {
 import { BanWatch } from '#src/bans.ts';
 import { PlayerWatch } from '#src/players.ts';
 import {
-  LORE_COMMANDS,
   type LoreAccumulo,
   LOREGAMEBOT,
   loreRestMs,
@@ -154,10 +154,6 @@ const accumuloEvent = z
     count: z.number().optional().describe("The bot's counter: turns since the last use"),
     max: z.number().optional().describe('How many turns it needs, as the bot states it'),
     level: z.number().optional().describe('locked: the level it asks'),
-    holds: z
-      .record(z.string(), z.number())
-      .optional()
-      .describe("used: the turn commands' rest, ended now (ms), for the outbox (D98, D132)"),
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("How @LoreGameBot answered the owner's /accumulo");
@@ -181,8 +177,8 @@ const playerAccumuloEvent = accumuloEvent
 /**
  * What the bot's answer to the owner's `/accumulo` tells a node that sent it (D98), as the parser's
  * own watch pairs it, in private or in the group, where the bot replies to no command and the
- * shell's parser cannot pair it: a use is the `ok`, and ends the turns' hold in the outbox
- * (`holds`); the rest are refusals.
+ * shell's parser cannot pair it: a use is the `ok`, the rest are refusals. They hold nothing back
+ * (D142): the turns' rest it ends is `loregame-state`'s.
  */
 const ACCUMULO_ANSWERS = (
   [
@@ -197,7 +193,6 @@ const ACCUMULO_ANSWERS = (
   when: { result },
   status,
   reason,
-  holdsAtFrom: 'holds',
 }));
 
 /** The parser, with the bans and the accumulo it watches for, beside the turns it reads. */
@@ -220,8 +215,6 @@ export const loregamePlugin: Plugin = {
         when: { 'outcome.kind': 'banned' },
         status: 'refused',
         reason: 'banned',
-        retryAtFrom: 'outcome.until',
-        holds: formsOf(LORE_COMMANDS),
       },
       ...(parser.manifest.answers ?? []),
       ...ACCUMULO_ANSWERS,
@@ -267,18 +260,9 @@ export const loregamePlugin: Plugin = {
         );
       const answer = any?.owner === true ? any.reply : undefined;
       if (answer !== undefined) {
-        // A use ends the turns' rest: told to the outbox with the answer (`holds`), for each of
-        // the turn's forms, every name bare and addressed (D140).
-        const holds =
-          answer.result === 'used'
-            ? {
-                holds: Object.fromEntries(
-                  formsOf(TURN_COMMANDS[LOREGAMEBOT]).map((c) => [c, m.time])
-                ),
-              }
-            : {};
-        // `loregame-state` reduces it into the owner's readiness, in any chat (D141).
-        ctx.bus.publish(ACCUMULO_EVENT, { chat: m.chat, ...answer, ...holds, ...old }, m.time);
+        // `loregame-state` reduces it into the owner's readiness, in any chat (D141): a use ends
+        // the turns' rest there, and nowhere else (D142).
+        ctx.bus.publish(ACCUMULO_EVENT, { chat: m.chat, ...answer, ...old }, m.time);
       }
     });
     const turns = instance.interface as TurnParserInterface;

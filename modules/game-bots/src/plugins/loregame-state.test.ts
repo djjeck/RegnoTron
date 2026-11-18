@@ -153,7 +153,7 @@ const BAN_END = Date.parse('2026-11-06T17:00:00Z');
 const BAN_ISO = new Date(BAN_END).toISOString();
 
 describe('the loregame parser’s bans', () => {
-  it('declares a ban a refusal that holds the bot’s commands until it ends, ahead of the ok', () => {
+  it('declares a ban a refusal, ahead of the ok, holding nothing back in the outbox', () => {
     const { answers } = parseManifest(loregamePlugin.manifest);
     const turn = (outcome: object) => ({ chat: '@LoreGameBot', outcome });
     const banned = readAnswer(
@@ -162,7 +162,9 @@ describe('the loregame parser’s bans', () => {
       turn({ kind: 'banned', bot: 'LoreGameBot', until: BAN_END }),
       T0
     );
-    expect(banned?.answer).toMatchObject({ status: 'refused', reason: 'banned', retryAt: BAN_END });
+    expect(banned?.answer).toMatchObject({ status: 'refused', reason: 'banned' });
+    // The state holds the commands (MegaBotTron1999's D142): the answer holds none back.
+    expect(banned?.answer).not.toHaveProperty('retryAt');
     expect(banned?.commands).toEqual([
       '/lore',
       '/avventura',
@@ -171,16 +173,6 @@ describe('the loregame parser’s bans', () => {
       '/avventura@LoreGameBot',
       '/l@LoreGameBot',
     ]);
-    expect(banned?.holds).toEqual(
-      expect.arrayContaining([
-        '/lore',
-        '/vai',
-        '/usa',
-        '/zaino',
-        '/lore@LoreGameBot',
-        '/v@LoreGameBot',
-      ])
-    );
     // What else a turn brings is still the ok it was.
     const ok = readAnswer(
       answers,
@@ -691,17 +683,8 @@ describe('a player that plays in the group', () => {
     await sent(run, '/accumulo');
     run.clock.advance(1000);
     await run.group('LoreGameBot', USED);
-    expect(run.of('loregame.accumulo').at(-1)).toMatchObject({
-      result: 'used',
-      holds: {
-        '/lore': run.clock.now(),
-        '/avventura': run.clock.now(),
-        '/l': run.clock.now(),
-        '/lore@LoreGameBot': run.clock.now(),
-        '/avventura@LoreGameBot': run.clock.now(),
-        '/l@LoreGameBot': run.clock.now(),
-      },
-    });
+    expect(run.of('loregame.accumulo').at(-1)).toMatchObject({ result: 'used' });
+    expect(run.of('loregame.accumulo').at(-1)).not.toHaveProperty('holds');
     // The turn is free again, for the parser as for the player, and the accumulo spent.
     expect(run.rest()).toBeUndefined();
     expect(run.ready()['/lore']).toMatchObject({ ready: true, since: run.clock.now() });
@@ -714,16 +697,10 @@ describe('a player that plays in the group', () => {
     await run.core.stop();
   });
 
-  it('declares the answer to the outbox: a use ends the turns’ hold, the rest are refusals', () => {
+  it('declares the answer to the outbox: a use is the ok, the rest are refusals', () => {
     const { answers } = parseManifest(loregamePlugin.manifest);
-    const used = readAnswer(
-      answers,
-      'loregame.accumulo',
-      { chat: '-1001', result: 'used', holds: { '/lore': T0, '/avventura': T0, '/l': T0 } },
-      T0
-    );
+    const used = readAnswer(answers, 'loregame.accumulo', { chat: '-1001', result: 'used' }, T0);
     expect(used?.answer).toMatchObject({ status: 'ok', reason: 'used' });
-    expect(used?.holdsAt).toEqual({ '/lore': T0, '/avventura': T0, '/l': T0 });
     expect(used?.commands).toEqual([
       '/accumulo',
       '/acc',

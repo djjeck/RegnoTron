@@ -145,7 +145,6 @@ describe('answerDeclarations', () => {
       when: { rule: 'throwMissing' },
       status: 'refused',
       reason: 'missing',
-      retryAtFrom: 'retryAt',
     });
   });
 
@@ -160,8 +159,6 @@ describe('answerDeclarations', () => {
         unless: { private: true },
         status: 'refused',
         reason: 'travelling',
-        retryAtFrom: 'retryAt',
-        holds: ['!raid', '/raid', '!throw', '/throw'],
       },
       {
         event: 'norelec.answer',
@@ -169,8 +166,6 @@ describe('answerDeclarations', () => {
         when: { rule: 'travelling', private: true },
         status: 'refused',
         reason: 'travelling',
-        retryAtFrom: 'retryAt',
-        holds: ['!raid', '/raid', '!throw', '/throw'],
       },
     ]);
     // A purchase's answers: from the group alone.

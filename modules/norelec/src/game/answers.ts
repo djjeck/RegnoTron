@@ -1,8 +1,9 @@
 /**
  * NorelecBot's answers to a player's own commands (MegaBotTron1999's bot-os.md D98): which events
  * of a bot message answer which of the game's commands (docs/game-rules.md §1.1), in both forms
- * (`!raid Juno` on IRC, `/raid @Juno` on Telegram), with the status, the reason and, where the bot
- * states a time, when the command may go again.
+ * (`!raid Juno` on IRC, `/raid @Juno` on Telegram), with the status and the reason; where the bot
+ * states a time, its event says when the command may go again (`retryAt`), for whoever reads it:
+ * the shell's outbox holds nothing back on it (MegaBotTron1999's D142).
  *
  * The channel is everyone's, so an event answers only when it is about the player the owner plays
  * (`self`): another player's departure answers nobody's `!raid` here. Each answer is a rule of
@@ -23,7 +24,7 @@ const both = (...verbs: string[]): string[] => verbs.flatMap((v) => [`!${v}`, `/
 
 /** The commands a trip starts (game-rules.md §1.1), as their first word. */
 export const TRAVEL = both('raid', 'throw');
-/** The house's commands: all refused on the way back (`shopAway`), which holds them all. */
+/** The house's commands: all refused on the way back (`shopAway`). */
 export const SHOP = both('buy', 'take', 'store', 'move');
 
 /**
@@ -44,8 +45,6 @@ export interface AnswerRule {
   status: 'ok' | 'refused';
   /** Why: D98's `cooldown`, `missing`, `invalid`, or the game's own. */
   reason?: string;
-  /** The commands its `retryAt` holds back, when not only its own. */
-  holds?: readonly string[];
 }
 
 /**
@@ -56,8 +55,8 @@ export interface AnswerRule {
 export const ANSWER_RULES = {
   raid: { commands: both('raid'), status: 'ok' },
   throw: { commands: both('throw'), status: 'ok' },
-  travelling: { commands: TRAVEL, status: 'refused', reason: 'travelling', holds: TRAVEL },
-  frozen: { commands: TRAVEL, status: 'refused', reason: 'frozen', holds: TRAVEL },
+  travelling: { commands: TRAVEL, status: 'refused', reason: 'travelling' },
+  frozen: { commands: TRAVEL, status: 'refused', reason: 'frozen' },
   travelInvalid: { commands: TRAVEL, status: 'refused', reason: 'invalid' },
   raidInvalid: { commands: both('raid'), status: 'refused', reason: 'invalid' },
   throwInvalid: { commands: both('throw'), status: 'refused', reason: 'invalid' },
@@ -78,7 +77,7 @@ export const ANSWER_RULES = {
   carriedFull: { commands: both('take', 'throw'), status: 'refused', reason: 'invalid' },
   storeInvalid: { commands: both('store'), status: 'refused', reason: 'invalid' },
   moveMissing: { commands: both('move'), status: 'refused', reason: 'missing' },
-  shopAway: { commands: SHOP, status: 'refused', reason: 'travelling', holds: SHOP },
+  shopAway: { commands: SHOP, status: 'refused', reason: 'travelling' },
   quoted: { commands: both('addquote'), status: 'ok' },
   quoteMissing: { commands: both('addquote'), status: 'refused', reason: 'missing' },
   collected: { commands: both('raccogli'), status: 'ok' },
@@ -168,7 +167,7 @@ export function answerOf(e: GameEvent, self: string, t: number): ReadAnswer | un
 
 /**
  * The manifest's `answers` (bot-os-api.md §2): one declaration per rule, over the event `event`,
- * whose payload names the rule (`rule`) and may hold `retryAt`. An answer read in the private chat
+ * whose payload names the rule (`rule`). An answer read in the private chat
  * (`private: true`) answers none of the group's own commands (`GROUP_ONLY`): a rule that names one
  * is declared for the group (`unless` private) and, for its other commands, for the private chat.
  */
@@ -177,8 +176,6 @@ export function answerDeclarations(event: string) {
     const how = {
       status: r.status,
       ...(r.reason === undefined ? {} : { reason: r.reason }),
-      retryAtFrom: 'retryAt',
-      ...(r.holds === undefined ? {} : { holds: [...r.holds] }),
     };
     const anywhere = r.commands.filter((c) => !GROUP_ONLY.includes(c));
     if (anywhere.length === r.commands.length)

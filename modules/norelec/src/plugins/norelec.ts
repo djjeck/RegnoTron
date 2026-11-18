@@ -92,7 +92,7 @@ export const answerSchema = z.object({
   status: z.enum(['ok', 'refused']),
   /** The owner's game account, which the event is about. */
   player: z.string(),
-  /** When its commands may go again, as the bot says (ms). */
+  /** When its commands may go again, as the bot says (ms): for a reader; nothing holds them. */
   retryAt: z.number().optional(),
   /** The event of the message that answers. */
   event: z.looseObject({ kind: z.string() }),

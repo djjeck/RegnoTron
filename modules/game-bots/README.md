@@ -71,17 +71,18 @@ it hands on). A shell `player` in the group sends the form that plays the most r
 saved with a `commands` config, as they had before, still runs: the key is ignored, and may be
 removed from the graph. Each publishes `<id>.turn`, which the editor lists with its description, and
 which, through `turnParserPlugin`, answers its turn commands (the shell's bot-os.md D98: a "too
-soon" refused with its `retryAt`, any other outcome `ok`).
+soon" refused, any other outcome `ok`). The answers hold nothing back in the shell's outbox (its
+D142): when a command may go again is the state's alone.
 
 **Bans.** @LoreGameBot answers a banned player's every message with the ban, so `loregame` watches
 all it hears (docs/game-bots.md §5.1). The owner's turn answered with a ban is the outcome `banned`,
-a refusal that holds the bot's commands until the ban ends. It also publishes `loregame.ban` and
-`loregame.unban` for any player, the group's too, which `loregame-state` keeps; the owner's ban it
-folds into the owner's readiness, every command held until it ends, so a shell `player` sends
-nothing into a ban. To name the group's players, the edge from the `telegram-user` node that reads
-the group must deliver every sender: no `senders` filter (the default, `@LoreGameBot` and `me`,
-shows the bot's replies and the owner's messages alone, and the parser can then place the owner's
-bans only).
+a refusal; `loregame-state` holds the bot's commands until the ban ends. It also publishes
+`loregame.ban` and `loregame.unban` for any player, the group's too, which `loregame-state` keeps;
+the owner's ban it folds into the owner's readiness, every command held until it ends, so a shell
+`player` sends nothing into a ban. To name the group's players, the edge from the `telegram-user`
+node that reads the group must deliver every sender: no `senders` filter (the default,
+`@LoreGameBot` and `me`, shows the bot's replies and the owner's messages alone, and the parser can
+then place the owner's bans only).
 
 **The accumulo.** A turn that finds it full carries the line `🔋 /accumulo pronto!`, which
 `loregame` reads into the outcome of `loregame.turn` (`accumulo: { ready, sure }`; `sure` is false
@@ -99,7 +100,7 @@ beside the turn, ticked by default, with its mechanics:
 - **unlocked by the bot's word:** a turn with the bot's own line (one copy) makes it ready; never
   our count, and never a line a story quotes;
 - **its use ends the rest of the next `/lore`:** the player therefore plays it only while `/lore`
-  rests, which is when it gains a turn, and the state and the outbox let the `/lore` go at once;
+  rests, which is when it gains a turn, and the state lets the `/lore` go at once;
 - **its answers** are `loregame.answer` (`command: "/accumulo"`) where the shell pairs them, and
   `loregame.accumulo`, the owner's, wherever they come: a use is the success; "not yet" holds it for
   the turns the bot's counter says it still needs, at 15 minutes each, and withdraws its unlock
@@ -108,8 +109,8 @@ beside the turn, ticked by default, with its mechanics:
 - **a player that plays in the group** (MegaBotTron1999's D139): the bot answers its `/accumulo`
   with a message of its own, which the shell cannot pair; the parser pairs it itself (the player
   tells it each send, through the state), declares it the command's answer, and the turns are free
-  in the state and the outbox at once. The player looks again when its two-minute wait for an answer
-  is over, so the free turn comes a couple of minutes after the use;
+  in the state at once. The player looks again when its two-minute wait for an answer is over, so
+  the free turn comes a couple of minutes after the use;
 - **a use by hand** counts too, in private or in the group, `/acc` included, even where the shell
   alone would not pair it: it is not ready again until the next turn's line.
 
