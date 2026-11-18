@@ -116,7 +116,7 @@ export async function bootState(
   const group = async (
     sender: string,
     text: string,
-    m: { replyTo?: string; own?: boolean } = {}
+    m: { replyTo?: string; own?: boolean; buttons?: string[][] } = {}
   ): Promise<string> => {
     const id = String(n++);
     account.hear({ chat: GROUP, sender, time: clock.now(), id, text, ...m });
@@ -130,7 +130,7 @@ export async function bootState(
   const edit = async (
     id: string,
     text: string,
-    m: { chat?: string; replyTo?: string; time: number }
+    m: { chat?: string; replyTo?: string; time: number; buttons?: string[][] }
   ): Promise<void> => {
     account.hearEdit({
       chat: m.chat ?? GROUP,
@@ -139,6 +139,7 @@ export async function bootState(
       id,
       text,
       ...(m.replyTo === undefined ? {} : { replyTo: m.replyTo }),
+      ...(m.buttons === undefined ? {} : { buttons: m.buttons }),
       edited: clock.now(),
     });
     await settle();

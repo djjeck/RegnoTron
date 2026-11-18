@@ -56,6 +56,8 @@ describe('the loregame-state node', () => {
       'stat',
       'profile',
       'bans',
+      'inventory',
+      'holders',
       'count',
       'held',
       // The owner's readiness, for a shell player (D141).
@@ -343,6 +345,7 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.profile',
       'loregame.skills',
       'loregame.equipment',
+      'loregame.inventory',
       'loregame.playerTurn',
       'loregame.playerAccumulo',
     ]);
@@ -1339,5 +1342,147 @@ describe('the skills menu, as its buttons change it (D144)', () => {
     );
     expect(run.of('loregame-state.statsDrift')).toEqual([]);
     await run.core.stop();
+  });
+});
+
+describe('the inventory, as /zaino and /i list it', () => {
+  const PAGE = (first: boolean, last: boolean) => [[first ? '🔒' : '◀️', last ? '🔒' : '▶️']];
+  const ITEM = (name: string, qty: number) => `> ${name} [B1] x${qty}`;
+
+  it('takes a listing followed page by page to its last as the whole inventory', async () => {
+    const run = await bootState(path.join(dir, 'z1'), { group: true });
+    const t0 = run.clock.now();
+    // A drop the listing will not show: given away, say, where the account did not see.
+    const turn = await run.group('alice', '/lore', { own: true });
+    await run.group('LoreGameBot', gain('una pigna [B1]'), { replyTo: turn });
+    const asked = await run.group('alice', '/zaino', { own: true });
+    const first = [`alice, hai:`, ITEM('un sasso', 2), ITEM('una perla', 1)].join('\n');
+    const id = await run.group('LoreGameBot', first, {
+      replyTo: asked,
+      buttons: PAGE(true, false),
+    });
+    // A page alone is a part: what it lists, exact; the rest as it was.
+    expect(run.read('inventory', {})).toMatchObject({
+      listed: null,
+      items: { 'un sasso': { qty: 2, exact: true }, 'una pigna': { qty: 1, exact: false } },
+    });
+    run.clock.advance(3000);
+    await run.edit(id, ITEM('una conchiglia', 5), {
+      replyTo: asked,
+      time: t0,
+      buttons: PAGE(false, false),
+    });
+    run.clock.advance(3000);
+    await run.edit(id, ITEM('una piuma', 1), {
+      replyTo: asked,
+      time: t0,
+      buttons: PAGE(false, true),
+    });
+    expect(run.of('loregame.inventory').map((e) => e['page'])).toEqual([
+      { first: true, last: false },
+      { first: false, last: false },
+      { first: false, last: true },
+    ]);
+    expect(run.read('held')).toEqual({
+      'un sasso': 2,
+      'una perla': 1,
+      'una conchiglia': 5,
+      'una piuma': 1,
+    });
+    expect(run.read('inventory', {})).toMatchObject({
+      listed: new Date(run.clock.now()).toISOString(),
+      held: 4,
+    });
+    expect(run.of('loregame-state.statsDrift')).toEqual([]);
+    // A drop since: none was held, exactly.
+    const next = await run.group('alice', '/lore', { own: true });
+    await run.group('LoreGameBot', gain('una pigna [B1]'), { replyTo: next });
+    expect(run.read('get', { path: 'inventory.items.una pigna' })).toMatchObject({
+      qty: 1,
+      exact: true,
+    });
+    // A listing of one page that says otherwise: a mismatch.
+    const again = await run.group('alice', '/zaino', { own: true });
+    await run.group(
+      'LoreGameBot',
+      [
+        'alice, hai:',
+        ITEM('un sasso', 2),
+        ITEM('una perla', 1),
+        ITEM('una conchiglia', 4),
+        ITEM('una piuma', 1),
+        ITEM('una pigna', 1),
+      ].join('\n'),
+      { replyTo: again, buttons: PAGE(true, true) }
+    );
+    expect(run.of('loregame-state.statsDrift')).toMatchObject([
+      { stat: 'inventory', expected: { 'una conchiglia': 5 }, said: { 'una conchiglia': 4 } },
+    ]);
+    await run.core.stop();
+  });
+
+  it('keeps every player’s, tells who holds an item, and takes a part for a part', async () => {
+    const run = await bootState(path.join(dir, 'z2'), { group: true });
+    const bobs = await run.group('bob', '/i');
+    await run.group('LoreGameBot', ['bob, hai:', ITEM('un sasso', 7)].join('\n'), {
+      replyTo: bobs,
+      buttons: PAGE(true, true),
+    });
+    // The owner's, from an export: no buttons, a part; and filtered, a part.
+    const mine = await run.group('alice', '/zaino', { own: true });
+    await run.group('LoreGameBot', ['alice, hai:', ITEM('un sasso', 2)].join('\n'), {
+      replyTo: mine,
+    });
+    const filtered = await run.group('alice', '/i perla', { own: true });
+    await run.group(
+      'LoreGameBot',
+      ['Filtri attivi: perla', '', 'alice, hai:', ITEM('una perla', 1)].join('\n'),
+      {
+        replyTo: filtered,
+        buttons: PAGE(true, true),
+      }
+    );
+    expect(run.read('inventory', {})).toMatchObject({ listed: null, held: 2 });
+    expect(run.read('inventory', { player: 'bob' })).toMatchObject({
+      listed: expect.any(String),
+      held: 1,
+    });
+    expect(run.read('holders', { item: 'un sasso' })).toEqual([
+      { player: 'bob', qty: 7, exact: true },
+      { player: 'alice', qty: 2, exact: true },
+    ]);
+    // An empty inventory has no pages: it is whole.
+    const carols = await run.group('carol', '/zaino');
+    await run.group('LoreGameBot', 'carol, il tuo inventario è vuoto!', { replyTo: carols });
+    expect(run.read('inventory', { player: 'carol' })).toMatchObject({
+      held: 0,
+      listed: expect.any(String),
+    });
+    expect(run.read('inventory', { player: 'nobody' })).toBeNull();
+    await run.core.stop();
+  });
+
+  it('adds the inventories to a state kept before there were any (0.25.0)', async () => {
+    const dir2 = path.join(dir, 'z3');
+    const run = await bootState(dir2, { group: true });
+    const bobs = await run.group('bob', '/lore');
+    await run.group('LoreGameBot', gain('un sasso [B1]'), { replyTo: bobs });
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    delete kept.state.inventory.listed;
+    delete kept.state.players.bob.inventory;
+    delete kept.state.players.bob.listing;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 9 }));
+    const again = await bootState(dir2, { group: true });
+    expect(again.read('inventory', {})).toMatchObject({ listed: null });
+    expect(again.read('inventory', { player: 'bob' })).toEqual({
+      held: 0,
+      items: {},
+      listed: null,
+    });
+    await again.core.stop();
   });
 });

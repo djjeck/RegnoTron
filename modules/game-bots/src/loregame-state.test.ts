@@ -54,6 +54,7 @@ describe('the loregame state', () => {
       'loregame.profile',
       'loregame.skills',
       'loregame.equipment',
+      'loregame.inventory',
     ]);
   });
 

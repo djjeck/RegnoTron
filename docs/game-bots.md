@@ -368,6 +368,37 @@ whose `/equipaggia` it replies to (in private, the owner's): `kind` (`equipped`,
 `removed` one; `removed`, with `item`; `listing`, with `equipment`). A refusal is not read: other
 commands' answers share its words.
 
+### 5.8 The inventory
+
+`/zaino` and `/i` [M] list a player's inventory (546 in the exports, every line read but two "Stai
+calmo maschio..."), replying to the command: the first page names its player, after the filter if
+one was given (`/i <text>`, a part of the name: `Filtri attivi: <text>`), then an item a line:
+
+```
+bob, hai:
+> un generatore di oggetti [X] [generatore] x3
+> un mestolo (2 - 6) [M2] [equipaggiabile 🗡] x1
+> una pigna [B1] x4
+```
+
+`<player>, il tuo inventario è vuoto!` for none. An equippable item's name ends in its level range
+(§5.7); a name may run over several lines (players write them), the item ending at the line that
+ends in its rarity, tags and count. The items come sorted [owner]: the generators, then by the
+season's level whatever its faction, then the special ones, each by count, most first.
+
+**Its pages.** A long inventory is paged: its ◀️ and ▶️ buttons turn the page, which the bot does by
+editing the message, each button a 🔒 at the first and the last page [owner]; the text says nothing
+of its page, and only the first names its player. A page is cut by lines, so a name running over
+several lines may be cut between two pages (6 of the exports' listings). The parser reads every page
+as it comes, the first from the message and each turned from its edit (MegaBotTron1999's D144), and
+which page it is from its buttons (D145: the first has no ◀️, the last no ▶️); a later page is the
+player's whose first page it follows, or whose command it replies to.
+
+**`loregame.inventory`** carries every listing and page the parser reads: `player`, `owner`,
+`filter`, `items` (each `item`, `qty`, `rarity`, `tags`, `level`), `cut` (an item cut between this
+page and another, not read), `page` (`first`, `last`; none without its buttons: an export, a shell
+before D145), `message` (whose edits its pages are) and `edited`.
+
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
 
@@ -382,10 +413,14 @@ turn has its `place`, its `fight` (`enemy`, `result`, `player`, `learned`, `powe
 It is a floor, not the truth, while the turns are all it reads:
 
 - **The inventory** gains what a turn drops (with its `2x`) and the items of the owner's level-ups'
-  lists (§5.4). It loses nothing: a `/usa`, a `/dai`, a `/give`, the generators and the recipes
-  change the owner's items and are not read yet, nor is a whole `/zaino` (paginated, and not whole
-  in an export), which will make a count exact. Until they are, a count only rises, and a real
-  inventory is richer than what turns alone bring.
+  lists (§5.4), and a listing (§5.8) sets it: each item a page lists is held exactly as it says; a
+  listing followed from its first page to its last (its pages turn one at a time, so reaching the
+  last saw them all) is the whole inventory, every item exact and those it does not list gone, as of
+  then (`listed`). An item dropped into an inventory listed whole is exact too (none was held). A
+  filtered listing, a page without its buttons, a chain whose first page was missed, or one with an
+  item cut between two pages is a part: exact for what it lists, no more. An item held exactly that
+  a whole listing says otherwise is a mismatch (`stats_drift`, `inventory`: each count expected and
+  said). The generators, the recipes, `/usa` and the shop change items and are not read yet.
 - **A turn cut off** (§5) may have gained an item the reply lost, so the inventory is marked
   uncertain, not changed.
 - **The bans** (§5.1) of every player the parser heard of, the owner's and the group's: per player,
@@ -485,4 +520,6 @@ each a purchase the next menu explains.
 
 What it keeps of a player is a floor of what they did, and better as they play in the group. A
 player is known by the username the connector gives; one without a username is not kept (the
-connector gives `''`). Their items are not kept yet.
+connector gives `''`). **Their inventory** is kept as the owner's is (their drops, their level-ups,
+their listings: `inventory`, the owner's being the state's own), so that `state.holders({ item })`
+tells who holds an item, and how many.

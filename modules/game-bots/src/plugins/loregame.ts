@@ -68,6 +68,7 @@ import {
 } from '#src/accumulo.ts';
 import { BanWatch } from '#src/bans.ts';
 import { parseEquip } from '#src/equipment.ts';
+import { pageOf, parseInventory } from '#src/inventory.ts';
 import { PlayerWatch } from '#src/players.ts';
 import { parseProfile } from '#src/profile.ts';
 import {
@@ -117,6 +118,12 @@ export const LEVEL_UP_EVENT = `${LOREGAME_PARSER}.levelUp`;
 const SKILLS_COMMAND = '/abilita';
 const EQUIP_COMMAND = '/equipaggia';
 export const SKILLS_EVENT = `${LOREGAME_PARSER}.skills`;
+const INVENTORY_COMMAND = '/zaino';
+const INVENTORY_ALIAS = '/i';
+/** The inventory listings remembered, to name a later page's player. */
+const KEPT_LISTINGS = 200;
+/** The event of every player's inventory listing, or page of one (§5.8). */
+export const INVENTORY_EVENT = `${LOREGAME_PARSER}.inventory`;
 export const EQUIPMENT_EVENT = `${LOREGAME_PARSER}.equipment`;
 /** The event of every player's profile the account reads, the owner's included (§5.5). */
 export const PROFILE_EVENT = `${LOREGAME_PARSER}.profile`;
@@ -308,6 +315,33 @@ const skillsEvent = z
   .describe(
     "A player's skills menu (/abilita), as @LoreGameBot gave it, before any button pressed"
   );
+const inventoryEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    filter: z.string().nullable().describe("/i's filter; none for the whole inventory"),
+    items: z
+      .array(
+        z.object({
+          item: z.string(),
+          qty: z.number(),
+          rarity: z.string(),
+          tags: z.array(z.string()),
+          level: z.object({ low: z.number(), high: z.number() }).nullable(),
+        })
+      )
+      .describe("This page's items"),
+    cut: z.boolean().describe('An item cut between this page and another, not read'),
+    page: z
+      .object({ first: z.boolean(), last: z.boolean() })
+      .nullable()
+      .describe('Which page its ◀️ ▶️ buttons say it is; none without them'),
+    message: z.string().nullable().describe("The listing's message: its pages are its edits"),
+    edited: z.literal(true).optional().describe('A page its buttons turned (an edit, D144)'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("A player's inventory (/zaino, /i), or a page of it, as @LoreGameBot listed it");
 const equipmentEvent = z
   .object({
     chat: z.string(),
@@ -394,6 +428,7 @@ export const loregamePlugin: Plugin = {
       [PROFILE_EVENT]: profileEvent,
       [SKILLS_EVENT]: skillsEvent,
       [EQUIPMENT_EVENT]: equipmentEvent,
+      [INVENTORY_EVENT]: inventoryEvent,
       [PLAYER_TURN_EVENT]: playerTurnEvent,
       [PLAYER_ACCUMULO_EVENT]: playerAccumuloEvent,
     },
@@ -420,6 +455,44 @@ export const loregamePlugin: Plugin = {
     );
     const asked = new AccumuloWatch(LOREGAMEBOT);
     const players = new PlayerWatch(LOREGAMEBOT);
+    /** Whose each inventory listing is, by its message, as its first page named them. */
+    const listings = new Map<string, string>();
+    /**
+     * An inventory listing (`/zaino`, `/i`), a page of it, or a page its buttons turned (an edit,
+     * D144): published for its player, as its first page names them, or as the first page of the same
+     * message did, or as the command it replies to tells; with its page, as its buttons say (D145).
+     */
+    const listed = (m: Inbound, self: string | undefined): void => {
+      const listing = parseInventory(m.text);
+      if (listing === undefined) return;
+      const key = `${m.chat}\n${m.id ?? ''}`;
+      const player =
+        listing.player ??
+        listings.get(key) ??
+        (answerTo(m, INVENTORY_COMMAND, self) ?? answerTo(m, INVENTORY_ALIAS, self))?.player;
+      if (player === undefined || player === '') return;
+      if (m.id !== undefined) {
+        listings.delete(key);
+        listings.set(key, player);
+        if (listings.size > KEPT_LISTINGS) listings.delete(listings.keys().next().value as string);
+      }
+      ctx.bus.publish(
+        INVENTORY_EVENT,
+        {
+          chat: m.chat,
+          player,
+          owner: self !== undefined && player.toLowerCase() === self.toLowerCase(),
+          filter: listing.filter,
+          items: listing.items,
+          cut: listing.cut,
+          page: pageOf(m.buttons),
+          message: m.id ?? null,
+          ...(m.edited === undefined ? {} : { edited: true as const }),
+          ...(m.playback ? { playback: true as const } : {}),
+        },
+        m.edited ?? m.time
+      );
+    };
     /**
      * Whose answer `m` is when it is the bot's to a command `word` (the skills menu, an answer to
      * /equipaggia): the player's whose message it replies to, if that message was the command; in
@@ -542,6 +615,7 @@ export const loregamePlugin: Plugin = {
         const equipOf = equip === undefined ? undefined : to(EQUIP_COMMAND);
         if (equip !== undefined && equipOf !== undefined)
           ctx.bus.publish(EQUIPMENT_EVENT, { chat: m.chat, ...equipOf, ...equip, ...old }, m.time);
+        listed(m, self);
       }
     });
     // The skills menu, as its buttons change it (D144): the bot edits the menu at each point spent.
@@ -550,6 +624,7 @@ export const loregamePlugin: Plugin = {
     // played again). A shell before D144 offers no edits: the next menu or profile tells instead.
     chat.onEdit?.((m) => {
       if (m.own === true || m.sender.toLowerCase() !== LOREGAMEBOT.toLowerCase()) return;
+      listed(m, chat.self());
       const menu = parseSkillMenu(m.text);
       const of = menu === undefined ? undefined : answerTo(m, SKILLS_COMMAND, chat.self());
       if (menu === undefined || of === undefined) return;

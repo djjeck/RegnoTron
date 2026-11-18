@@ -67,6 +67,7 @@ import {
   ACCUMULO_EVENT,
   BAN_EVENT,
   EQUIPMENT_EVENT,
+  INVENTORY_EVENT,
   LEVEL_UP_EVENT,
   LOREGAME_PARSER,
   LOREGAME_VOCABULARY,
@@ -111,6 +112,7 @@ export const CONSUMES: readonly string[] = [
   PROFILE_EVENT,
   SKILLS_EVENT,
   EQUIPMENT_EVENT,
+  INVENTORY_EVENT,
 ];
 
 /**
@@ -244,6 +246,27 @@ const accumulo = z.object({
   drift: z.array(drift).describe('Latest disagreements'),
 });
 
+const holding = z.object({
+  qty: z.number().describe('Count'),
+  exact: z.boolean().describe('Exact'),
+  date: date.describe('Set'),
+  via: z.enum(['drop', 'level-up', 'listing']).describe('By'),
+  rarity: z.string().nullable().describe('Rarity'),
+  tags: z.array(z.string()).describe('Tags'),
+  level: z
+    .object({ low: z.number(), high: z.number() })
+    .nullable()
+    .optional()
+    .describe("An equippable item's level range, as a listing gave it"),
+});
+
+/** An inventory: its items, by name, how many are held, and when a whole listing last set it. */
+const inventorySchema = z.object({
+  held: z.number().describe('Items held'),
+  items: z.record(z.string(), holding).describe('Items'),
+  listed: date.describe('Listed whole (/zaino, every page): every item exact then'),
+});
+
 /** An equipped item: its name and level range. */
 const equippedSchema = z
   .object({
@@ -347,6 +370,18 @@ const player = z.object({
     .describe(
       'Their stats now: the last profile’s, moved by each command read since (none before a profile)'
     ),
+  inventory: inventorySchema.describe(
+    "Their inventory (the owner's is the state's own `inventory`, kept apart)"
+  ),
+  listing: z
+    .object({
+      chat: z.string(),
+      message: z.string(),
+      items: z.record(z.string(), holding),
+      cut: z.boolean(),
+    })
+    .nullable()
+    .describe('The pages of their inventory listing read so far, from its first'),
   gear: z
     .record(
       z.string(),
@@ -371,15 +406,6 @@ const player = z.object({
 /** The level-ups kept per player, newest last. */
 const LEVEL_UPS_KEPT = 10;
 
-const holding = z.object({
-  qty: z.number().describe('Count'),
-  exact: z.boolean().describe('Exact'),
-  date: date.describe('Set'),
-  via: z.enum(['drop', 'level-up']).describe('By'),
-  rarity: z.string().nullable().describe('Rarity'),
-  tags: z.array(z.string()).describe('Tags'),
-});
-
 /** The state's schema: its sections, each described for the panel. */
 export const stateSchema = z.object({
   owner: z
@@ -391,15 +417,11 @@ export const stateSchema = z.object({
   bans: z.record(z.string(), ban).describe('Banned players'),
   accumulo: accumulo.describe('Accumulo'),
   players: z.record(z.string(), player).describe('Players'),
-  inventory: z
-    .object({
-      held: z.number().describe('Items held'),
-      items: z.record(z.string(), holding).describe('Items'),
-    })
-    .describe('Inventory'),
+  inventory: inventorySchema.describe('Inventory'),
 });
 
 export type Holding = z.infer<typeof holding>;
+export type Inventory = z.infer<typeof inventorySchema>;
 export type Ban = z.infer<typeof ban>;
 export type Accumulo = z.infer<typeof accumulo>;
 export type Drift = z.infer<typeof drift>;
@@ -427,8 +449,13 @@ export function initialState(): LoreState {
     bans: {},
     accumulo: initialAccumulo(),
     players: {},
-    inventory: { held: 0, items: {} },
+    inventory: initialInventory(),
   };
+}
+
+/** An inventory nothing is known of. */
+export function initialInventory(): Inventory {
+  return { held: 0, items: {}, listed: null };
 }
 
 /** A player first heard of at `at`: nothing known yet. */
@@ -448,6 +475,8 @@ export function initialPlayer(at: string): Player {
     xp: initialXp(),
     profile: null,
     stats: {},
+    inventory: initialInventory(),
+    listing: null,
     gear: {},
     stats_drift: [],
   };
@@ -544,19 +573,37 @@ const levelUpSchema = z.looseObject({
   items: z.array(reward),
 });
 
+/** Whose inventory an event moves: the owner's (the state's own), or another player's. */
+type Whose = { owner: true } | { owner: false; player: string };
+
 /**
- * The items an event gains for the owner: a turn's drop, a level-up's items (whatever brought it);
- * none for anything else.
+ * The items an event gains, and whose: a turn's drop, a level-up's items (whatever brought it), the
+ * owner's or another player's; none for anything else. The owner's turn is told twice (its
+ * `loregame.turn` and its `loregame.playerTurn`): it counts from the first.
  */
-function gainsOf(e: BusEvent): Gain[] {
+function gainsOf(e: BusEvent): { whose: Whose; gains: Gain[] } | undefined {
+  const real = (gains: Gain[]) => gains.filter((g) => g.qty > 0 && g.item !== '');
   if (e.type === LEVEL_UP_EVENT) {
     const u = levelUpSchema.safeParse(e);
-    if (!u.success || !u.data.owner) return [];
-    return u.data.items
-      .map((r): Gain => ({ ...r, via: 'level-up' }))
-      .filter((g) => g.qty > 0 && g.item !== '');
+    if (!u.success || (!u.data.owner && u.data.player === '')) return undefined;
+    return {
+      whose: u.data.owner ? { owner: true } : { owner: false, player: u.data.player },
+      gains: real(u.data.items.map((r): Gain => ({ ...r, via: 'level-up' }))),
+    };
   }
-  if (e.type !== TURN_EVENT) return [];
+  if (e.type === PLAYER_TURN_EVENT) {
+    const player = e['player'];
+    if (e['owner'] === true || typeof player !== 'string' || player === '') return undefined;
+    const gains = turnGains(e);
+    return gains.length === 0 ? undefined : { whose: { owner: false, player }, gains };
+  }
+  if (e.type !== TURN_EVENT) return undefined;
+  const gains = turnGains(e);
+  return gains.length === 0 ? undefined : { whose: { owner: true }, gains };
+}
+
+/** What a turn dropped. */
+function turnGains(e: BusEvent): Gain[] {
   const o = outcomeOf(e);
   if (o === undefined) return [];
   const gains: Gain[] = [];
@@ -1213,12 +1260,8 @@ function reducePlayers(state: LoreState, e: BusEvent): LoreState {
   else if (e.type === PROFILE_EVENT) after = playerAfterProfile(before, e);
   else if (e.type === SKILLS_EVENT) after = playerAfterSkills(before, e);
   else if (e.type === EQUIPMENT_EVENT)
-    // The owner's drops tell an item's slot by its tag; another player's inventory is not kept.
-    after = playerAfterEquip(
-      before,
-      e,
-      e['owner'] === true ? state.inventory : { held: 0, items: {} }
-    );
+    // Their inventory's tags tell an item's slot: the owner's is the state's own.
+    after = playerAfterEquip(before, e, e['owner'] === true ? state.inventory : before.inventory);
   else {
     const a = afterReply(before.accumulo, e);
     if (a !== before.accumulo) after = { ...before, as_of: at, accumulo: a };
@@ -1227,41 +1270,218 @@ function reducePlayers(state: LoreState, e: BusEvent): LoreState {
   return { ...state, players: { ...state.players, [name]: after } };
 }
 
-/** The owner's username, as their own profile names them. */
+/** The owner's username, as any event of theirs names them (a profile, a listing, a turn). */
 function reduceOwner(state: LoreState, e: BusEvent): LoreState {
   const player = e['player'];
-  if (e.type !== PROFILE_EVENT || e['owner'] !== true || typeof player !== 'string') return state;
+  if (e['owner'] !== true || typeof player !== 'string') return state;
   if (player === '' || player === state.owner.name) return state;
   return { ...state, owner: { as_of: asIso(e.t), name: player } };
 }
 
 /** The next state: an event's gains added to the inventory, a ban set or ended (pure). */
 export function reduce(state: LoreState, e: BusEvent): LoreState {
-  const withBans = reducePlayers(reduceAccumulo(reduceOwner(reduceBans(state, e), e), e), e);
-  // The inventory is the owner's: their drops and level-ups alone, not another player's.
-  const gains = gainsOf(e);
-  if (gains.length === 0) return withBans;
+  const next = reduceListing(
+    reducePlayers(reduceAccumulo(reduceOwner(reduceBans(state, e), e), e), e),
+    e
+  );
+  // Each inventory: the owner's drops and level-ups in theirs, another player's in theirs.
+  const gained = gainsOf(e);
+  if (gained === undefined || gained.gains.length === 0) return next;
   const at = asIso(e.t);
-  let items = withBans.inventory.items;
-  for (const g of gains) {
+  const inv = inventoryOf(next, gained.whose);
+  if (inv === undefined) return next;
+  let items = inv.items;
+  for (const g of gained.gains) {
     const before = own(items, g.item);
-    items = {
-      ...items,
-      [g.item]: {
-        qty: (before?.qty ?? 0) + g.qty,
-        exact: before?.exact ?? false,
-        date: at,
-        via: g.via,
-        rarity: g.rarity === '' ? (before?.rarity ?? null) : g.rarity,
-        tags: g.tags,
-      },
-    };
+    items = withItem(items, g.item, {
+      qty: (before?.qty ?? 0) + g.qty,
+      // An item none of: none held, if the inventory was listed whole since.
+      exact: before?.exact ?? inv.listed !== null,
+      date: at,
+      via: g.via,
+      rarity: g.rarity === '' ? (before?.rarity ?? null) : g.rarity,
+      tags: g.tags,
+      ...(before?.level === undefined ? {} : { level: before.level }),
+    });
   }
+  return withInventory(next, gained.whose, { ...inv, items, held: heldOf(items) }, at);
+}
+
+/** How many items an inventory holds: those of a count above none. */
+const heldOf = (items: Record<string, Holding>): number =>
+  Object.values(items).filter((h) => h.qty > 0).length;
+
+/** Items with `name` set to `h`, as an own property whatever the name (`__proto__` too). */
+function withItem(
+  items: Record<string, Holding>,
+  name: string,
+  h: Holding
+): Record<string, Holding> {
+  const next = { ...items };
+  Object.defineProperty(next, name, {
+    value: h,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+  return next;
+}
+
+/** A player's inventory: the owner's, the state's own; another's, theirs, if the state knows them. */
+function inventoryOf(s: LoreState, whose: Whose): Inventory | undefined {
+  return whose.owner ? s.inventory : playerOf(s, whose.player)?.inventory;
+}
+
+/** The state with a player's inventory `inv`, changed at `at`. */
+function withInventory(s: LoreState, whose: Whose, inv: Inventory, at: string): LoreState {
+  if (whose.owner) return { ...s, owner: { ...s.owner, as_of: at }, inventory: inv };
+  const p = playerOf(s, whose.player);
+  if (p === null) return s;
+  return { ...s, players: { ...s.players, [whose.player]: { ...p, as_of: at, inventory: inv } } };
+}
+
+/** What an inventory listing event says (the parser's `loregame.inventory`). */
+const listingSchema = z.looseObject({
+  chat: z.string(),
+  player: z.string(),
+  owner: z.boolean(),
+  filter: z.string().nullable(),
+  items: z.array(
+    z.object({
+      item: z.string(),
+      qty: z.number(),
+      rarity: z.string(),
+      tags: z.array(z.string()),
+      level: z.object({ low: z.number(), high: z.number() }).nullable(),
+    })
+  ),
+  cut: z.boolean(),
+  page: z.object({ first: z.boolean(), last: z.boolean() }).nullable(),
+  message: z.string().nullable(),
+});
+
+/**
+ * The state after an inventory listing, or a page of one (docs/game-bots.md §5.8): each item it
+ * lists held exactly as it says. Its pages are read in turn, from the first, as its buttons turn
+ * them (one at a time, so reaching the last saw them all): with the last, the listing is whole, and
+ * the inventory is it alone, every item exact, those it does not list gone; an item held exactly
+ * that it says otherwise is a mismatch (`stats_drift`, `inventory`). A filtered listing (`/i
+ * <text>`), a page with no buttons (an export, a shell before D145), a chain whose first page was
+ * not read, or an item cut between two pages, is a part: exact for what it lists, and no more. An
+ * empty inventory has no pages: it is whole.
+ */
+function reduceListing(state: LoreState, e: BusEvent): LoreState {
+  if (e.type !== INVENTORY_EVENT) return state;
+  const r = listingSchema.safeParse(e);
+  if (!r.success || r.data.player === '') return state;
+  const d = r.data;
+  const at = asIso(e.t);
+  const whose: Whose = d.owner ? { owner: true } : { owner: false, player: d.player };
+  let s = state;
+  if (playerOf(s, d.player) === null)
+    s = { ...s, players: { ...s.players, [d.player]: initialPlayer(at) } };
+  const p = playerOf(s, d.player) as Player;
+  const inv = inventoryOf(s, whose) as Inventory;
+  let page: Record<string, Holding> = {};
+  for (const i of d.items)
+    page = withItem(page, i.item, {
+      qty: i.qty,
+      exact: true,
+      date: at,
+      via: 'listing',
+      rarity: i.rarity,
+      tags: i.tags,
+      level: i.level,
+    });
+  let items = inv.items;
+  for (const [name, h] of Object.entries(page)) items = withItem(items, name, h);
+  // The pages of a whole listing, from its first.
+  let listing = p.listing;
+  const paged = d.filter === null && d.page !== null && d.message !== null;
+  if (paged && d.page?.first === true)
+    listing = { chat: d.chat, message: d.message as string, items: page, cut: d.cut };
+  else if (paged && listing?.chat === d.chat && listing.message === d.message) {
+    let all = listing.items;
+    for (const [name, h] of Object.entries(page)) all = withItem(all, name, h);
+    listing = { ...listing, items: all, cut: listing.cut || d.cut };
+  } else if (paged) listing = null;
+  const empty = d.filter === null && d.page === null && d.items.length === 0 && !d.cut;
+  const whole = empty
+    ? page
+    : paged && d.page?.last === true && listing !== null && !listing.cut
+      ? listing.items
+      : undefined;
+  let found: StatDrift[] = [];
+  let listed = inv.listed;
+  if (whole !== undefined) {
+    found = inventoryDrift(inv, whole, at);
+    items = whole;
+    listed = at;
+    listing = null;
+  }
+  const next = withInventory(s, whose, { held: heldOf(items), items, listed }, at);
+  const after = playerOf(next, d.player) as Player;
   return {
-    ...withBans,
-    owner: { ...withBans.owner, as_of: at },
-    inventory: { held: Object.values(items).filter((h) => h.qty > 0).length, items },
+    ...next,
+    players: {
+      ...next.players,
+      [d.player]: {
+        ...after,
+        listing: whole === undefined ? listing : null,
+        stats_drift:
+          found.length === 0
+            ? after.stats_drift
+            : [...after.stats_drift, ...found].slice(-STATS_DRIFT_KEPT),
+      },
+    },
   };
+}
+
+/**
+ * The items held exactly (or known none of, the inventory listed whole since) that a whole listing
+ * says otherwise of: one mismatch, `inventory`, the counts each expected and said.
+ */
+function inventoryDrift(inv: Inventory, whole: Record<string, Holding>, at: string): StatDrift[] {
+  const expected: Record<string, number> = {};
+  const said: Record<string, number> = {};
+  const names = new Set([
+    ...Object.keys(inv.items),
+    ...(inv.listed === null ? [] : Object.keys(whole)),
+  ]);
+  for (const name of names) {
+    const was = own(inv.items, name);
+    if (was !== undefined && !was.exact) continue;
+    if (was === undefined && inv.listed === null) continue;
+    const now = own(whole, name)?.qty ?? 0;
+    const then = was?.qty ?? 0;
+    if (now === then) continue;
+    Object.defineProperty(expected, name, { value: then, enumerable: true });
+    Object.defineProperty(said, name, { value: now, enumerable: true });
+  }
+  return Object.keys(expected).length === 0 ? [] : [{ stat: 'inventory', expected, said, at }];
+}
+
+/** Who holds an item, by its name, as the state knows: each player (the owner too) and how many. */
+export function holdersOf(
+  s: LoreState,
+  item: string
+): { player: string; qty: number; exact: boolean }[] {
+  const out: { player: string; qty: number; exact: boolean }[] = [];
+  const mine = own(s.inventory.items, item);
+  if (mine !== undefined && mine.qty > 0)
+    out.push({ player: s.owner.name ?? '', qty: mine.qty, exact: mine.exact });
+  for (const [name, p] of Object.entries(s.players)) {
+    if (name === s.owner.name) continue;
+    const h = own(p.inventory.items, item);
+    if (h !== undefined && h.qty > 0) out.push({ player: name, qty: h.qty, exact: h.exact });
+  }
+  return out.sort((a, b) => b.qty - a.qty);
+}
+
+/** A player's inventory, the owner's unless named; null for a player the state does not know. */
+export function inventoryOfPlayer(s: LoreState, player?: string): Inventory | null {
+  if (player === undefined || player === s.owner.name) return s.inventory;
+  return playerOf(s, player)?.inventory ?? null;
 }
 
 /** What a state tells of a change in its bans, as `loregame-state` announces it. */
@@ -1298,7 +1518,10 @@ export function announce(before: LoreState, after: LoreState, e: BusEvent): Anno
 function announceStats(before: LoreState, after: LoreState, e: BusEvent): Announcement[] {
   const name = e['player'];
   const snapshot =
-    e.type === PROFILE_EVENT || e.type === SKILLS_EVENT || e.type === EQUIPMENT_EVENT;
+    e.type === PROFILE_EVENT ||
+    e.type === SKILLS_EVENT ||
+    e.type === EQUIPMENT_EVENT ||
+    e.type === INVENTORY_EVENT;
   if (!snapshot || typeof name !== 'string') return [];
   // A profile's mismatches carry its time; one already told (a profile at the same second) is not
   // told again.

@@ -56,10 +56,13 @@ import {
   foldReadiness,
   freshness,
   held,
+  holdersOf,
   initialAccumulo,
+  initialInventory,
   initialState,
   initialTraining,
   initialXp,
+  inventoryOfPlayer,
   LORE_READINESS,
   LOREGAME_STATE,
   type LoreState,
@@ -295,6 +298,30 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.26.0 keeps every player's inventory, and when one was listed whole: added, nothing known
+    // of another player's, the owner's listed never.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined) return;
+      const players = (kept.state['players'] ?? {}) as Record<string, Record<string, unknown>>;
+      const inventory = (kept.state['inventory'] ?? { held: 0, items: {} }) as Record<
+        string,
+        unknown
+      >;
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          inventory: { listed: null, ...inventory },
+          players: Object.fromEntries(
+            Object.entries(players).map(([name, p]) => [
+              name,
+              { inventory: initialInventory(), listing: null, ...p },
+            ])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -339,6 +366,18 @@ const base = statePlugin<Kept>({
       help: 'Every banned player, with when their ban ends and when it was told',
       output: z.record(z.string(), z.object({ until: z.string().nullable(), since: z.string() })),
       run: (s) => s.bans,
+    },
+    inventory: {
+      help: "A player's inventory (the owner's unless named): each item's count, rarity, tags and whether it is exact, and when a whole listing (/zaino) last set it; none for a player the state does not know",
+      input: z.object({ player: z.string().optional() }),
+      output: z.looseObject({ held: z.number(), listed: z.string().nullable() }).nullable(),
+      run: (s, input: { player?: string }) => inventoryOfPlayer(s, input.player),
+    },
+    holders: {
+      help: 'Who holds an item, by its exact name: each player the state knows of (the owner too), with how many and whether it is exact, most first',
+      input: z.object({ item: z.string() }),
+      output: z.array(z.object({ player: z.string(), qty: z.number(), exact: z.boolean() })),
+      run: (s, input: { item: string }) => holdersOf(s, input.item),
     },
     count: {
       help: 'How many of an item the owner holds, as the state estimates it',
