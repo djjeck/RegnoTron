@@ -137,6 +137,12 @@ default:
 
 Nothing else is to configure: the player's checklist offers both, and its chat-out edge follows.
 
+**What it logs.** While an owner's `/accumulo` or `/allenati` waits for its answer, the parser logs
+(the instance's output) the send it waits for and each message of the bot's in that chat: its id,
+whether it replies to one, and what it made of it, never its text. An answer the parser does not
+pair then shows whether it reached it at all. A send told twice (a player's, by each player of the
+account; the account's own echo) waits for one answer.
+
 **Level-ups.** Any message of the bot's that ends in a level-up, whatever brought it, is published
 as `loregame.levelUp` for the player it is about (docs/game-bots.md §5.4): the owner's in private,
 else the sender of the message it replies to, else the player whose training it paired.

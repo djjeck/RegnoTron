@@ -79,7 +79,26 @@ export class AnswerWatch<R> {
    */
   sent(s: { chat: string; id?: string; t: number; command?: string }): void {
     if (s.command === undefined || !this.isCommand(s.command)) return;
-    this.asked.push({ chat: s.chat, id: s.id, owner: true, player: '', time: s.t });
+    this.wait({ chat: s.chat, id: s.id, owner: true, player: '', time: s.t });
+  }
+
+  /**
+   * A command waiting for its answer, once: the same send told again (each player of the account
+   * tells its state of another's, D140; the account may hear its own back) is not a second command.
+   */
+  private wait(a: Asked): void {
+    if (a.id !== undefined && this.asked.some((x) => x.chat === a.chat && x.id === a.id)) return;
+    this.asked.push(a);
+  }
+
+  /**
+   * The owner's commands waiting for an answer in `chat` at `time` (within the window): what the
+   * parser logs the bot's messages against, there (src/plugins/loregame.ts).
+   */
+  ownerWaiting(chat: string, time: number): string[] {
+    return this.asked
+      .filter((a) => a.owner && a.chat === chat && time - a.time <= ANSWER_WINDOW_MS)
+      .map((a) => `#${a.id ?? '?'}`);
   }
 
   /** The owner's answer, if `m` is the bot's answer to the owner's command. */
@@ -98,7 +117,7 @@ export class AnswerWatch<R> {
     if (m.own === true || m.sender.toLowerCase() !== this.bot) {
       if (this.isCommand(m.text)) {
         const owner = m.own === true || inPrivate;
-        this.asked.push({
+        this.wait({
           chat: m.chat,
           id: m.id,
           owner,

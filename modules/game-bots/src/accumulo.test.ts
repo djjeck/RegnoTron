@@ -173,3 +173,31 @@ describe('when to send /accumulo', () => {
     expect(accumuloReady({ ready: true, locked: 4 })).toBe(false);
   });
 });
+
+describe('the accumulo watch, told a send twice', () => {
+  it('waits for one answer: another player’s hand-off and the account’s echo are the same send', () => {
+    const w = new AccumuloWatch('LoreGameBot');
+    const G = '-1001';
+    const T0 = Date.parse('2026-11-06T12:00:00Z');
+    w.sent({ chat: G, id: '7', t: T0, command: '/accumulo' });
+    w.sent({ chat: G, id: '7', t: T0, command: '/accumulo' });
+    w.answer(
+      { chat: G, sender: 'alice', own: true, text: '/accumulo', time: T0, id: '7' },
+      'alice'
+    );
+    expect(w.ownerWaiting(G, T0 + 1000)).toEqual(['#7']);
+    const used =
+      '🔋 IL TUO ACCUMULO SI ATTIVA! Ti senti di nuovo pronto per vivere una nuova storia! /lore';
+    expect(
+      w.answer({ chat: G, sender: 'LoreGameBot', text: used, time: T0 + 1000 }, 'alice')
+    ).toMatchObject({
+      owner: true,
+      reply: { result: 'used' },
+    });
+    // Nothing left waiting to claim the next player's answer.
+    expect(w.ownerWaiting(G, T0 + 2000)).toEqual([]);
+    expect(
+      w.answer({ chat: G, sender: 'LoreGameBot', text: used, time: T0 + 2000 }, 'alice')
+    ).toBeUndefined();
+  });
+});

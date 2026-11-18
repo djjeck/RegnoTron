@@ -321,6 +321,13 @@ export const loregamePlugin: Plugin = {
     const trained = new TrainingWatch(LOREGAMEBOT);
     chat.onMessage((m) => {
       const old = m.playback ? { playback: true as const } : {};
+      // While an owner's /accumulo or /allenati waits for its answer, each message of the bot's in
+      // that chat is logged (its id, a reply or not, never its text), with what the watch made of
+      // it: an answer the parser does not pair shows whether it arrived at all.
+      const bots = m.own !== true && m.sender.toLowerCase() === LOREGAMEBOT.toLowerCase();
+      const waiting = bots
+        ? [...asked.ownerWaiting(m.chat, m.time), ...trained.ownerWaiting(m.chat, m.time)]
+        : [];
       const news = watch.hear(m, chat.self());
       if (news !== undefined) {
         if (news.type === 'ban')
@@ -349,6 +356,10 @@ export const loregamePlugin: Plugin = {
           m.time
         );
       const answer = any?.owner === true ? any.reply : undefined;
+      const logHeard = (made: string): void =>
+        ctx.log.info(
+          `heard the bot's #${m.id ?? '?'} in ${m.chat} (${m.replyTo === undefined ? 'standalone' : `replying to #${m.replyTo}`}) while ${waiting.join(', ')} waited: ${made}`
+        );
       if (answer !== undefined) {
         // `loregame-state` reduces it into the owner's readiness, in any chat (D141): a use ends
         // the turns' rest there, and nowhere else (D142).
@@ -357,6 +368,14 @@ export const loregamePlugin: Plugin = {
       // Any player's training, the owner's in any chat: `loregame-state` folds the owner's success
       // into the readiness (the shell pairs it in private alone).
       const training = trained.answer(m, self);
+      if (waiting.length > 0)
+        logHeard(
+          any !== undefined
+            ? `/accumulo ${any.reply.result}, ${any.owner ? 'the owner' : any.player}'s`
+            : training !== undefined
+              ? `/allenati ${training.reply.result}, ${training.owner ? 'the owner' : training.player}'s`
+              : 'no answer of theirs'
+        );
       if (training !== undefined) {
         const { player: who, owner, reply } = training;
         ctx.bus.publish(
@@ -390,6 +409,10 @@ export const loregamePlugin: Plugin = {
             turns.actions.sent(sent);
             asked.sent(sent);
             trained.sent(sent);
+            if (asked.isCommand(sent.command ?? '') || trained.isCommand(sent.command ?? ''))
+              ctx.log.info(
+                `waits for the answer to ${sent.command} #${sent.id ?? '?'} in ${sent.chat}`
+              );
             players.sent(sent, chat.self());
           },
         },
