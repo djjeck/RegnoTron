@@ -52,6 +52,7 @@ import { type Plugin } from '@megabottron1999/core';
 import { type ReadinessState } from '@megabottron1999/turns/readiness.ts';
 import { statePlugin } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
+import { ACCUMULO } from '#src/accumulo.ts';
 import {
   type Accumulo,
   accumuloOf,
@@ -391,6 +392,25 @@ const base = statePlugin<Kept>({
             Object.entries(players).map(([name, { guardians: _, ...p }]) => [name, p])
           ),
         },
+      });
+    },
+    // 0.34.0 holds /accumulo for no time: its unlock alone, the bot's line, says when. A hold kept
+    // from before (a "not yet" for the turns lacking at 15 minutes each, the level gate's 6 hours)
+    // is dropped.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const r = kept?.state?.['readiness'] as ReadinessState | undefined;
+      if (kept?.state === undefined || r === undefined) return;
+      const commands = { ...r.commands };
+      const was = commands[ACCUMULO];
+      if (was !== undefined) {
+        const { readyAt: _, why: __, ...rest } = was;
+        commands[ACCUMULO] = rest;
+      }
+      const { level: ___, ...holds } = r.holds;
+      store.write('state', {
+        ...kept,
+        state: { ...kept.state, readiness: { ...r, commands, holds } },
       });
     },
   ],

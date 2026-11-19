@@ -114,10 +114,9 @@ beside the turn, ticked by default, with its mechanics:
 - **its use ends the rest of the next `/lore`:** the state lets the `/lore` go at once (the game's
   rule, kept by the state: no effect is declared, which would make the player derive a condition);
 - **its answers** are `loregame.answer` (`command: "/accumulo"`) where the shell pairs them, and
-  `loregame.accumulo`, the owner's, wherever they come: a use is the success; "not yet" holds it for
-  the turns the bot's counter says it still needs, at 15 minutes each, and withdraws its unlock
-  until the next line, which ends that hold too; the level gate holds it 6 hours; "already ready" is
-  a refusal, nothing spent; a ban, like every command, until it ends;
+  `loregame.accumulo`, the owner's, wherever they come: a use is the success; "not yet" and the
+  level gate withdraw its unlock, for no time, until the next turn's line; "already ready" is a
+  refusal, nothing spent; a ban, like every command, until it ends;
 - **a player that plays in the group** (MegaBotTron1999's D139): the bot answers its `/accumulo`
   with a message of its own, which the shell cannot pair; the parser pairs it itself (the player
   tells it each send, through the state), declares it the command's answer, and the turns are free

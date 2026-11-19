@@ -566,20 +566,21 @@ describe('the accumulo, for a shell player', () => {
     await run.core.stop();
   });
 
-  it('holds back a "not yet" for the turns still needed, and takes "already ready" as no use', async () => {
+  it('holds back a "not yet" until a turn says it is full, for no time, and takes "already ready" as no use', async () => {
     const run = await bootState(path.join(dir, 'l'));
     await run.owner('/lore');
     await run.bot(lit('un sasso [B1]'));
-    // Not yet (a line we trusted): held for 3 turns at the bot's rest, and spends nothing.
+    // Not yet (a line we trusted): held until a turn's line, not for a time, and spends nothing.
     await play(run, SHORT(17, 20));
-    expect(ready(run)).toMatchObject({ ready: false });
+    expect(ready(run)).toMatchObject({ ready: false, why: 'waits for an unlock' });
+    expect(ready(run)).not.toHaveProperty('until');
     expect(run.ready()['/lore']).toMatchObject({ ready: false });
     expect(run.of('loregame.answer').at(-1)).toMatchObject({
       outcome: { kind: 'nothing', reason: 'cooldown', result: 'short', count: 17, max: 20 },
-      retryAt: run.clock.now() + 45 * MIN,
     });
-    // Full again by a turn's line, and legal while the turn rests.
-    run.clock.advance(46 * MIN);
+    expect(run.of('loregame.answer').at(-1)).not.toHaveProperty('retryAt');
+    // Full again by a turn's line, however soon, and legal while the turn rests.
+    run.clock.advance(16 * MIN);
     await run.owner('/lore');
     await run.bot(lit('un sasso [B1]'));
     expect(ready(run)).toMatchObject({ ready: true });
@@ -1713,6 +1714,39 @@ describe('the places, as /vai and /v answer', () => {
     const again = await bootState(dir2, { group: true });
     expect(again.read('guardians')).toEqual({ B1: true, B2: false });
     expect(again.read('player', { name: 'bob' })).not.toHaveProperty('guardians');
+    await again.core.stop();
+  });
+
+  it('drops a timed hold on /accumulo kept from before (0.34.0)', async () => {
+    const dir2 = path.join(dir, 'v14');
+    const run = await bootState(dir2);
+    await run.owner('/lore');
+    await run.bot(lit('un sasso [B1]'));
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    // As 0.32.0 kept them: a "not yet" for 3 hours, and the level gate for 6.
+    kept.state.readiness.commands['/accumulo'] = {
+      readyAt: T0 + 180 * MIN,
+      why: 'it said too soon',
+      unlocked: { at: T0 },
+    };
+    kept.state.readiness.holds.level = {
+      until: T0 + 360 * MIN,
+      why: 'under the level the bot asks',
+      commands: ['/accumulo'],
+    };
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 13 }));
+    const again = await bootState(dir2);
+    expect(again.read('get', { path: 'readiness' })).toMatchObject({
+      commands: { '/accumulo': { unlocked: { at: T0 } } },
+      holds: {},
+    });
+    expect(again.read('get', { path: 'readiness.commands./accumulo' })).not.toHaveProperty(
+      'readyAt'
+    );
     await again.core.stop();
   });
 });

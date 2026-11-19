@@ -20,7 +20,7 @@
 import { type CommandMechanics } from '@megabottron1999/turns/readiness.ts';
 import { type TurnOutcome, type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
 import { AnswerWatch, isCommandOf, type PlayerAnswer } from '#src/answer-watch.ts';
-import { LOREGAMEBOT, TURN_REST_MS } from '#src/replies.ts';
+import { LOREGAMEBOT } from '#src/replies.ts';
 
 /** The commands of the accumulo, as a player types them (`/acc` is the one they use most). */
 export const ACCUMULO_COMMANDS: readonly string[] = ['/accumulo', '/acc'];
@@ -132,23 +132,18 @@ export const ACCUMULO = '/accumulo';
  */
 export const ACCUMULO_MECHANICS: CommandMechanics = { unlock: {} };
 
-/** How long the level gate holds `/accumulo` back: nothing tells when the owner levels up. */
-export const LOCKED_RETRY_MS = 6 * 60 * 60_000;
-
 /**
  * What the bot's answer to the owner's `/accumulo` is to the shell's parser: a use is the success
  * (the accumulo spent, and the rest of the next `/lore` ended: its mechanics' effect, in the state
- * alone, D141, D142); any other
- * answer is a "too soon" (`nothing`, `cooldown`), no success, holding `/accumulo` back as long as
- * it can say: "not yet" for the turns still needed at the bot's rest each, the level gate for
- * `LOCKED_RETRY_MS`, "already ready" (full, nothing to zero, nothing spent) not at all.
+ * alone, D141, D142); any other answer is a "too soon" (`nothing`, `cooldown`), no success, and
+ * holds it for no time: "not yet" and the level gate withdraw its unlock (`loregame-state`), until
+ * the bot's line on a turn says it is full; "already ready" (nothing spent) changes nothing. Never
+ * the clock: the turns it lacks come when they are played.
  */
 export function accumuloReading(a: AccumuloReply): Exclude<TurnReading, undefined> {
   const outcome = (o: Record<string, unknown>): TurnOutcome =>
     ({ bot: LOREGAMEBOT, ...o }) as TurnOutcome;
   if (a.result === 'used') return { outcome: outcome({ kind: 'accumulo', result: 'used' }) };
   const tooSoon = outcome({ kind: 'nothing', reason: 'cooldown', ...a });
-  if (a.result === 'idle') return { outcome: tooSoon };
-  if (a.result === 'locked') return { outcome: tooSoon, restMs: LOCKED_RETRY_MS };
-  return { outcome: tooSoon, restMs: Math.max(a.max - a.count, 1) * TURN_REST_MS };
+  return { outcome: tooSoon };
 }

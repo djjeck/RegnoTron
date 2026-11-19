@@ -1,5 +1,6 @@
 import { type BusEvent } from '@megabottron1999/core';
 import { describe, expect, it } from 'vitest';
+import { accumuloReading } from './accumulo.ts';
 import {
   announce,
   banOf,
@@ -953,52 +954,59 @@ describe('the owner’s readiness, with what the state knows besides (MegaBotTro
     // Not yet: its unlock withdrawn, until the bot's next line.
     const short = foldReadiness(rested, at('accumulo', T, { result: 'short', count: 3, max: 20 }));
     expect(ready(short)['/accumulo']).toMatchObject({ ready: false, why: 'waits for an unlock' });
-    // Under the level: withdrawn, and held 6 hours even if a line unlocks it again.
+    // Under the level: withdrawn the same, for no time.
     const locked = foldReadiness(rested, at('accumulo', T, { result: 'locked', level: 10 }));
-    const again = LORE_READINESS.unlock(locked, '/accumulo', T + MIN);
-    expect(ready(again, T + MIN)['/accumulo']).toMatchObject({
+    expect(ready(locked, T + 99 * 60 * MIN)['/accumulo']).toMatchObject({
       ready: false,
-      until: T + 6 * 60 * MIN,
-      why: 'under the level the bot asks',
+      why: 'waits for an unlock',
     });
+    expect(locked.holds).toEqual({});
     // Any other event of the parser's is the shell's to reduce.
     expect(foldReadiness(rested, at('turn', T, {}))).toBe(rested);
   });
 
-  it('ends a "not yet" held over /accumulo when a turn says it is full', () => {
-    // Asked by hand, 12 turns short: held 3 hours, a guess at the bot's rest each.
-    const asked = LORE_READINESS.reduce(
-      LORE_READINESS.initial(),
-      at('answer', T, {
-        command: '/accumulo',
-        outcome: { kind: 'nothing', bot: 'LoreGameBot', reason: 'cooldown' },
-        retryAt: T + 180 * MIN,
-      })
+  it('holds /accumulo for no time: the turns it lacks, then the bot’s line, say when', () => {
+    // Asked, 12 turns short: the parser's reading holds it for no time, the fold withdraws it.
+    const reading = accumuloReading({ result: 'short', count: 8, max: 20 });
+    expect(reading).not.toHaveProperty('restMs');
+    expect(accumuloReading({ result: 'locked', level: 4 })).not.toHaveProperty('restMs');
+    const asked = foldReadiness(
+      LORE_READINESS.reduce(
+        rested,
+        at('answer', T, {
+          command: '/accumulo',
+          outcome: 'outcome' in reading ? reading.outcome : undefined,
+        })
+      ),
+      at('accumulo', T, { result: 'short', count: 8, max: 20 })
     );
-    // The 12th turn came sooner: the bot's line unlocks it, and ends the guess.
+    // However long after, it waits: only the turns played tell.
+    expect(ready(asked, T + 99 * 60 * MIN)['/accumulo']).toMatchObject({
+      ready: false,
+      why: 'waits for an unlock',
+    });
+    // The turn that fills it, at any time, says so: ready at once, while the turn rests.
     const turn = (accumulo?: { ready: boolean; sure: boolean }) =>
-      at('turn', T + 170 * MIN, {
+      at('turn', T + 5 * MIN, {
         outcome: {
           kind: 'gain',
           bot: 'LoreGameBot',
           place: { name: 'Il Bosco', code: 'B1' },
           ...(accumulo === undefined ? {} : { accumulo }),
         },
-        retryAt: T + 185 * MIN,
+        retryAt: T + 20 * MIN,
         unlocks: accumulo === undefined ? [] : ['/accumulo'],
       });
     const full = foldReadiness(
       LORE_READINESS.reduce(asked, turn({ ready: true, sure: true })),
       turn({ ready: true, sure: true })
     );
-    expect(ready(full, T + 170 * MIN)['/accumulo']).toMatchObject({
+    expect(ready(full, T + 5 * MIN)['/accumulo']).toMatchObject({
       ready: true,
-      since: T + 170 * MIN,
+      since: T + 5 * MIN,
     });
-    // Without the line it is not full: nothing lifted, the unlock withdrawn.
+    // A turn without the line: still not full.
     const not = foldReadiness(LORE_READINESS.reduce(asked, turn()), turn());
-    expect(ready(not, T + 170 * MIN)['/accumulo']).toMatchObject({ ready: false });
-    // A hold that ended already stays as it was.
-    expect(foldReadiness(rested, turn({ ready: true, sure: true }))).toBe(rested);
+    expect(ready(not, T + 5 * MIN)['/accumulo']).toMatchObject({ ready: false });
   });
 });
