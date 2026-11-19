@@ -400,6 +400,11 @@ const player = z.object({
       })
     )
     .describe('Their equippable items seen, by name: the slot each goes in, and its level range'),
+  guardians: z
+    .record(z.string(), z.boolean())
+    .describe(
+      'The places a place asks a guardian of theirs from ("Almeno un guardiano generato da"), by code: they have one or not, as last told'
+    ),
   stats_drift: z
     .array(
       z.object({
@@ -518,6 +523,7 @@ export function initialPlayer(at: string): Player {
     inventory: initialInventory(),
     listing: null,
     gear: {},
+    guardians: {},
     stats_drift: [],
   };
 }
@@ -1404,6 +1410,13 @@ const travelSchema = z.looseObject({
   place: placeOf,
   consumed: z.array(placeItem).optional(),
   exits: z.array(placeOf.extend({ locked: z.boolean() })).optional(),
+  requirements: z
+    .looseObject({
+      guardians: z.array(z.string()).optional(),
+      met: z.array(z.string()).nullable().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 /** What a requirements event says (the parser's `loregame.requirements`). */
 const requirementsSchema = z.looseObject({
@@ -1454,9 +1467,28 @@ function reducePlaces(state: LoreState, e: BusEvent): LoreState {
   }
   if (e.type !== TRAVEL_EVENT) return state;
   const r = travelSchema.safeParse(e);
-  if (!r.success || r.data.player === '' || r.data.kind === 'refused') return state;
+  if (!r.success || r.data.player === '') return state;
   const d = r.data;
   let s = state;
+  // The guardians a player has: a refusal tells, of those its place asks, which ("Hai già:"); an
+  // arrival, that they had all the place asked (none consumed).
+  const asked =
+    d.kind === 'refused'
+      ? (d.requirements?.guardians ?? [])
+      : d.kind === 'arrived'
+        ? placeIn(s, d.place).guardians
+        : [];
+  const met = d.kind === 'refused' ? d.requirements?.met : asked;
+  if (asked.length > 0 && met !== null && met !== undefined) {
+    const p = playerOf(s, d.player) ?? initialPlayer(at);
+    // Codes, as the bot writes them (`[A-Z]+\d*`): no key of Object's.
+    const guardians = {
+      ...p.guardians,
+      ...Object.fromEntries(asked.map((g) => [g, met.includes(g)])),
+    };
+    s = { ...s, players: { ...s.players, [d.player]: { ...p, as_of: at, guardians } } };
+  }
+  if (d.kind === 'refused') return s;
   if (d.kind === 'here' && d.exits !== undefined) {
     const was = placeIn(s, d.place);
     s = {

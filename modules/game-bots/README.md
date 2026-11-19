@@ -165,9 +165,11 @@ player's (docs/game-bots.md §5.10).
 consumed, where one is, a refusal), each the player's whose command it replies to, and any place's
 requirements as `loregame.requirements`; the state keeps the places (`state.places()`), sets a
 player's `location`, and takes what an arrival consumed from their inventory. Entering a place takes
-its items whichever way one comes; a neutralizing ticket (`loregame.neutral`) opens the neutral
-ladder for 10 hours a ticket. `state.trip({ to })` plans a trip before it is made: the way, and what
-each step takes of the player (docs/game-bots.md §5.9, §6).
+its items whichever way one comes; a guardian a place asks is one the player made there, and the
+state keeps which each player has, as refusals and arrivals tell; a neutralizing ticket
+(`loregame.neutral`) opens the neutral ladder for 10 hours a ticket (a player of `Il Neutrale` needs
+none). `state.trip({ to })` plans a trip before it is made: the way, and what each step takes of the
+player (docs/game-bots.md §5.9, §6).
 
 **Skills and equipment.** The `/abilita` menu and the answers to `/equipaggia` that change or list
 the equipment are published as `loregame.skills` and `loregame.equipment`, each the player's whose
@@ -220,25 +222,25 @@ not read yet, so a count only rises and `exact` stays false. A turn cut off at T
 have gained what the reply lost: it changes no count, and marks the inventory `uncertain` in
 `state.freshness`.
 
-| Interface                           | Answers                                                                                 |
-| ----------------------------------- | --------------------------------------------------------------------------------------- |
-| `state.get({ path? })`              | The state, or the value at a dotted path (`inventory.items`)                            |
-| `state.freshness`                   | How fresh each section is: its last snapshot, the deltas since                          |
-| `state.count({ name })`             | How many of an item the owner holds, as the state estimates it                          |
-| `state.held()`                      | Every item held, with its count                                                         |
-| `state.inventory({ player? })`      | A player's inventory (the owner's unless named), and when it was listed whole           |
-| `state.places()`                    | The game's places: what entering each takes, where one can go from it                   |
-| `state.trip({ to, player?, at? })`  | A trip planned: its way, each step's level, items and guardians, and whether it is open |
-| `state.holders({ item })`           | Who holds an item, by its exact name, with how many                                     |
-| `state.ban({ player? })`            | A player's ban (the owner's unless named): `{ until, since }`                           |
-| `state.bans()`                      | Every banned player, with their ban                                                     |
-| `state.accumulo()`                  | The owner's accumulo: the count, the bot's word, the drift                              |
-| `state.player({ name })`            | A player by username: level, turns, rest, accumulo, training, XP                        |
-| `state.profile({ player?, stat? })` | A player's last profile (the owner's unless named), or one stat by dotted path          |
-| `state.stat({ player?, stat })`     | A player's stat now (`xp`, `coins`, `location.code`, …): `{ value, exact, as_of }`      |
-| `state.ready()`                     | Each of the bot's commands' readiness, for a shell player (D141)                        |
-| `state.commands()`                  | The bot's commands with their aliases and mechanics                                     |
-| `state.bot()`                       | The bot's username, `LoreGameBot`                                                       |
+| Interface                           | Answers                                                                                              |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `state.get({ path? })`              | The state, or the value at a dotted path (`inventory.items`)                                         |
+| `state.freshness`                   | How fresh each section is: its last snapshot, the deltas since                                       |
+| `state.count({ name })`             | How many of an item the owner holds, as the state estimates it                                       |
+| `state.held()`                      | Every item held, with its count                                                                      |
+| `state.inventory({ player? })`      | A player's inventory (the owner's unless named), and when it was listed whole                        |
+| `state.places()`                    | The game's places: what entering each takes, where one can go from it                                |
+| `state.trip({ to, player?, at? })`  | A trip planned: its way, each step's level, items and guardians (had or not), and whether it is open |
+| `state.holders({ item })`           | Who holds an item, by its exact name, with how many                                                  |
+| `state.ban({ player? })`            | A player's ban (the owner's unless named): `{ until, since }`                                        |
+| `state.bans()`                      | Every banned player, with their ban                                                                  |
+| `state.accumulo()`                  | The owner's accumulo: the count, the bot's word, the drift                                           |
+| `state.player({ name })`            | A player by username: level, turns, rest, accumulo, training, XP                                     |
+| `state.profile({ player?, stat? })` | A player's last profile (the owner's unless named), or one stat by dotted path                       |
+| `state.stat({ player?, stat })`     | A player's stat now (`xp`, `coins`, `location.code`, …): `{ value, exact, as_of }`                   |
+| `state.ready()`                     | Each of the bot's commands' readiness, for a shell player (D141)                                     |
+| `state.commands()`                  | The bot's commands with their aliases and mechanics                                                  |
+| `state.bot()`                       | The bot's username, `LoreGameBot`                                                                    |
 
 A ban is kept with when it ends, as the bot states it (Rome's clock; a date alone: the end of the
 day), and is over when the bot serves the player again, which it does early at times, or when its

@@ -410,8 +410,9 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
 - **`/vai <place>`** moves (its answer replies to the command):
   `WOOSH! Sei arrivato alla Stagione <place> [<code>]!`, then, when entering took items,
   `Per entrare, hai consumato i seguenti oggetti` and the items, one each (91 of the 158 arrivals in
-  the exports). Refused: `Non hai accesso a <place> [<code>]!` and the place's requirements;
-  `Stagione non trovata!`.
+  the exports). Refused: `Non hai accesso a <place> [<code>]!` and the place's requirements. The
+  place is matched among the exits of where one is alone, by any part of its name or code (the place
+  one is at is none of them): any other is `Stagione non trovata!`, which changes nothing.
 - **`/v`** says where one is: `Ti trovi nella stagione <place> [<code>]`, its requirements, then
   where one can go (`Puoi andare in:`, each place, `🔒` if locked to them) or
   `Nessuna stagione disponibile!`.
@@ -421,10 +422,19 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
   them: a refusal, and an answer that changed them
   (`La modalità d'accesso alla stagione [<code>] è cambiata!`, a generator's). An item's name may
   run over several lines. A requirement may be a condition, not an item:
-  `> Almeno un guardiano [generato da] [<code>]` (57 in the exports), a guardian of the player's
-  from that place, under `Hai già:` once they have one; entering does not consume it, and what makes
-  a guardian is not read yet. Every answer and block in the exports is read: 714 answers, 280
-  blocks, 859 items.
+  `> Almeno un guardiano [generato da] [<code>]` (57 in the exports): a guardian the player made
+  standing at that place, with `/generaguardiano` and a `generatore di guardiani` (a refusal for one
+  from `N2`, the guardian made at `N2`, and the place entered two minutes later). It is listed under
+  `Hai già:` once they have one; entering does not consume it. The guardians made are those the
+  players meet in their turns (the skill Ricercato, "Probabilità di incontrare guardiani"). The
+  making is confirmed by a button (`Stai per generare il guardiano <name>. Sei sicuro?`), and its
+  outcome is not in the exports: not read. Every answer and block in the exports is read: 714
+  answers, 280 blocks, 859 items.
+- **The places are made by the players** (`/generastagione`, a name, an emoji, an image, then
+  `Stai per generare la stagione <name>. Sei sicuro?`): a ladder's next step, its requirements at
+  first a guardian of the step before (`N3`, made at `N2`). A step may be made anew: `M7` was
+  `Il laboratorio segreto di Kia 🧪` (asking 6 items) in February and `Il Paradiso 2 ⛅️` (entered
+  with none consumed) in September; each place is as last told.
 
 **The rules of a move** [M], from every arrival in the exports with the player's place before it:
 
@@ -439,7 +449,12 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
   the neutral `N1`, …; each place leads to the step before and after it in its own (`/v`'s exits,
   every one in the exports), and some neutral places to the same step of the factions' ladders (`N1`
   to `B1` and `M1`; `N2`, `N5`, `N10` seen too). A place whose requirements a player does not meet
-  is listed with `🔒`.
+  is listed with `🔒`. **A sideways step takes its place's items as any other:** from `N10`, `M10`
+  took its 10.
+- **Three factions:** `Il Bene` (`B`), `Il Male` (`M`) and `Il Neutrale` (`N`, the profile's
+  `Il Neutrale 👤`). A player of `Il Neutrale` climbs the neutral ladder as the others theirs, its
+  items paid (`N2`, then `N3`), with no ticket; from `N2` the factions' `M2` and `B2` were locked to
+  them.
 - **Neutrality:** a faction's player enters the neutral ladder only while the effect `Neutralizzato`
   lasts (`N1` is listed locked otherwise, and open with it). A
   `un biglietto neutralizzante 🎫 [X] [usabile]` (the shop sells it, 300₭) gives it, used with
@@ -452,15 +467,26 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
   (4 of 4 of the owner's), and a player in a neutral place is back in their faction's: from `N1`,
   `B1` or `M1` (their next turn's place, every time). The `[N] ` is the bot's mark of a notification
   (a gift's, §5.10).
+- **What a ticket was used for** (the 23 uses, 9 players): to enter `N1`, free, from `B1` or `M1`
+  (its items none), and play its turns; and back and forth while it lasts (`N1` to `M1` and back,
+  free both ways, before the end). One player went down their ladder from `M10` to `M1`, paying
+  every step's items, to use one. No ticket's player entered `N2`: each was refused it, for its item
+  (`una forchetta da surf 🥄 [N2]`) and the guardian from `N1`. So whether a step climbed on the
+  neutral ladder is kept at the end (thrown out to `B2` from `N2`, its items unpaid) is not seen.
+  Older moves, before the ticket (seen first in the shop on 31 August 2026), followed other rules:
+  `M10` to `N10` free, a player at `N5` a month.
+- **Not every move is in the exports:** a player may play in private with the bot, which the exports
+  do not hold but for the owner's (one was at `N1`, then at `M6` 20 minutes later, no move seen).
 
 **`loregame.travel`** carries a player's answer (the one whose `/vai` or `/v` it replies to): `kind`
 (`arrived`, with what entering `consumed`; `here`, with the place's `requirements` and its `exits`;
-`refused`, with the `requirements`), and `place`. **`loregame.requirements`** carries any place's:
-`place`, `level`, `items`, `guardians` (each a place's code). **`loregame.neutral`** carries a
-ticket used (`neutralized`, its player by the name the answer gives) and the owner's neutrality
-ended (`restored`, heard in private alone): `player`, `owner`, `kind`. **Not read yet:** what a
-guardian is, and where a player thrown out of a neutral place above `N1` lands (the state guesses
-the same step of their faction's ladder).
+`refused`, with the `requirements`, whose `met` is the guardians the player has), and `place`.
+**`loregame.requirements`** carries any place's: `place`, `level`, `items`, `guardians` (each a
+place's code). **`loregame.neutral`** carries a ticket used (`neutralized`, its player by the name
+the answer gives) and the owner's neutrality ended (`restored`, heard in private alone): `player`,
+`owner`, `kind`. **Not read yet:** a guardian or a place made (the button's outcome), and where a
+player thrown out of a neutral place above `N1` lands (the state guesses the same step of their
+faction's ladder).
 
 ### 5.10 Gifts
 
@@ -532,7 +558,9 @@ It is a floor, not the truth, while the turns are all it reads:
 - **The places** (§5.9, `places`): each place's level, the items entering it takes, the guardians it
   asks, and where one can go from it, the game's, from any player's answers, each as last told
   (`as_of`); an arrival tells what its place takes now. An arrival sets a player's `location`, and
-  takes the items entering consumed from their inventory, one each; `/v` sets it too.
+  takes the items entering consumed from their inventory, one each; `/v` sets it too. A player's
+  `guardians` are those a place asks that they have or not: a refusal's (`Hai già:`, or lacking),
+  and an arrival's (all its place asks, had).
 - **Neutrality** (§5.9): a ticket used is gone from its player's inventory, and adds 10 hours to
   their `Neutralizzato` (in their `effects`, exact); its end, told the owner, takes it off, and
   moves them out of a neutral place to the same step of their faction's ladder, not exactly (their
@@ -542,9 +570,10 @@ It is a floor, not the truth, while the turns are all it reads:
   player is (the owner unless named) to a place, through the exits told and each ladder's next
   steps, and each step's level, the items it takes (those an earlier step took are not there for the
   next), those the player is known to lack (`missing`) or not known to hold (`unsure`), the
-  guardians it asks, and for a neutral place entered from a faction's, whether `Neutralizzato`
-  holds; `ok` is true, false (something known lacking), or none (a step it cannot tell: a place
-  whose requirements were never told, a guardian, an inventory not listed).
+  guardians it asks and whether they have them (`guardians_ok`), and for a neutral place entered
+  from a faction's by a faction's player (not one of `Il Neutrale`), whether `Neutralizzato` holds;
+  `ok` is true, false (something known lacking), or none (a step it cannot tell: a place whose
+  requirements were never told, a guardian not known, an inventory not listed).
 - **Their profile** (§5.5), and their username (`owner.name`), as with every player's (§6.1).
 - **Items and players are named by players**, anything, `__proto__` included.
 

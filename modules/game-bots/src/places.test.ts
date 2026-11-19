@@ -53,6 +53,7 @@ describe('/vai and /v', () => {
         level: 5,
         items: [{ item: 'un sasso', rarity: 'M4', tags: [], level: null }],
         guardians: [],
+        met: null,
       },
       exits: [
         { name: 'Il Monte Finto 🗻', code: 'M6', locked: true },
@@ -90,7 +91,7 @@ describe('/vai and /v', () => {
     expect(parseTravel('Stagione non trovata!')).toBeUndefined();
   });
 
-  it('reads a guardian asked as a condition, not as an item entering takes', () => {
+  it('reads a guardian asked as a condition, not as an item; those under "Hai già:" as met', () => {
     const block = [
       "Requisiti d'accesso per Il Monte Finto 🗻 [M6] (oggetti consumati all'arrivo)",
       '> Livello 6',
@@ -111,6 +112,7 @@ describe('/vai and /v', () => {
             { item: 'un sasso', rarity: 'M4', tags: [], level: null },
           ],
           guardians: ['M5', 'M4'],
+          met: ['M4'],
         },
       },
     ]);

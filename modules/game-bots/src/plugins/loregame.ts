@@ -359,6 +359,10 @@ const travelEvent = z
         level: z.number().nullable(),
         items: z.array(requiredItem),
         guardians: z.array(z.string()),
+        met: z
+          .array(z.string())
+          .nullable()
+          .describe('refused: the guardians the player has ("Hai già:"); none if not told'),
       })
       .nullable()
       .optional()
@@ -762,12 +766,15 @@ export const loregamePlugin: Plugin = {
         for (const r of [
           ...here.map((h) => ({ place: h.place, requirements: h.requirements as Requirements })),
           ...placeRequirements(m.text),
-        ])
+        ]) {
+          // What the player has of them is theirs, on the move: the place's are the game's.
+          const { met: _, ...requirements } = r.requirements;
           ctx.bus.publish(
             REQUIREMENTS_EVENT,
-            { chat: m.chat, place: r.place, ...r.requirements, ...old },
+            { chat: m.chat, place: r.place, ...requirements, ...old },
             m.time
           );
+        }
       }
     });
     // The skills menu, as its buttons change it (D144): the bot edits the menu at each point spent.

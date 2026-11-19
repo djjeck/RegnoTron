@@ -28,6 +28,8 @@ function state(o: {
   held?: Record<string, { qty: number; exact?: boolean }>;
   listed?: boolean;
   effects?: unknown;
+  alignment?: string;
+  guardians?: Record<string, boolean>;
 }): LoreState {
   const s = initialState();
   const p = initialPlayer(AT);
@@ -51,10 +53,12 @@ function state(o: {
     players: {
       alice: {
         ...p,
+        guardians: o.guardians ?? {},
         stats: {
           level: stat(3),
           location: stat(o.at === null ? null : { name: o.at ?? 'B1', code: o.at ?? 'B1' }),
           ...(o.effects === undefined ? {} : { effects: stat(o.effects) }),
+          ...(o.alignment === undefined ? {} : { alignment: stat(o.alignment) }),
         },
       },
     },
@@ -63,7 +67,8 @@ function state(o: {
       B2: place('Il Prato', 2, ['un sasso']),
       B3: place('Il Colle', 3, ['un sasso', 'una pigna']),
       B4: place('La Vetta', 9, []),
-      N1: place('Il Limbo', 1, [], ['B1', 'M1']),
+      N1: place('Il Limbo', 1, [], ['B1', 'M1', 'N2']),
+      N2: place('Il Nodo', 1, [], ['N1'], ['N1']),
       M1: place('L’Inferno', 1, []),
       X: place('Altrove', null, []),
     },
@@ -135,6 +140,37 @@ describe('a trip', () => {
       player: 'nobody',
       from: null,
       ok: null,
+    });
+  });
+
+  it('checks a guardian asked against those the player is known to have', () => {
+    const at = (guardians?: Record<string, boolean>) =>
+      tripOf(
+        state({
+          at: 'N1',
+          alignment: 'Neutrale',
+          ...(guardians === undefined ? {} : { guardians }),
+        }),
+        'N2',
+        NOW
+      );
+    expect(at({ N1: true })).toMatchObject({
+      ok: true,
+      steps: [{ guardians: ['N1'], guardians_ok: true }],
+    });
+    expect(at({ N1: false })).toMatchObject({ ok: false, steps: [{ guardians_ok: false }] });
+    expect(at()).toMatchObject({ ok: null, steps: [{ guardians_ok: null }] });
+    expect(tripOf(state({}), 'B2', NOW).steps[0]).toMatchObject({ guardians_ok: null });
+  });
+
+  it('asks no ticket of a player of "Il Neutrale" for the neutral ladder', () => {
+    expect(tripOf(state({ alignment: 'Neutrale' }), 'N1', NOW)).toMatchObject({
+      ok: true,
+      steps: [{ neutral: false, neutral_ok: null }],
+    });
+    expect(tripOf(state({ alignment: 'Bene' }), 'N1', NOW)).toMatchObject({
+      ok: null,
+      steps: [{ neutral: true }],
     });
   });
 });

@@ -36,7 +36,7 @@
  *   profile that says otherwise of a stat held exactly is announced as `loregame-state.statsDrift`.
  * - **Inventories and places:** `state.inventory({ player? })` and `state.holders({ item })`
  *   (every player's items, and who holds one); `state.places()` (each place's level, items and
- *   guardians asked, and its exits) and `state.trip({ to, player?, at? })` (a trip planned before it
+ *   guardians asked, and its exits; each player's guardians, as told) and `state.trip({ to, player?, at? })` (a trip planned before it
  *   is made: its way, and what each step takes of the player, src/trips.ts).
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
@@ -350,6 +350,22 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.31.0 knows which guardians each player has, of those a place asks: added, none known.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const players = kept?.state?.['players'] as
+        Record<string, Record<string, unknown>> | undefined;
+      if (kept?.state === undefined || players === undefined) return;
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          players: Object.fromEntries(
+            Object.entries(players).map(([name, p]) => [name, { guardians: {}, ...p }])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -373,7 +389,7 @@ const base = statePlugin<Kept>({
       run: (s): Accumulo => accumuloOf(s),
     },
     player: {
-      help: 'A player as the turns and answers the account reads tell (by username): their name and level in the game, their turns seen and unseen, their rest, their accumulo, their trainings, the XP seen and their level-ups; none if never heard of',
+      help: 'A player as the turns and answers the account reads tell (by username): their name and level in the game, their turns seen and unseen, their rest, their accumulo, their trainings, the XP seen and their level-ups, the guardians they are known to have or not; none if never heard of',
       input: z.object({ name: z.string() }),
       output: z.looseObject({ turns: z.number(), unseen: z.number() }).nullable(),
       run: (s, input: { name: string }) => playerOf(s, input.name),
@@ -407,7 +423,7 @@ const base = statePlugin<Kept>({
       run: (s) => placesOf(s),
     },
     trip: {
-      help: 'A trip planned (the owner\'s unless a player is named) to a place, by its code: the way from where they are through the places known, and each step\'s level, the items it takes (one each, up or down alike) and those they are known to lack or not known to hold, the guardians it asks, and for a neutral place whether "Neutralizzato" holds; ok true, false, or none when it cannot be told. `at` (ISO) is when, now by default',
+      help: 'A trip planned (the owner\'s unless a player is named) to a place, by its code: the way from where they are through the places known, and each step\'s level, the items it takes (one each, up or down alike) and those they are known to lack or not known to hold, the guardians it asks and whether they have them, and for a neutral place whether "Neutralizzato" holds (not asked of "Il Neutrale"); ok true, false, or none when it cannot be told. `at` (ISO) is when, now by default',
       input: z.object({ to: z.string(), player: z.string().optional(), at: z.string().optional() }),
       output: z.looseObject({ to: z.string(), ok: z.boolean().nullable() }),
       run: (s, input: { to: string; player?: string; at?: string }) =>

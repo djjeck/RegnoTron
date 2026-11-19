@@ -1615,12 +1615,31 @@ describe('the places, as /vai and /v answer', () => {
       ok: true,
       steps: [{ code: 'B2', level_ok: true, takes: [{ item: 'un sasso' }], missing: [] }],
     });
-    // Two steps: the stone B2 takes is not there for B3 too; its guardian is not checked.
+    // Two steps: the stone B2 takes is not there for B3 too; her guardian from B2 is not known.
     expect(run.read('trip', { to: 'B3', at })).toMatchObject({
       route: ['B2', 'B3'],
       ok: false,
-      steps: [{ missing: [] }, { missing: [{ item: 'un sasso' }], guardians: ['B2'] }],
+      steps: [
+        { missing: [] },
+        { missing: [{ item: 'un sasso' }], guardians: ['B2'], guardians_ok: null },
+      ],
     });
+    // Her refusals tell her guardians: one lacking ("Ti serve:"), then had ("Hai già:").
+    const b3 = (has: string) =>
+      `Non hai accesso a Il Colle Finto ⛰ [B3]!\n\nRequisiti d'accesso per Il Colle Finto ⛰ [B3] (oggetti consumati all'arrivo)\n> Livello 3\nTi serve:\n> una pigna [B3]\n> un sasso [B2]\n${has}> Almeno un guardiano generato da [B2]`;
+    await play('/vai colle', b3(''));
+    expect(run.read('player', { name: 'alice' })).toMatchObject({ guardians: { B2: false } });
+    expect(run.read('trip', { to: 'B3', at })).toMatchObject({
+      steps: [{}, { guardians_ok: false }],
+    });
+    await play('/vai colle', b3('Hai già:\n'));
+    expect(run.read('player', { name: 'alice' })).toMatchObject({ guardians: { B2: true } });
+    // Another player arrived there had one: none is consumed.
+    const id = await run.group('bob', '/vai colle');
+    await run.group('LoreGameBot', 'WOOSH! Sei arrivato alla Stagione Il Colle Finto ⛰ [B3]!', {
+      replyTo: id,
+    });
+    expect(run.read('player', { name: 'bob' })).toMatchObject({ guardians: { B2: true } });
     // A neutral place: open only while "Neutralizzato" lasts; and what N1 takes is not known.
     expect(run.read('trip', { to: 'N1', at })).toMatchObject({
       steps: [{ code: 'N1', neutral: true, neutral_ok: false, as_of: null }],
@@ -1662,6 +1681,25 @@ describe('the places, as /vai and /v answer', () => {
     fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 11 }));
     const again = await bootState(dir2, { group: true });
     expect(again.read('places')).toMatchObject({ B2: { level: 2, guardians: [] } });
+    await again.core.stop();
+  });
+
+  it('adds the guardians had to the players kept before they were known (0.31.0)', async () => {
+    const dir2 = path.join(dir, 'v13');
+    const run = await bootState(dir2, { group: true });
+    const id = await run.group('bob', '/vai prato');
+    await run.group('LoreGameBot', 'WOOSH! Sei arrivato alla Stagione Il Prato Finto 🌾 [B2]!', {
+      replyTo: id,
+    });
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    delete kept.state.players.bob.guardians;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 12 }));
+    const again = await bootState(dir2, { group: true });
+    expect(again.read('player', { name: 'bob' })).toMatchObject({ guardians: {} });
     await again.core.stop();
   });
 });

@@ -13,11 +13,14 @@
  *   "Ti serve:" and "Hai già:"). The same block tells a place's requirements anywhere the bot
  *   writes it: an answer that changed them ("La modalità d'accesso alla stagione [<code>] è
  *   cambiata!").
+ * - **A name not among the exits** (`/vai <name>` matches only those, by any part of the name or
+ *   code; the place one is at is none): "Stagione non trovata!". It changes nothing, and is not read.
  *
  * An item's name may run over several lines (players write them): it ends at the line that ends in
  * its rarity and tags. A requirement may be no item but a condition: "Almeno un guardiano [generato
- * da] [<code>]", a condition on the player (a guardian of theirs from that place: what makes one is
- * not read yet), listed under "Hai già:" once they meet it; entering does not consume it.
+ * da] [<code>]", a guardian the player made at that place (`/generaguardiano`, with a "generatore di
+ * guardiani", standing there) [M]; listed under "Hai già:" once they have one, and entering does not
+ * consume it. The making itself is confirmed by a button, and is not read.
  *
  * **Neutrality** (the ticket, "un biglietto neutralizzante 🎫", `/usa`): "<username>, prendi il
  * biglietto ma ti sbriciola in mano! … perché hai perso colore?", a message of its own, naming its
@@ -36,12 +39,15 @@ export interface Place {
 
 /**
  * What entering a place takes: a level, and items, one each, consumed at the arrival; and the
- * places a guardian must have been made from (`guardians`), which nothing consumes.
+ * places a guardian must have been made from (`guardians`), which nothing consumes. A refusal
+ * splits them, for its player, into what they lack ("Ti serve:") and what they hold ("Hai già:"):
+ * `met` is the guardians they hold, none where the block is not split.
  */
 export interface Requirements {
   level: number | null;
   items: Omit<Listed, 'qty'>[];
   guardians: string[];
+  met: string[] | null;
 }
 
 /** What an answer to `/vai` or `/v` says. */
@@ -132,6 +138,8 @@ function requirementsOf(lines: readonly string[]): Requirements {
   let level: number | null = null;
   const items: Omit<Listed, 'qty'>[] = [];
   const guardians: string[] = [];
+  let met: string[] | null = null;
+  let held = false;
   let i = 0;
   while (i < lines.length) {
     const l = lines[i] as string;
@@ -142,16 +150,20 @@ function requirementsOf(lines: readonly string[]): Requirements {
       i++;
     } else if (g !== null) {
       guardians.push(g[1] as string);
+      if (held) met?.push(g[1] as string);
       i++;
-    } else if (l === 'Ti serve:' || l === 'Hai già:') i++;
-    else if (l.startsWith('> ')) {
+    } else if (l === 'Ti serve:' || l === 'Hai già:') {
+      held = l === 'Hai già:';
+      met ??= [];
+      i++;
+    } else if (l.startsWith('> ')) {
       const { items: more, read } = itemsOf(lines.slice(i));
       if (read === 0) break;
       items.push(...more);
       i += read;
     } else break;
   }
-  return { level, items, guardians };
+  return { level, items, guardians, met };
 }
 
 /** The answer to `/vai` or `/v` that `raw` is, if one: its every line read. */
