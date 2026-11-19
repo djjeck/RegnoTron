@@ -2110,13 +2110,46 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
       'LoreGameBot',
       '📈 Mercato Fazionario 📉 aggiornato!\n\n→ Pinco Spa 🍕🎉: 101 (0, 0.00%)\n→ Tizio Srl: 100 (0, 0.00%)'
     );
+    // Gone an hour, quoted again: back, its history with it.
     expect(Object.keys(run.read('get', { path: 'market.companies' }) as object)).toEqual([
       'pinco-spa',
-      'tizio-srl-2',
+      'tizio-srl',
     ]);
     expect(
-      (run.read('marketHistory') as Record<string, { gone: string | null }>)['tizio-srl']?.gone
-    ).not.toBeNull();
+      (run.read('marketHistory') as Record<string, { points: { value: number }[] }>)[
+        'tizio-srl'
+      ]?.points.map((p) => p.value)
+    ).toEqual([50, 50, 50, 50, 50, 50, 100]);
+    // Gone, its history out of the series, until it is forgotten two weeks after its newest value;
+    // a company that takes its name then is another.
+    run.clock.advance(HOUR);
+    await run.group(
+      'LoreGameBot',
+      '📈 Mercato Fazionario 📉 aggiornato!\n\n→ Pinco Spa 🍕🎉: 101 (0, 0.00%)'
+    );
+    expect(Object.keys(run.read('marketHistory') as object)).toEqual(['pinco-spa']);
+    expect(Object.keys(run.read('marketHistory', { gone: true }) as object)).toEqual([
+      'pinco-spa',
+      'tizio-srl',
+    ]);
+    run.clock.advance(15 * 24 * HOUR);
+    await run.group(
+      'LoreGameBot',
+      '📈 Mercato Fazionario 📉 aggiornato!\n\n→ Pinco Spa 🍕🎉: 101 (0, 0.00%)'
+    );
+    expect(run.read('get', { path: 'market_history.gone' })).toEqual({});
+    run.clock.advance(HOUR);
+    await run.group(
+      'LoreGameBot',
+      '📈 Mercato Fazionario 📉 aggiornato!\n\n→ Pinco Spa 🍕🎉: 101 (0, 0.00%)\n→ Tizio Srl: 7 (0, 0.00%)'
+    );
+    expect(Object.keys(run.read('get', { path: 'market.companies' }) as object)).toEqual([
+      'pinco-spa',
+      'tizio-srl',
+    ]);
+    expect(
+      (run.read('marketHistory') as Record<string, { points: unknown[] }>)['tizio-srl']?.points
+    ).toHaveLength(1);
     await run.core.stop();
   });
 
@@ -2130,8 +2163,9 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
       { via: 'listing', quotes: [] },
     ]);
     expect(run.read('market')).toMatchObject({ companies: {} });
-    expect(run.read('marketHistory')).toMatchObject({
-      'pinco-spa': { points: [{ value: 100 }] },
+    expect(run.read('marketHistory')).toEqual({});
+    expect(run.read('marketHistory', { gone: true })).toMatchObject({
+      'pinco-spa': { gone: expect.any(String) as unknown, points: [{ value: 100 }] },
     });
     expect(run.of('loregame-state.marketUpdated')).toEqual([]);
     // The owner's market, in private: theirs, though no command was heard.
@@ -2140,6 +2174,34 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
     );
     expect(run.of('loregame.investments')).toMatchObject([{ owner: true, positions: [] }]);
     await run.core.stop();
+  });
+
+  it('keeps a company gone with its history, forgotten two weeks after its newest value (0.37.0)', async () => {
+    const dir2 = path.join(dir, 'v17');
+    const run = await bootState(dir2, { group: true });
+    await run.group('LoreGameBot', UPDATE(100, '0'));
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    // As 0.36.0 kept it: the series of those gone among the others', their entries without it.
+    const point = (t: string) => ({ t, value: 1, change: 0, pct: 0, via: 'update' });
+    const company = { names: [], quote: null, page: null, as_of: '2026-11-01T00:00:00.000Z' };
+    const recent = new Date(T0 - 24 * 60 * MIN).toISOString();
+    kept.state.market_history.series['old-co'] = [point('2026-09-01T00:00:00.000Z')];
+    kept.state.market_history.series['new-co'] = [point(recent)];
+    kept.state.market_history.gone = {
+      'old-co': { ...company, name: 'Old Co', gone: '2026-09-02T00:00:00.000Z' },
+      'new-co': { ...company, name: 'New Co', gone: recent },
+    };
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 16 }));
+    const again = await bootState(dir2, { group: true });
+    expect(Object.keys(again.read('marketHistory') as object)).toEqual(['pinco-spa', 'tizio-srl']);
+    expect(again.read('get', { path: 'market_history.gone' })).toEqual({
+      'new-co': { ...company, name: 'New Co', gone: recent, points: [point(recent)] },
+    });
+    await again.core.stop();
   });
 
   it('takes the market and the investments from a seed, and keeps them by company id (0.35.0, 0.36.0)', async () => {

@@ -42,7 +42,7 @@
  * - **The market** (docs/game-bots.md §5.11): `state.market()` (the companies there are, by id, each
  *   its name and latest value; and the bot's updates' schedule as their times teach it, the next
  *   due, those missed), `state.marketHistory({ company?, since?, until? })` (each company's values
- *   through time, those gone too) and `state.investments({ player? })` (a player's open
+ *   through time: those there are, and those gone, kept two weeks after their newest value) and `state.investments({ player? })` (a player's open
  *   investments, by company id, each worth now); each company's page in `market.companies`.
  *   `loregame-state.marketUpdated` announces each update, live. A seed of the
  *   market's history (tools/market-seed) is taken once, by the migration to 0.35.0, if its store
@@ -61,7 +61,7 @@ import { type ReadinessState } from '@megabottron1999/turns/readiness.ts';
 import { statePlugin } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
 import { ACCUMULO } from '#src/accumulo.ts';
-import { companiesFromNames, type CompanyPage, idOf } from '#src/companies.ts';
+import { companiesFromNames, type CompanyPage, type Gone, idOf, purged } from '#src/companies.ts';
 import {
   type Accumulo,
   accumuloOf,
@@ -554,6 +554,35 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.37.0 keeps a company gone with its history, out of the series of those there are, and
+    // forgets it two weeks after its newest value.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const market = kept?.state?.['market'] as { as_of: string | null } | undefined;
+      const history = kept?.state?.['market_history'] as
+        | { series: Record<string, Point[]>; gone: Record<string, Record<string, unknown>> }
+        | undefined;
+      if (kept?.state === undefined || history === undefined) return;
+      const series = { ...history.series };
+      const gone: Record<string, Gone> = {};
+      for (const [id, g] of Object.entries(history.gone)) {
+        Object.defineProperty(gone, id, {
+          value: { points: Object.hasOwn(series, id) ? series[id] : [], ...g },
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+        delete series[id];
+      }
+      const c =
+        market?.as_of == null
+          ? { gone }
+          : purged({ companies: {}, gone, series: {} }, market.as_of);
+      store.write('state', {
+        ...kept,
+        state: { ...kept.state, market_history: { series, gone: c.gone } },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -621,11 +650,12 @@ const base = statePlugin<Kept>({
       run: (s) => marketNow(s),
     },
     marketHistory: {
-      help: "Each company's values through time, by id (one if named: its id, or a name it has or had), with its name and when it was gone (if it is), its points oldest first, between `since` and `until` (ISO; all without): each point's time, value, change, percentage, and how it was told (`update`, `forced`, `listing`)",
+      help: "Each company's values through time, by id: those there are (those gone too with `gone`, kept two weeks after their newest value; one if named: its id, or a name it has or had), with its name and when it was gone (if it is), its points oldest first, between `since` and `until` (ISO; all without): each point's time, value, change, percentage, and how it was told (`update`, `forced`, `listing`)",
       input: z.object({
         company: z.string().optional(),
         since: z.string().optional(),
         until: z.string().optional(),
+        gone: z.boolean().optional(),
       }),
       output: z.record(
         z.string(),
@@ -635,7 +665,7 @@ const base = statePlugin<Kept>({
           points: z.array(z.looseObject({ t: z.string(), value: z.number() })),
         })
       ),
-      run: (s, input: { company?: string; since?: string; until?: string }) =>
+      run: (s, input: { company?: string; since?: string; until?: string; gone?: boolean }) =>
         marketHistory(s, input),
     },
     investments: {

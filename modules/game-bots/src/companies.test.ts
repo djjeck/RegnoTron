@@ -4,9 +4,12 @@ import {
   companiesFromNames,
   companyOf,
   coreOf,
+  type Gone,
   idFor,
   idOf,
   paged,
+  PURGE_MS,
+  purged,
   type Quoted,
   quoted,
 } from './companies.ts';
@@ -76,6 +79,35 @@ describe('the market’s companies', () => {
     expect(Object.keys(c.gone)).toEqual(['pinco-spa', 'pinco-spa-2']);
     expect(c.gone['pinco-spa']?.gone).toBe(at(1));
     expect(companyOf(c, 'Pinco Spa 🍕')).toBe('pinco-spa-3');
+  });
+
+  it('takes a company gone with its history, back when quoted again, and forgets it after two weeks', () => {
+    const c = listed([q('Pinco Spa 🍕', 100), q('Tizio Srl', 50)], [q('Pinco Spa 🍕', 101, 1)]);
+    expect(c.series).toEqual({ 'pinco-spa': expect.any(Array) as unknown });
+    expect(c.gone['tizio-srl']).toMatchObject({ gone: at(1), points: [{ value: 50 }] });
+    // Quoted again, by its letters: back, its history with it.
+    const back = quoted(
+      c,
+      [q('Pinco Spa 🍕', 101), q('Tizio Srl 🎉', 52, 2)],
+      at(2),
+      'update',
+      true,
+      at(1)
+    );
+    expect(back.gone).toEqual({});
+    expect(back.companies['tizio-srl']?.name).toBe('Tizio Srl 🎉');
+    expect(back.series['tizio-srl']?.map((p) => p.value)).toEqual([50, 52]);
+    // Two weeks after its newest value: forgotten.
+    const day = 24 * 3_600_000;
+    const later = (days: number) => new Date(Date.parse(at(1)) + days * day).toISOString();
+    expect(Object.keys(purged(c, later(13)).gone)).toEqual(['tizio-srl']);
+    expect(purged(c, later(15)).gone).toEqual({});
+    const none = {
+      ...c,
+      gone: { x: { ...(c.gone['tizio-srl'] as Gone), points: [], gone: at(1) } },
+    };
+    expect(purged(none, later(15)).gone).toEqual({});
+    expect(PURGE_MS).toBe(14 * day);
   });
 
   it('renames and removes nothing for a listing told late, nor for a part', () => {

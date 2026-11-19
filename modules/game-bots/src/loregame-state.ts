@@ -553,10 +553,18 @@ export const stateSchema = z.object({
     .object({
       series: z
         .record(z.string(), z.array(pointSchema))
-        .describe("Each company's values through time, by id, oldest first"),
+        .describe("Each company there is's values through time, by id, oldest first"),
       gone: z
-        .record(z.string(), companySchema.extend({ gone: z.string().describe('Not quoted since') }))
-        .describe('The companies gone (deleted, or closed), by id: as they were last'),
+        .record(
+          z.string(),
+          companySchema.extend({
+            gone: z.string().describe('Not quoted since'),
+            points: z.array(pointSchema).describe('Its values through time, oldest first'),
+          })
+        )
+        .describe(
+          'The companies gone (deleted, closed, or missing for now), by id: as they were last, with their history; forgotten two weeks after their newest value'
+        ),
     })
     .describe('Market history'),
 });
@@ -2052,34 +2060,51 @@ export function marketNow(s: LoreState): {
 }
 
 /**
- * Each company's values through time, by id (one if named: its id, or a name it has or had),
- * oldest first, from `since` to `until` (ISO, both included; all without); with its name and when
- * it was gone, if it is (`gone`, none if not).
+ * Each company's values through time, by id, those there are (and those gone, with `gone`; one if
+ * named: its id, or a name it has or had), oldest first, from `since` to `until` (ISO, both
+ * included; all without); with its name and when it was gone, if it is (`gone`, none if not).
  */
 export function marketHistory(
   s: LoreState,
-  o: { company?: string; since?: string; until?: string } = {}
+  o: { company?: string; since?: string; until?: string; gone?: boolean } = {}
 ): Record<string, { name: string; gone: string | null; points: Point[] }> {
   const from = o.since === undefined ? -Infinity : Date.parse(o.since);
   const to = o.until === undefined ? Infinity : Date.parse(o.until);
   const c = companiesOf(s);
+  const all: [string, { name: string; gone: string | null; points: Point[] }][] = [
+    ...Object.entries(c.series).map(
+      ([id, points]): [string, { name: string; gone: string | null; points: Point[] }] => [
+        id,
+        {
+          name: (Object.hasOwn(c.companies, id) ? c.companies[id]?.name : undefined) ?? id,
+          gone: null,
+          points,
+        },
+      ]
+    ),
+    ...(o.gone === true || o.company !== undefined
+      ? Object.entries(c.gone).map(
+          ([id, g]): [string, { name: string; gone: string | null; points: Point[] }] => [
+            id,
+            { name: g.name, gone: g.gone, points: g.points },
+          ]
+        )
+      : []),
+  ];
   const named =
     o.company === undefined
       ? undefined
-      : Object.hasOwn(c.series, o.company)
+      : all.some(([id]) => id === o.company)
         ? o.company
         : (companyOf(c, o.company) ??
           Object.keys(c.gone).find((id) => c.gone[id]?.names.some((n) => n.name === o.company)));
   const out: Record<string, { name: string; gone: string | null; points: Point[] }> = {};
-  for (const [id, points] of Object.entries(c.series)) {
+  for (const [id, h] of all) {
     if (o.company !== undefined && id !== named) continue;
-    const co = Object.hasOwn(c.companies, id) ? c.companies[id] : undefined;
-    const was = Object.hasOwn(c.gone, id) ? c.gone[id] : undefined;
     Object.defineProperty(out, id, {
       value: {
-        name: co?.name ?? was?.name ?? id,
-        gone: co === undefined ? (was?.gone ?? null) : null,
-        points: points.filter((p) => Date.parse(p.t) >= from && Date.parse(p.t) <= to),
+        ...h,
+        points: h.points.filter((p) => Date.parse(p.t) >= from && Date.parse(p.t) <= to),
       },
       enumerable: true,
       writable: true,

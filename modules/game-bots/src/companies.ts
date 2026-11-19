@@ -10,8 +10,11 @@
  *   `core`), or, failing that, in a whole listing, the one whose value it carries on (its value
  *   less its change, the one before), each only when one company alone fits.
  * - **Gone**: a whole listing (an update, or the market listed) quotes every company there is, so
- *   one it does not quote is gone (deleted, or closed), with its history; a company that takes its
- *   name later is another, under an id of its own.
+ *   one it does not quote is gone (deleted, or closed, or missing by a slip of the bot's), its
+ *   history taken with it, out of the series of those there are. Quoted again (by a name it had,
+ *   or its letters, when one alone fits), it is back, its history with it. Two weeks after its
+ *   newest point (`PURGE_MS`) it is forgotten, history and all; a company that takes its name then
+ *   is another, under an id of its own.
  * - **Its id**: its first name's letters, in lower case, joined by `-` ("frode-capital-partners"),
  *   with a number after when another, here or gone, had it (`-2`).
  *
@@ -53,10 +56,16 @@ export interface Company {
   as_of: string;
 }
 
-/** The companies: those there are, those gone (each since when), and each one's values. */
+/** A company gone: as it was last, since when, and its history. */
+export type Gone = Company & { gone: string; points: Point[] };
+
+/** How long after its newest point a company gone is kept: two weeks. */
+export const PURGE_MS = 14 * 24 * 3_600_000;
+
+/** The companies: those there are, those gone (each since when, with its history), each one's values. */
 export interface Companies {
   companies: Record<string, Company>;
-  gone: Record<string, Company & { gone: string }>;
+  gone: Record<string, Gone>;
   series: Record<string, Point[]>;
 }
 
@@ -196,6 +205,25 @@ export function quoted(
       if (fits.length === 1) ids[i] = fits[0];
     }
   }
+  // A name none has now that a company gone had, or whose letters it has, when one alone fits: back.
+  for (const [i, q] of quotes.entries()) {
+    if (ids[i] !== undefined) continue;
+    const fits = Object.keys(next.gone).filter(
+      (id) =>
+        !taken().has(id) &&
+        (next.gone[id]?.names.some((n) => n.name === q.company) ||
+          coreOf(next.gone[id]?.name ?? '') === coreOf(q.company))
+    );
+    if (fits.length !== 1) continue;
+    const id = fits[0] as string;
+    const { gone: _, points, ...co } = next.gone[id] as Gone;
+    next = {
+      companies: put(next.companies, id, co),
+      gone: without(next.gone, id),
+      series: put(next.series, id, points),
+    };
+    ids[i] = id;
+  }
   for (const [i, q] of quotes.entries()) {
     let id = ids[i];
     if (id === undefined) {
@@ -230,18 +258,38 @@ export function quoted(
       ),
     };
   }
-  if (!whole || late) return next;
+  if (!whole || late) return purged(next, at);
   const listed = taken();
-  for (const id of Object.keys(next.companies)) {
-    if (listed.has(id)) continue;
-    const co = own(next.companies, id) as Company;
-    next = {
-      ...next,
-      companies: without(next.companies, id),
-      gone: put(next.gone, id, { ...co, gone: at }),
-    };
-  }
-  return next;
+  for (const id of Object.keys(next.companies)) if (!listed.has(id)) next = goneAt(next, id, at);
+  return purged(next, at);
+}
+
+/** `id` gone at `at`, its history with it. */
+function goneAt(c: Companies, id: string, at: string): Companies {
+  const co = own(c.companies, id) as Company;
+  return {
+    companies: without(c.companies, id),
+    gone: put(c.gone, id, { ...co, gone: at, points: own(c.series, id) ?? [] }),
+    series: without(c.series, id),
+  };
+}
+
+/**
+ * The companies without those gone whose newest point (or, with none, their going) is older than
+ * `PURGE_MS` before `at`: forgotten, history and all. Pure.
+ */
+export function purged(c: Companies, at: string): Companies {
+  const before = Date.parse(at) - PURGE_MS;
+  const old = Object.keys(c.gone).filter((id) => {
+    const g = c.gone[id] as Gone;
+    return Date.parse(g.points.at(-1)?.t ?? g.gone) < before;
+  });
+  return old.length === 0
+    ? c
+    : {
+        ...c,
+        gone: Object.fromEntries(Object.entries(c.gone).filter(([id]) => !old.includes(id))),
+      };
 }
 
 /** The companies after a company's page at `at`: its company's (a new one if none fits). Pure. */
@@ -308,17 +356,13 @@ export function companiesFromNames(
     latest = t;
   }
   const updates = times.filter((t) => byTime.get(t)?.some((x) => x.point.via !== 'listing'));
-  for (const [id, co] of Object.entries(c.companies)) {
+  for (const id of Object.keys(c.companies)) {
     const last = (c.series[id] ?? []).at(-1)?.t;
     const after =
       last === undefined ? undefined : updates.find((t) => Date.parse(t) > Date.parse(last));
-    if (after === undefined) continue;
-    c = {
-      ...c,
-      companies: without(c.companies, id),
-      gone: put(c.gone, id, { ...co, gone: after }),
-    };
+    if (after !== undefined) c = goneAt(c, id, after);
   }
+  if (latest !== null) c = purged(c, latest);
   for (const [name, { as_of, ...page }] of Object.entries(pages)) c = paged(c, name, page, as_of);
   return c;
 }

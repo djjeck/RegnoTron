@@ -642,17 +642,21 @@ It is a floor, not the truth, while the turns are all it reads:
     company's page, which names it without its emoji, and an investment are the company's whose name
     or letters they have.
   - **Gone**: every listing (an update, or the market listed) quotes the whole market, so a company
-    it does not quote is gone, kept apart with its history (`market_history.gone`, since when); a
-    company that takes its name later is another, under an id of its own. A listing told late (older
-    than the latest) renames and removes nothing.
-  - **Each company's series** (`market_history.series`, by id,
-    `state.marketHistory({ company?, since?, until? })`, a company by its id or any name it had,
-    each with its name and when it was gone): a point `{ t, value, change, pct, via }` for each
-    update (`update`, the bot's own; `forced`, out of turn), and for a market listed (`listing`)
-    only when it shows a value the point before does not. The same update heard twice (told the same
-    way, the same value and change, within 2 minutes) is one point, a point told late takes its
-    place by time, and a company keeps its latest 3,000 (two years at four a day). Apart from the
-    market's section, so that the companies there are read at a glance.
+    it does not quote is gone (deleted, closed, or missing for now by a slip of the bot's): kept
+    apart with its history (`market_history.gone`, since when, its `points`), out of the series of
+    those there are. Quoted again (by a name it had, or its letters, when one alone fits), it is
+    back under its id, its history whole. **Two weeks after its newest value it is forgotten**,
+    history and all, at the market's next listing; a company that takes its name then is another. A
+    listing told late (older than the latest) renames and removes nothing.
+  - **Each company's series** (`market_history.series`, by id, the companies there are only;
+    `state.marketHistory({ company?, since?, until?, gone? })`, those gone too with `gone` or when
+    one is named, by its id or any name it had, each with its name and when it was gone): a point
+    `{ t, value, change, pct, via }` for each update (`update`, the bot's own; `forced`, out of
+    turn), and for a market listed (`listing`) only when it shows a value the point before does not.
+    The same update heard twice (told the same way, the same value and change, within 2 minutes) is
+    one point, a point told late takes its place by time, and a company keeps its latest 3,000 (two
+    years at four a day). Apart from the market's section, so that the companies there are read at a
+    glance.
   - **The bot's updates** (`market.schedule`): their interval, learned from their times, not from a
     clock (the interval most seen among the latest twelve, to 5 minutes, once seen three times: 6
     hours). An update a whole number of intervals after the last (10 minutes either way) is on
