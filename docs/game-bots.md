@@ -526,10 +526,11 @@ The state moves the items from the giver's inventory to the receiver's, or the c
 
 The "📈 Mercato Fazionario 📉" [M] quotes the companies the players make (`/creaazienda`: a name, an
 emoji, 1.000 ₭) and run (a leader, up to 20 members, of any faction). A company is named as the
-market writes it, its emoji included (`F.R.O.D.E. Capital Partners ⚖️`): its leader changes them at
-times (`⚖️`, `✡️ ⚖️`, `🩲💼 ⚖️` in September 2026), and each name is a company of its own, as a
-player renamed is. Every message of the market in the exports is read (615: 372 updates, 142
-markets, 54 investments, 27 withdrawals, 20 company pages):
+market writes it, its emoji included (`F.R.O.D.E. Capital Partners ⚖️`), and its leader renames it
+at times: one took five names in ten days of September 2026 (`⚖️`, `✡️ ⚖️`, `🩲💼 ⚖️`, `📈 … ⏫ ⚖️`,
+`⚖️` again), then kept one for months, a person's doing, not the bot's; no other was renamed. Every
+message of the market in the exports is read (615: 372 updates, 142 markets, 54 investments, 27
+withdrawals, 20 company pages):
 
 - **An update**, a message of the bot's own: `📈 Mercato Fazionario 📉 aggiornato!`, then a line a
   company, `↗ <company>: <value> (<change>, <pct>%)`, its arrow the direction (`↗` up, `↘` down, `→`
@@ -627,33 +628,46 @@ It is a floor, not the truth, while the turns are all it reads:
 - **The guardians made** (§5.9, `guardians`, `state.guardians()`): by the code of a place a guardian
   is asked from, whether one has been made there, by anyone, as last told: a refusal's (`Hai già:`,
   or `Ti serve:`), whoever's, and an arrival's (all its place asks, made).
-- **The market** (§5.11, `market`), the first part of the state that is a series through time, not
-  only a value now:
-  - **Its latest values** (`quotes`, `state.market()`), the primary way to follow it: each company
-    by its name, emoji included, with its value, change, percentage and direction, how it was told
-    (`via`) and when.
-  - **Each company's series** (`series`, `state.marketHistory({ company?, since?, until? })`): a
-    point `{ t, value, change, pct, via }` for each update (`update`, the bot's own; `forced`, out
-    of turn), and for a market listed (`listing`) only when it shows a value the point before does
-    not. The same update heard twice is one point, a point told late takes its place by time, and a
-    company keeps its latest 3,000 (two years at four a day).
-  - **The bot's updates** (`schedule`): their interval, learned from their times, not from a clock
-    (the interval most seen among the latest twelve, to 5 minutes, once seen three times: 6 hours).
-    An update a whole number of intervals after the last (10 minutes either way) is on schedule, and
-    the ones between it and the last are **missed** (`missed`, ISO); one off it is out of turn,
-    `forced`, as its developer's are. The schedule moves with the bot's clock (summer time ended on
-    25 October 2026, and every update came an hour later in UTC): an update off it that the next one
-    follows by an interval starts it anew, and is relabelled `update`. `state.market()` gives the
-    `next` update due.
-  - **`loregame-state.marketUpdated`** announces each update, live: its `via` and its `quotes`.
-- **The companies** (`companies`): each one's page as last told (§5.11), by the name it gives
-  (without its emoji): its leader, members (each with their faction, level and power), power, value
-  and profile.
+- **The market** (§5.11), the first part of the state that is a series through time, not only a
+  value now:
+  - **The companies there are** (`market.companies`, `state.market()`), the primary way to follow
+    it: each by an **id** of its own (its first name's letters: `f-r-o-d-e-capital-partners`, with
+    `-2` after when another had it), under which everything of it is kept whatever it is called: its
+    name (its latest, emoji included), every name it had (`names`, each `since`), its latest value
+    (`quote`: value, change, percentage, direction, how it was told, when) and its page (`page`:
+    leader, members with their faction, level and power, power, value, profile).
+  - **A rename** (`src/companies.ts`): a name the market writes that no company has now is the
+    company's that had it, or whose letters it has (emoji and symbols aside), or, in a whole
+    listing, whose value it carries on (its value less its change), each only when one alone fits. A
+    company's page, which names it without its emoji, and an investment are the company's whose name
+    or letters they have.
+  - **Gone**: every listing (an update, or the market listed) quotes the whole market, so a company
+    it does not quote is gone, kept apart with its history (`market_history.gone`, since when); a
+    company that takes its name later is another, under an id of its own. A listing told late (older
+    than the latest) renames and removes nothing.
+  - **Each company's series** (`market_history.series`, by id,
+    `state.marketHistory({ company?, since?, until? })`, a company by its id or any name it had,
+    each with its name and when it was gone): a point `{ t, value, change, pct, via }` for each
+    update (`update`, the bot's own; `forced`, out of turn), and for a market listed (`listing`)
+    only when it shows a value the point before does not. The same update heard twice (told the same
+    way, the same value and change, within 2 minutes) is one point, a point told late takes its
+    place by time, and a company keeps its latest 3,000 (two years at four a day). Apart from the
+    market's section, so that the companies there are read at a glance.
+  - **The bot's updates** (`market.schedule`): their interval, learned from their times, not from a
+    clock (the interval most seen among the latest twelve, to 5 minutes, once seen three times: 6
+    hours). An update a whole number of intervals after the last (10 minutes either way) is on
+    schedule, and the ones between it and the last are **missed** (`missed`, ISO); one off it is out
+    of turn, `forced`, as its developer's are. The schedule moves with the bot's clock (summer time
+    ended on 25 October 2026, and every update came an hour later in UTC): an update off it that the
+    next one follows by an interval starts it anew, and is relabelled `update`. `state.market()`
+    gives the `next` update due.
+  - **`loregame-state.marketUpdated`** announces each update, live: its `via`, its `quotes` (each
+    with the company's `id`) and the companies it made `gone`.
 - **Every player's investments** (`investments`, `state.investments({ player? })`): each open one,
-  by company, as an investment (its `invested` and `entry` value), a market listed to them (all of
-  them: the others are gone) and a withdrawal (what is left, or none) tell, and `now`, its worth at
-  the company's latest value. An investment sets their `coins` exactly (`Ti rimangono`); a
-  withdrawal adds what it cashed.
+  by the company's id (with its name), as an investment (its `invested` and `entry` value), a market
+  listed to them (all of them: the others are gone) and a withdrawal (what is left, or none) tell,
+  and `now`, its worth at the company's latest value. An investment sets their `coins` exactly
+  (`Ti rimangono`); a withdrawal adds what it cashed.
 - **Neutrality** (§5.9): a ticket used is gone from its player's inventory, and adds 10 hours to
   their `Neutralizzato` (in their `effects`, exact); its end, told the owner, takes it off, and
   moves them out of a neutral place to the same step of their faction's ladder, not exactly (their

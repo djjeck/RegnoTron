@@ -367,8 +367,9 @@ export const SERIES_KEPT = 3000;
 const SAME_MS = 2 * 60_000;
 
 /**
- * `series` with `p` in its place by time, unless it says nothing new: an update already there (the
- * same value, within `SAME_MS`), or a listing of the value the point before it holds. The oldest
+ * `series` with `p` in its place by time, unless it says nothing new: the same update heard again
+ * (told the same way, the same value and change, within `SAME_MS`: one forced a minute after the
+ * bot's own is another), or a listing of the value the point before it holds. The oldest
  * dropped past `SERIES_KEPT`. Pure.
  */
 export function withPoint(series: readonly Point[], p: Point): Point[] {
@@ -385,7 +386,7 @@ export function withPoint(series: readonly Point[], p: Point): Point[] {
       for (let i = side < 0 ? at - 1 : at; i >= 0 && i < series.length; i += side) {
         const x = series[i] as Point;
         if (Math.abs(Date.parse(x.t) - t) > SAME_MS) break;
-        if (x.via !== 'listing' && x.value === p.value) return [...series];
+        if (x.via === p.via && x.value === p.value && x.change === p.change) return [...series];
       }
   }
   const next = [...series.slice(0, at), p, ...series.slice(at)];

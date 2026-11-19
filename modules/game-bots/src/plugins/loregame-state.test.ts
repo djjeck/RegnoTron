@@ -1967,10 +1967,13 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
     run.clock.advance(11 * HOUR);
     await run.group('LoreGameBot', UPDATE(97, '-13'));
     const market = run.read('market') as {
-      quotes: Record<string, { value: number; via: string; direction: string }>;
+      companies: Record<string, { name: string; value: number; via: string; direction: string }>;
       schedule: { period_min: number; missed: string[]; next: string };
     };
-    expect(market.quotes['Pinco Spa 🍕']).toMatchObject({
+    // Each company by an id of its own, its name as the market writes it.
+    expect(Object.keys(market.companies)).toEqual(['pinco-spa', 'tizio-srl']);
+    expect(market.companies['pinco-spa']).toMatchObject({
+      name: 'Pinco Spa 🍕',
       value: 97,
       via: 'update',
       direction: 'down',
@@ -1980,9 +1983,10 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
     expect(market.schedule.next).toBe(new Date(T0 + 36 * HOUR).toISOString());
     const history = run.read('marketHistory', { company: 'Pinco Spa 🍕' }) as Record<
       string,
-      { value: number; via: string }[]
+      { name: string; gone: string | null; points: { value: number; via: string }[] }
     >;
-    expect(history['Pinco Spa 🍕']?.map((p) => [p.value, p.via])).toEqual([
+    expect(history['pinco-spa']).toMatchObject({ name: 'Pinco Spa 🍕', gone: null });
+    expect(history['pinco-spa']?.points.map((p) => [p.value, p.via])).toEqual([
       [100, 'update'],
       [104, 'update'],
       [102, 'update'],
@@ -1990,7 +1994,7 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
       [110, 'forced'],
       [97, 'update'],
     ]);
-    expect(Object.keys(run.read('marketHistory') as object)).toEqual(['Pinco Spa 🍕', 'Tizio Srl']);
+    expect(Object.keys(run.read('marketHistory') as object)).toEqual(['pinco-spa', 'tizio-srl']);
     expect(run.of('loregame-state.marketUpdated').map((e) => e['via'])).toEqual([
       'update',
       'update',
@@ -2013,7 +2017,8 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
       '📈 Mercato Fazionario 📉\n\n↗ Pinco Spa 🍕: 99 (+2, +2.06%)\n→ Tizio Srl: 50 (0, 0.00%)\n\nI tuoi investimenti\n> Pinco Spa 🍕: 100 ₭ investiti, valore 102 ₭ (+2.06%)\n\nTotale investito: 100 ₭\nValore attuale: 102 ₭ (+2.06%)'
     );
     expect(run.read('investments', { player: 'bob' })).toEqual({
-      'Pinco Spa 🍕': {
+      'pinco-spa': {
+        company: 'Pinco Spa 🍕',
         invested: 100,
         entry: 97,
         value: 102,
@@ -2027,9 +2032,12 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
     });
     // The listing's value is a point of its own; it announces no update.
     expect(
-      (run.read('marketHistory', { company: 'Pinco Spa 🍕' }) as Record<string, { via: string }[]>)[
-        'Pinco Spa 🍕'
-      ]?.at(-1)
+      (
+        run.read('marketHistory', { company: 'pinco-spa' }) as Record<
+          string,
+          { points: { via: string }[] }
+        >
+      )['pinco-spa']?.points.at(-1)
     ).toMatchObject({ value: 99, via: 'listing' });
     expect(run.of('loregame-state.marketUpdated')).toHaveLength(6);
     // A part withdrawn, then all of it.
@@ -2039,7 +2047,7 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
       'Hai riscosso 40 ₭ da Pinco Spa 🍕.\nIncasso: 41 ₭ (+2.06%).\nValore rimasto: 61 ₭.'
     );
     expect(run.read('investments', { player: 'bob' })).toMatchObject({
-      'Pinco Spa 🍕': { invested: 60, entry: 97, value: 61 },
+      'pinco-spa': { invested: 60, entry: 97, value: 61 },
     });
     await run.group('bob', '/ritira');
     await run.group(
@@ -2053,8 +2061,12 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
       'LoreGameBot',
       'Azienda Pinco Spa (1/20)\n\n👑 bob\n\n⚔️ 500\n\n👥 1 membri\n\n- 😇 bob [L4] (500 ⚔️)\n\n📈 Valore: 99'
     );
-    expect(run.read('get', { path: 'companies' })).toMatchObject({
-      'Pinco Spa': { leader: 'bob', members: [{ player: 'bob', faction: '😇' }], value: 99 },
+    // Its page names it without its emoji: the company whose letters it has.
+    expect(run.read('get', { path: 'market.companies' })).toMatchObject({
+      'pinco-spa': {
+        name: 'Pinco Spa 🍕',
+        page: { leader: 'bob', members: [{ player: 'bob', faction: '😇' }], value: 99 },
+      },
     });
     await run.group(
       'LoreGameBot',
@@ -2062,6 +2074,49 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
     );
     expect(run.of('loregame.invest')).toHaveLength(1);
     expect(run.read('investments', { player: 'nobody' })).toBeNull();
+    // Renamed by its leader, and Tizio Srl no longer quoted: the same company, and one gone.
+    run.clock.advance(HOUR);
+    await run.group(
+      'LoreGameBot',
+      '📈 Mercato Fazionario 📉 aggiornato!\n\n↗ Pinco Spa 🍕🎉: 101 (+2, +2.02%)'
+    );
+    expect(run.read('get', { path: 'market.companies' })).toMatchObject({
+      'pinco-spa': {
+        name: 'Pinco Spa 🍕🎉',
+        names: [{ name: 'Pinco Spa 🍕' }, { name: 'Pinco Spa 🍕🎉' }],
+      },
+    });
+    expect(Object.keys(run.read('get', { path: 'market.companies' }) as object)).toEqual([
+      'pinco-spa',
+    ]);
+    expect(run.read('get', { path: 'market_history.gone' })).toMatchObject({
+      'tizio-srl': { name: 'Tizio Srl', gone: new Date(run.clock.now()).toISOString() },
+    });
+    expect(run.of('loregame-state.marketUpdated').at(-1)).toMatchObject({
+      quotes: [{ id: 'pinco-spa', company: 'Pinco Spa 🍕🎉', value: 101 }],
+      gone: [{ id: 'tizio-srl', company: 'Tizio Srl' }],
+    });
+    // Its history whole under its id, by any of its names; a company that takes a name gone is new.
+    expect(
+      (
+        run.read('marketHistory', { company: 'Pinco Spa 🍕' }) as Record<
+          string,
+          { points: unknown[] }
+        >
+      )['pinco-spa']?.points
+    ).toHaveLength(8);
+    run.clock.advance(HOUR);
+    await run.group(
+      'LoreGameBot',
+      '📈 Mercato Fazionario 📉 aggiornato!\n\n→ Pinco Spa 🍕🎉: 101 (0, 0.00%)\n→ Tizio Srl: 100 (0, 0.00%)'
+    );
+    expect(Object.keys(run.read('get', { path: 'market.companies' }) as object)).toEqual([
+      'pinco-spa',
+      'tizio-srl-2',
+    ]);
+    expect(
+      (run.read('marketHistory') as Record<string, { gone: string | null }>)['tizio-srl']?.gone
+    ).not.toBeNull();
     await run.core.stop();
   });
 
@@ -2069,8 +2124,15 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
     const run = await bootState(path.join(dir, 'market-back'), { group: true });
     await run.bot(UPDATE(100, '0'), { playback: true });
     await run.bot('📈 Mercato Fazionario 📉\n\nNessuna azienda quotata.');
-    expect(run.of('loregame.market')).toMatchObject([{ playback: true, via: 'update' }]);
-    expect(run.read('marketHistory')).toMatchObject({ 'Pinco Spa 🍕': [{ value: 100 }] });
+    // The market, quoting none: every company there was is gone.
+    expect(run.of('loregame.market')).toMatchObject([
+      { playback: true, via: 'update' },
+      { via: 'listing', quotes: [] },
+    ]);
+    expect(run.read('market')).toMatchObject({ companies: {} });
+    expect(run.read('marketHistory')).toMatchObject({
+      'pinco-spa': { points: [{ value: 100 }] },
+    });
     expect(run.of('loregame-state.marketUpdated')).toEqual([]);
     // The owner's market, in private: theirs, though no command was heard.
     await run.bot(
@@ -2080,7 +2142,7 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
     await run.core.stop();
   });
 
-  it('takes the market, the companies and the investments from a seed, if one is kept (0.35.0)', async () => {
+  it('takes the market and the investments from a seed, and keeps them by company id (0.35.0, 0.36.0)', async () => {
     const dir2 = path.join(dir, 'v15');
     const run = await bootState(dir2, { group: true });
     await run.group('LoreGameBot', PROFILE('bob', 10));
@@ -2125,10 +2187,13 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
     );
     fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 14 }));
     const again = await bootState(dir2, { group: true });
-    expect(again.read('marketHistory')).toEqual({ 'Pinco Spa 🍕': [point] });
-    expect(again.read('investments', { player: 'bob' })).toMatchObject({
-      'Pinco Spa 🍕': { invested: 10, now: 10 },
+    expect(again.read('marketHistory')).toEqual({
+      'pinco-spa': { name: 'Pinco Spa 🍕', gone: null, points: [point] },
     });
+    expect(again.read('investments', { player: 'bob' })).toMatchObject({
+      'pinco-spa': { company: 'Pinco Spa 🍕', invested: 10, now: 10 },
+    });
+    expect(again.read('get', { path: 'companies' })).toBeUndefined();
     expect(again.read('investments', { player: 'carol' })).toEqual({});
     expect(again.read('stat', { player: 'bob', stat: 'coins' })).toMatchObject({ value: 10 });
     await again.core.stop();

@@ -221,6 +221,8 @@ describe('a company’s series, and the bot’s schedule', () => {
       [at(6 * H), 100, 'update'],
       [at(8 * H), 104, 'listing'],
     ]);
+    // One forced a minute after the bot's own, at the same value: another update, kept.
+    expect(withPoint(s, point(6 * H + 60_000, 100, 'forced'))).toHaveLength(4);
     // An update told late, the same as the one just after it: once.
     expect(withPoint(s, point(6 * H - 60_000, 100))).toHaveLength(3);
     // The oldest go past the most kept.

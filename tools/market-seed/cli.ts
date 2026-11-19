@@ -41,9 +41,9 @@ async function main(argv: readonly string[]): Promise<number> {
   const run = await replayLore(inbounds, { self: a.username });
   const seed = seedOf(run.state as LoreState, usernames(inbounds, 'LoreGameBot'));
   writeFileSync(out, JSON.stringify(seed));
-  const points = Object.values(seed.market.series).reduce((n, s) => n + s.length, 0);
+  const points = Object.values(seed.market_history.series).reduce((n, x) => n + x.length, 0);
   console.error(
-    `${out}: ${Object.keys(seed.market.series).length} companies, ${points} points, ${seed.market.schedule.missed.length} updates missed, ${Object.keys(seed.companies).length} pages, ${Object.keys(seed.players).length} players investing`
+    `${out}: ${Object.keys(seed.market.companies).length} companies, ${Object.keys(seed.market_history.gone).length} gone, ${points} points, ${seed.market.schedule.missed.length} updates missed, ${Object.keys(seed.players).length} players investing`
   );
   return 0;
 }

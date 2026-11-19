@@ -41,7 +41,7 @@ describe('the market’s seed', () => {
     ]);
   });
 
-  it('keeps the market and the companies whole, and each investing player by username', () => {
+  it('keeps the market and its history whole, and each investing player by username', () => {
     const s = initialState();
     const position = { invested: 10, entry: 100, value: 12, as_of: '2026-05-18T16:00:00.000Z' };
     s.players = {
@@ -51,7 +51,7 @@ describe('the market’s seed', () => {
     };
     expect(seedOf(s, new Map([['Bob Rossi', 'bob_r']]))).toEqual({
       market: s.market,
-      companies: s.companies,
+      market_history: s.market_history,
       players: {
         bob_r: { investments: { 'Pinco Spa 🍕': position } },
         Stranger: { investments: { 'Tizio Srl': position } },

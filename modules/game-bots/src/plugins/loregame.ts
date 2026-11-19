@@ -754,7 +754,8 @@ export const loregamePlugin: Plugin = {
       const who = (a: { player: string; owner: boolean } | undefined) =>
         a === undefined || a.player === '' ? undefined : { player: a.player, owner: a.owner };
       if (r.kind === 'update' || r.kind === 'market') {
-        if (r.quotes.length > 0)
+        // Every company there is, none when none is quoted: one not quoted is gone.
+        if (r.quotes.length > 0 || r.kind === 'market')
           ctx.bus.publish(
             MARKET_EVENT,
             {

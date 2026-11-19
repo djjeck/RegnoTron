@@ -39,11 +39,12 @@
  *   guardians asked, and its exits), `state.guardians()` (the places a guardian has been made at,
  *   by anyone, as told) and `state.trip({ to, player?, at? })` (a trip planned before it is made:
  *   its way, and what each step takes of the player, src/trips.ts).
- * - **The market** (docs/game-bots.md §5.11): `state.market()` (each company's latest value, and
- *   the bot's updates' schedule as their times teach it, the next due, those missed),
- *   `state.marketHistory({ company?, since?, until? })` (each company's values through time) and
- *   `state.investments({ player? })` (a player's open investments, each worth now); the companies'
- *   pages in `companies`. `loregame-state.marketUpdated` announces each update, live. A seed of the
+ * - **The market** (docs/game-bots.md §5.11): `state.market()` (the companies there are, by id, each
+ *   its name and latest value; and the bot's updates' schedule as their times teach it, the next
+ *   due, those missed), `state.marketHistory({ company?, since?, until? })` (each company's values
+ *   through time, those gone too) and `state.investments({ player? })` (a player's open
+ *   investments, by company id, each worth now); each company's page in `market.companies`.
+ *   `loregame-state.marketUpdated` announces each update, live. A seed of the
  *   market's history (tools/market-seed) is taken once, by the migration to 0.35.0, if its store
  *   holds one (`market-seed`).
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
@@ -60,6 +61,7 @@ import { type ReadinessState } from '@megabottron1999/turns/readiness.ts';
 import { statePlugin } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
 import { ACCUMULO } from '#src/accumulo.ts';
+import { companiesFromNames, type CompanyPage, idOf } from '#src/companies.ts';
 import {
   type Accumulo,
   accumuloOf,
@@ -92,6 +94,7 @@ import {
   stateSchema,
   statOf,
 } from '#src/loregame-state.ts';
+import { type Point } from '#src/market.ts';
 import { statsOf } from '#src/stats.ts';
 import { tripOf } from '#src/trips.ts';
 
@@ -176,7 +179,8 @@ const base = statePlugin<Kept>({
         quotes: z
           .array(
             z.looseObject({
-              company: z.string(),
+              id: z.string().describe("The company's id"),
+              company: z.string().describe('Its name now'),
               value: z.number(),
               change: z.number(),
               pct: z.number(),
@@ -184,6 +188,9 @@ const base = statePlugin<Kept>({
             })
           )
           .describe('Each company, its value now, and its change since the update before'),
+        gone: z
+          .array(z.object({ id: z.string(), company: z.string() }))
+          .describe('The companies it no longer quotes: gone'),
       })
       .describe('The market was updated: every company quoted anew'),
   },
@@ -451,6 +458,7 @@ const base = statePlugin<Kept>({
       if (kept?.state === undefined) return;
       const seed = store.read<{
         market?: unknown;
+        market_history?: unknown;
         companies?: unknown;
         players?: Record<string, { investments?: unknown }>;
       }>('market-seed');
@@ -470,7 +478,15 @@ const base = statePlugin<Kept>({
         ...kept,
         state: {
           ...kept.state,
-          market: kept.state['market'] ?? seed?.market ?? initialMarket(),
+          // As 0.35.0 kept it (by name), or a seed's (by id, 0.36.0's, with its history).
+          market: kept.state['market'] ??
+            seed?.market ?? {
+              as_of: null,
+              quotes: {},
+              series: {},
+              schedule: initialMarket().schedule,
+            },
+          ...(seed?.market_history === undefined ? {} : { market_history: seed.market_history }),
           companies: kept.state['companies'] ?? seed?.companies ?? {},
           players: Object.fromEntries(
             Object.entries(all).map(([name, p]) => [
@@ -483,6 +499,58 @@ const base = statePlugin<Kept>({
               },
             ])
           ),
+        },
+      });
+    },
+    // 0.36.0 keeps the companies by id, their renames followed, those gone apart with their history
+    // (`market_history`), their pages within: a market kept by name is replayed so, and each
+    // player's investments named by the company's id.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined) return;
+      const { companies: pages, ...rest } = kept.state as {
+        companies?: Record<string, CompanyPage>;
+        market?: {
+          as_of: string | null;
+          quotes?: unknown;
+          series?: Record<string, Point[]>;
+          schedule: unknown;
+        };
+        players?: Record<string, { investments?: Record<string, unknown> }>;
+      } & Record<string, unknown>;
+      const market = rest.market;
+      if (market === undefined || market.quotes === undefined) {
+        store.write('state', {
+          ...kept,
+          state: { market_history: { series: {}, gone: {} }, ...rest },
+        });
+        return;
+      }
+      let c = companiesFromNames(market.series ?? {}, pages ?? {});
+      const at = market.as_of ?? new Date().toISOString();
+      const players = Object.fromEntries(
+        Object.entries(rest.players ?? {}).map(([name, p]) => {
+          const investments: Record<string, unknown> = {};
+          for (const [company, x] of Object.entries(p.investments ?? {})) {
+            const made = idOf(c, company, at);
+            c = made.companies;
+            Object.defineProperty(investments, made.id, {
+              value: x,
+              enumerable: true,
+              writable: true,
+              configurable: true,
+            });
+          }
+          return [name, { ...p, investments }];
+        })
+      );
+      store.write('state', {
+        ...kept,
+        state: {
+          ...rest,
+          players,
+          market: { as_of: market.as_of, companies: c.companies, schedule: market.schedule },
+          market_history: { series: c.series, gone: c.gone },
         },
       });
     },
@@ -548,23 +616,30 @@ const base = statePlugin<Kept>({
       run: (s) => s.guardians,
     },
     market: {
-      help: "The market now: each company's latest value, its change and direction, how it was told, and when; and the bot's updates, the interval their times teach, the last on schedule, the next due, and those missed",
+      help: "The market now: the companies there are, by id, each its name (emoji included) and latest value, its change and direction, how it was told, and when; and the bot's updates, the interval their times teach, the last on schedule, the next due, and those missed",
       output: z.looseObject({ as_of: z.string().nullable() }),
       run: (s) => marketNow(s),
     },
     marketHistory: {
-      help: "Each company's values through time (one if named, as the market names it, emoji included), oldest first, between `since` and `until` (ISO; all without): each point's time, value, change, percentage, and how it was told (`update`, `forced`, `listing`)",
+      help: "Each company's values through time, by id (one if named: its id, or a name it has or had), with its name and when it was gone (if it is), its points oldest first, between `since` and `until` (ISO; all without): each point's time, value, change, percentage, and how it was told (`update`, `forced`, `listing`)",
       input: z.object({
         company: z.string().optional(),
         since: z.string().optional(),
         until: z.string().optional(),
       }),
-      output: z.record(z.string(), z.array(z.looseObject({ t: z.string(), value: z.number() }))),
+      output: z.record(
+        z.string(),
+        z.object({
+          name: z.string(),
+          gone: z.string().nullable(),
+          points: z.array(z.looseObject({ t: z.string(), value: z.number() })),
+        })
+      ),
       run: (s, input: { company?: string; since?: string; until?: string }) =>
         marketHistory(s, input),
     },
     investments: {
-      help: "A player's open investments (the owner's unless named), by company: what is invested, the value it was entered at, its worth as last told, and `now`, its worth at the company's latest value; none for a player the state does not know",
+      help: "A player's open investments (the owner's unless named), by the company's id: its name, what is invested, the value it was entered at, its worth as last told, and `now`, its worth at the company's latest value; none for a player the state does not know",
       input: z.object({ player: z.string().optional() }),
       output: z.record(z.string(), z.looseObject({ now: z.number().nullable() })).nullable(),
       run: (s, input: { player?: string }) => investmentsOf(s, input.player),

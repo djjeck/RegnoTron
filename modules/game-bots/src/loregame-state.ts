@@ -63,7 +63,8 @@ import {
 import { type Announcement, type Mark } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
 import { ACCUMULO, ACCUMULO_MAX, ACCUMULO_MECHANICS } from '#src/accumulo.ts';
-import { initialSchedule, type Point, scheduled, type Via, withPoint } from '#src/market.ts';
+import { type Companies, type Company, companyOf, idOf, paged, quoted } from '#src/companies.ts';
+import { initialSchedule, type Point, scheduled, type Via } from '#src/market.ts';
 import { ladderOf, NEUTRAL_EFFECT, NEUTRAL_MS, NEUTRAL_TICKET } from '#src/places.ts';
 import {
   ACCUMULO_EVENT,
@@ -414,7 +415,7 @@ const player = z.object({
         as_of: z.string().describe('Told'),
       })
     )
-    .describe('Their open investments, by company (as the market names it), as last told'),
+    .describe("Their open investments, by the company's id (`market`), as last told"),
   stats_drift: z
     .array(
       z.object({
@@ -439,6 +440,45 @@ const pointSchema = z.object({
   change: z.number(),
   pct: z.number(),
   via: viaSchema,
+});
+
+const companySchema = z.object({
+  name: z.string().describe('Its latest name, as the market writes it, emoji included'),
+  names: z
+    .array(z.object({ name: z.string(), since: z.string() }))
+    .describe('Every name it had, each since when'),
+  quote: z
+    .object({
+      value: z.number(),
+      change: z.number().describe('Since the update before'),
+      pct: z.number(),
+      direction: z.enum(['up', 'down', 'flat']),
+      via: viaSchema,
+      as_of: z.string().describe('Told'),
+    })
+    .nullable()
+    .describe('Its latest value'),
+  page: z
+    .object({
+      size: z.number(),
+      max: z.number(),
+      leader: z.string(),
+      power: z.number(),
+      members: z.array(
+        z.object({
+          player: z.string(),
+          faction: z.string(),
+          level: z.number(),
+          power: z.number(),
+        })
+      ),
+      value: z.number(),
+      profile: z.string().nullable(),
+      as_of: z.string().describe('Told'),
+    })
+    .nullable()
+    .describe('Its page (/azienda), as last shown'),
+  as_of: z.string().describe('Latest change'),
 });
 
 /** The state's schema: its sections, each described for the panel. */
@@ -491,22 +531,11 @@ export const stateSchema = z.object({
   market: z
     .object({
       as_of: date.describe('Latest change'),
-      quotes: z
-        .record(
-          z.string(),
-          z.object({
-            value: z.number(),
-            change: z.number().describe('Since the update before'),
-            pct: z.number(),
-            direction: z.enum(['up', 'down', 'flat']),
-            via: viaSchema,
-            as_of: z.string().describe('Told'),
-          })
-        )
-        .describe('Each company quoted, by name (its emoji included): its latest value'),
-      series: z
-        .record(z.string(), z.array(pointSchema))
-        .describe("Each company's values through time, oldest first"),
+      companies: z
+        .record(z.string(), companySchema)
+        .describe(
+          "The companies there are, by id: each one's name (its latest, emoji included), its latest value, its page"
+        ),
       schedule: z
         .object({
           last: date.describe('The latest update on schedule'),
@@ -520,28 +549,16 @@ export const stateSchema = z.object({
         .describe("The bot's updates: their interval, as their times tell, and those missed"),
     })
     .describe('Market'),
-  companies: z
-    .record(
-      z.string(),
-      z.object({
-        size: z.number(),
-        max: z.number(),
-        leader: z.string(),
-        power: z.number(),
-        members: z.array(
-          z.object({
-            player: z.string(),
-            faction: z.string(),
-            level: z.number(),
-            power: z.number(),
-          })
-        ),
-        value: z.number(),
-        profile: z.string().nullable(),
-        as_of: z.string().describe('Told'),
-      })
-    )
-    .describe('Companies, by name as their page names it (without its emoji), as last told'),
+  market_history: z
+    .object({
+      series: z
+        .record(z.string(), z.array(pointSchema))
+        .describe("Each company's values through time, by id, oldest first"),
+      gone: z
+        .record(z.string(), companySchema.extend({ gone: z.string().describe('Not quoted since') }))
+        .describe('The companies gone (deleted, or closed), by id: as they were last'),
+    })
+    .describe('Market history'),
 });
 
 export type Holding = z.infer<typeof holding>;
@@ -577,13 +594,13 @@ export function initialState(): LoreState {
     places: {},
     guardians: {},
     market: initialMarket(),
-    companies: {},
+    market_history: { series: {}, gone: {} },
   };
 }
 
 /** A market nothing is known of. */
 export function initialMarket(): LoreState['market'] {
-  return { as_of: null, quotes: {}, series: {}, schedule: initialSchedule() };
+  return { as_of: null, companies: {}, schedule: initialSchedule() };
 }
 
 /** An inventory nothing is known of. */
@@ -1785,7 +1802,7 @@ const cashoutSchema = whoseSchema.extend({
     })
   ),
 });
-const companySchema = z.looseObject({
+const pageEventSchema = z.looseObject({
   name: z.string(),
   size: z.number(),
   max: z.number(),
@@ -1798,13 +1815,28 @@ const companySchema = z.looseObject({
   profile: z.string().nullable(),
 });
 
+/** The state's companies, as `src/companies.ts` works on them. */
+const companiesOf = (s: LoreState): Companies => ({
+  companies: s.market.companies,
+  gone: s.market_history.gone,
+  series: s.market_history.series,
+});
+
+/** The state with `c`'s companies, changed at `at`. */
+const withCompanies = (s: LoreState, c: Companies, at: string | null): LoreState => ({
+  ...s,
+  market: { ...s.market, as_of: at ?? s.market.as_of, companies: c.companies },
+  market_history: { series: c.series, gone: c.gone },
+});
+
 /**
- * The state after the market (docs/game-bots.md §5.11): each company's latest value and its series,
- * from every update and market listed, anyone's; an update of the bot's own checked against the
+ * The state after the market (docs/game-bots.md §5.11): each company (`src/companies.ts`: an id,
+ * renames followed, those not quoted gone) its latest value and its series, from every update and
+ * market listed, anyone's, each a whole listing; an update of the bot's own checked against the
  * schedule its times teach (one off it is out of turn, `forced`; the ones a jump skipped, missed);
- * a player's investments, as a listing shows them (all of them, then), an investment and a
- * withdrawal tell, with their coins (an investment says what is left, exactly; a withdrawal adds
- * what it cashed); and a company's page.
+ * a company's page; and a player's investments, by company id, as a listing shows them (all of
+ * them, then), an investment and a withdrawal tell, with their coins (an investment says what is
+ * left, exactly; a withdrawal adds what it cashed).
  */
 function reduceMarket(state: LoreState, e: BusEvent): LoreState {
   const at = asIso(e.t);
@@ -1812,7 +1844,8 @@ function reduceMarket(state: LoreState, e: BusEvent): LoreState {
     const r = marketSchema.safeParse(e);
     if (!r.success) return state;
     let via: Via = r.data.via;
-    let { schedule, quotes, series } = state.market;
+    let { schedule } = state.market;
+    let c = companiesOf(state);
     if (via === 'update') {
       const next = scheduled(schedule, e.t);
       schedule = next.schedule;
@@ -1820,48 +1853,39 @@ function reduceMarket(state: LoreState, e: BusEvent): LoreState {
       // The schedule moved (the bot's clock did): the update that started it was on it after all.
       const moved = next.moved;
       if (moved !== undefined) {
-        series = Object.fromEntries(
-          Object.entries(series).map(([c, points]) => [
-            c,
-            points.map((x) => (x.t === moved && x.via === 'forced' ? { ...x, via: 'update' } : x)),
-          ])
-        );
-        quotes = Object.fromEntries(
-          Object.entries(quotes).map(([c, q]) => [
-            c,
-            q.as_of === moved && q.via === 'forced' ? { ...q, via: 'update' } : q,
-          ])
-        );
+        const relabel = <T extends { via: Via }>(x: T, t: string): T =>
+          t === moved && x.via === 'forced' ? { ...x, via: 'update' } : x;
+        c = {
+          ...c,
+          series: Object.fromEntries(
+            Object.entries(c.series).map(([id, points]) => [id, points.map((x) => relabel(x, x.t))])
+          ),
+          companies: Object.fromEntries(
+            Object.entries(c.companies).map(([id, co]) => [
+              id,
+              co.quote === null ? co : { ...co, quote: relabel(co.quote, co.quote.as_of) },
+            ])
+          ),
+        };
       }
     }
-    for (const q of r.data.quotes) {
-      const point: Point = { t: at, value: q.value, change: q.change, pct: q.pct, via };
-      series = withKey(series, q.company, withPoint(ownOf(series, q.company) ?? [], point));
-      const was = ownOf(quotes, q.company);
-      if (was === undefined || Date.parse(was.as_of) <= e.t) {
-        const { company: _, ...quote } = q;
-        quotes = withKey(quotes, q.company, { ...quote, via, as_of: at });
-      }
-    }
-    return { ...state, market: { as_of: at, quotes, series, schedule } };
+    // Every listing is the market's whole: a company it does not quote is gone.
+    c = quoted(c, r.data.quotes, at, via, true, state.market.as_of);
+    const latest =
+      state.market.as_of !== null && Date.parse(state.market.as_of) > e.t ? state.market.as_of : at;
+    const next = withCompanies(state, c, latest);
+    return { ...next, market: { ...next.market, schedule } };
   }
   if (e.type === COMPANY_EVENT) {
-    const r = companySchema.safeParse(e);
+    const r = pageEventSchema.safeParse(e);
     if (!r.success) return state;
-    const { name, size, max, leader, power, members, value, profile } = r.data;
-    return {
-      ...state,
-      companies: withKey(state.companies, name, {
-        size,
-        max,
-        leader,
-        power,
-        members,
-        value,
-        profile,
-        as_of: at,
-      }),
-    };
+    const { name, ...page } = r.data;
+    const { size, max, leader, power, members, value, profile } = page;
+    return withCompanies(
+      state,
+      paged(companiesOf(state), name, { size, max, leader, power, members, value, profile }, at),
+      null
+    );
   }
   if (e.type !== INVESTMENTS_EVENT && e.type !== INVEST_EVENT && e.type !== CASHOUT_EVENT)
     return state;
@@ -1872,6 +1896,13 @@ function reduceMarket(state: LoreState, e: BusEvent): LoreState {
     : (Object.keys(state.players).find((k) => k.toLowerCase() === w.data.player.toLowerCase()) ??
       w.data.player);
   if (key === null) return state;
+  let c = companiesOf(state);
+  /** The id of the company the answer names: a new one if none fits. */
+  const company = (name: string): string => {
+    const made = idOf(c, name, at);
+    c = made.companies;
+    return made.id;
+  };
   const p = playerOf(state, key) ?? initialPlayer(at);
   let { investments, stats } = p;
   if (e.type === INVESTMENTS_EVENT) {
@@ -1880,8 +1911,9 @@ function reduceMarket(state: LoreState, e: BusEvent): LoreState {
     // The listing is every one open: the others are gone.
     investments = {};
     for (const x of r.data.positions) {
-      const was = ownOf(p.investments, x.company);
-      investments = withKey(investments, x.company, {
+      const id = company(x.company);
+      const was = ownOf(p.investments, id);
+      investments = withKey(investments, id, {
         invested: x.invested,
         entry: was !== undefined && was.invested === x.invested ? was.entry : null,
         value: x.value,
@@ -1891,7 +1923,7 @@ function reduceMarket(state: LoreState, e: BusEvent): LoreState {
   } else if (e.type === INVEST_EVENT) {
     const r = investSchema.safeParse(e);
     if (!r.success) return state;
-    investments = withKey(investments, r.data.company, {
+    investments = withKey(investments, company(r.data.company), {
       invested: r.data.invested,
       entry: r.data.entry,
       value: r.data.invested,
@@ -1902,11 +1934,12 @@ function reduceMarket(state: LoreState, e: BusEvent): LoreState {
     const r = cashoutSchema.safeParse(e);
     if (!r.success) return state;
     for (const x of r.data.positions) {
-      const was = ownOf(investments, x.company);
+      const id = company(x.company);
+      const was = ownOf(investments, id);
       investments =
         x.left === null
-          ? withoutKey(investments, x.company)
-          : withKey(investments, x.company, {
+          ? withoutKey(investments, id)
+          : withKey(investments, id, {
               invested:
                 was?.invested === null || was === undefined
                   ? null
@@ -1920,7 +1953,7 @@ function reduceMarket(state: LoreState, e: BusEvent): LoreState {
     if (r.data.all) investments = {};
   }
   return {
-    ...state,
+    ...withCompanies(state, c, null),
     players: withKey(state.players, key, { ...p, as_of: at, investments, stats }),
   };
 }
@@ -1992,12 +2025,13 @@ function reduceNeutral(state: LoreState, e: BusEvent): LoreState {
 export const placesOf = (s: LoreState): LoreState['places'] => s.places;
 
 /**
- * The market now (docs/game-bots.md §5.11): each company's latest value, and the bot's updates:
- * the last on schedule, the interval learned, when the next is due, and those missed.
+ * The market now (docs/game-bots.md §5.11): the companies there are, by id, each its name and
+ * latest value; and the bot's updates: the last on schedule, the interval learned, when the next is
+ * due, and those missed.
  */
 export function marketNow(s: LoreState): {
   as_of: string | null;
-  quotes: LoreState['market']['quotes'];
+  companies: Record<string, { name: string } & Partial<Company['quote'] & object>>;
   schedule: LoreState['market']['schedule'] & { next: string | null };
 } {
   const { last, period_min } = s.market.schedule;
@@ -2007,26 +2041,46 @@ export function marketNow(s: LoreState): {
       : new Date(Date.parse(last) + period_min * 60_000).toISOString();
   return {
     as_of: s.market.as_of,
-    quotes: s.market.quotes,
+    companies: Object.fromEntries(
+      Object.entries(s.market.companies).map(([id, c]) => [
+        id,
+        { name: c.name, ...(c.quote ?? {}) },
+      ])
+    ),
     schedule: { ...s.market.schedule, next },
   };
 }
 
 /**
- * Each company's values through time (one if named, as the market names it), oldest first, from
- * `since` to `until` (ISO, both included; all without).
+ * Each company's values through time, by id (one if named: its id, or a name it has or had),
+ * oldest first, from `since` to `until` (ISO, both included; all without); with its name and when
+ * it was gone, if it is (`gone`, none if not).
  */
 export function marketHistory(
   s: LoreState,
   o: { company?: string; since?: string; until?: string } = {}
-): Record<string, Point[]> {
+): Record<string, { name: string; gone: string | null; points: Point[] }> {
   const from = o.since === undefined ? -Infinity : Date.parse(o.since);
   const to = o.until === undefined ? Infinity : Date.parse(o.until);
-  const out: Record<string, Point[]> = {};
-  for (const [company, points] of Object.entries(s.market.series)) {
-    if (o.company !== undefined && company !== o.company) continue;
-    Object.defineProperty(out, company, {
-      value: points.filter((p) => Date.parse(p.t) >= from && Date.parse(p.t) <= to),
+  const c = companiesOf(s);
+  const named =
+    o.company === undefined
+      ? undefined
+      : Object.hasOwn(c.series, o.company)
+        ? o.company
+        : (companyOf(c, o.company) ??
+          Object.keys(c.gone).find((id) => c.gone[id]?.names.some((n) => n.name === o.company)));
+  const out: Record<string, { name: string; gone: string | null; points: Point[] }> = {};
+  for (const [id, points] of Object.entries(c.series)) {
+    if (o.company !== undefined && id !== named) continue;
+    const co = Object.hasOwn(c.companies, id) ? c.companies[id] : undefined;
+    const was = Object.hasOwn(c.gone, id) ? c.gone[id] : undefined;
+    Object.defineProperty(out, id, {
+      value: {
+        name: co?.name ?? was?.name ?? id,
+        gone: co === undefined ? (was?.gone ?? null) : null,
+        points: points.filter((p) => Date.parse(p.t) >= from && Date.parse(p.t) <= to),
+      },
       enumerable: true,
       writable: true,
       configurable: true,
@@ -2035,27 +2089,29 @@ export function marketHistory(
   return out;
 }
 
+/** A player's investment, as `investmentsOf` gives it. */
+export type MarketHolding = Player['investments'][string] & { company: string; now: number | null };
+
 /**
- * A player's open investments (the owner's unless named), each with what it is worth at the
- * company's latest value (`now`: what is invested, times that value over the one it was entered
- * at; none without both); null for a player the state does not know.
+ * A player's open investments (the owner's unless named), by company id, each with the company's
+ * name and what it is worth at its latest value (`now`: what is invested, times that value over
+ * the one it was entered at; none without both); null for a player the state does not know.
  */
-export function investmentsOf(
-  s: LoreState,
-  player?: string
-): Record<string, Player['investments'][string] & { now: number | null }> | null {
+export function investmentsOf(s: LoreState, player?: string): Record<string, MarketHolding> | null {
   const name = player ?? s.owner.name;
   const p = name === null ? null : playerOf(s, name);
   if (p === null) return null;
-  const out: Record<string, Player['investments'][string] & { now: number | null }> = {};
-  for (const [company, x] of Object.entries(p.investments)) {
-    const q = Object.hasOwn(s.market.quotes, company) ? s.market.quotes[company] : undefined;
+  const out: Record<string, MarketHolding> = {};
+  for (const [id, x] of Object.entries(p.investments)) {
+    const co = Object.hasOwn(s.market.companies, id) ? s.market.companies[id] : undefined;
+    const was = Object.hasOwn(s.market_history.gone, id) ? s.market_history.gone[id] : undefined;
+    const value = co?.quote?.value;
     const now =
-      x.invested === null || x.entry === null || x.entry === 0 || q === undefined
+      x.invested === null || x.entry === null || x.entry === 0 || value === undefined
         ? null
-        : Math.round((x.invested * q.value) / x.entry);
-    Object.defineProperty(out, company, {
-      value: { ...x, now },
+        : Math.round((x.invested * value) / x.entry);
+    Object.defineProperty(out, id, {
+      value: { company: co?.name ?? was?.name ?? id, ...x, now },
       enumerable: true,
       writable: true,
       configurable: true,
@@ -2251,15 +2307,21 @@ export function announce(before: LoreState, after: LoreState, e: BusEvent): Anno
 function announceMarket(before: LoreState, after: LoreState, e: BusEvent): Announcement[] {
   if (e.type !== MARKET_EVENT || e['via'] === 'listing' || before.market === after.market)
     return [];
-  const quotes = Array.isArray(e['quotes']) ? (e['quotes'] as { company: string }[]) : [];
-  const via = quotes
-    .map((q) =>
-      Object.hasOwn(after.market.quotes, q.company)
-        ? after.market.quotes[q.company]?.via
-        : undefined
-    )
-    .find((v) => v !== undefined);
-  return [{ type: 'marketUpdated', payload: { via: via ?? e['via'], quotes } }];
+  const at = asIso(e.t);
+  const companies = Object.entries(after.market.companies).filter(([, c]) => c.quote?.as_of === at);
+  if (companies.length === 0) return [];
+  return [
+    {
+      type: 'marketUpdated',
+      payload: {
+        via: companies[0]?.[1].quote?.via ?? e['via'],
+        quotes: companies.map(([id, c]) => ({ id, company: c.name, ...(c.quote as object) })),
+        gone: Object.entries(after.market_history.gone)
+          .filter(([id, c]) => c.gone === at && !Object.hasOwn(before.market_history.gone, id))
+          .map(([id, c]) => ({ id, company: c.name })),
+      },
+    },
+  ];
 }
 
 /** Each stat a snapshot (a profile, the skills menu, the slots listed) said otherwise of. */

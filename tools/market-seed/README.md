@@ -1,10 +1,10 @@
 # market-seed
 
 Builds the market's history from Telegram Desktop exports, for `loregame-state` to take once: what
-the companies were worth through time, the bot's updates' schedule, the companies' pages and each
-player's investments, as the state holds them after the exports are replayed through the real
-`loregame` parser and `loregame-state` node (as lore-check replays them,
-tools/lore-check/README.md).
+the companies were worth through time (each by an id of its own, its renames followed, those gone
+apart), the bot's updates' schedule, the companies' pages and each player's investments, as the
+state holds them after the exports are replayed through the real `loregame` parser and
+`loregame-state` node (as lore-check replays them, tools/lore-check/README.md).
 
 ```sh
 npm run market-seed -- <export folder>… --owner "<your display name>" --username <your username> \
@@ -18,7 +18,7 @@ npm run market-seed -- <export folder>… --owner "<your display name>" --userna
   whose; a player never told keeps their display name.
 - **Loading it**, once: put the file in the state's store on the instance's volume, as
   `market-seed.json` (`/data/instances/<the loregame-state node>/market-seed.json`), **before** the
-  instance first starts `game-bots` 0.35.0: its migration takes it then (the market, the companies,
-  and each player's investments), and never again.
+  instance first starts `game-bots` 0.35.0 or later: its migration to 0.35.0 takes it then (the
+  market, its history, and each player's investments), and never again.
 - **It names players, and the companies' values are the group's:** the file stays on your computer
   and the instance's volume, never in the repository (CLAUDE.md).

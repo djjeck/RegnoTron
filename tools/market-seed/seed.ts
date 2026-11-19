@@ -1,8 +1,9 @@
 /**
  * The market's history, from a replay of the exports (tools/market-seed/README.md): what
  * `loregame-state` holds of it after the replay, as the seed its migration to 0.35.0 takes
- * (`market-seed` in its store): the market (each company's latest value, its series, the bot's
- * updates' schedule), the companies' pages, and each player's investments, under their username.
+ * (`market-seed` in its store): the market (the companies there are, by id, each its name, latest
+ * value and page; the bot's updates' schedule), its history (each company's series, those gone),
+ * and each player's investments, by company id, under their username.
  *
  * An export names a player by their display name, the state by their username: a profile (it names
  * its player, "👤 <username>") answering a player's own `/info` or `/me` tells which is whose.
@@ -14,7 +15,7 @@ import { parseProfile } from '@regnotron/game-bots/profile.ts';
 /** What the migration takes. */
 export interface MarketSeed {
   market: LoreState['market'];
-  companies: LoreState['companies'];
+  market_history: LoreState['market_history'];
   players: Record<string, { investments: LoreState['players'][string]['investments'] }>;
 }
 
@@ -37,7 +38,7 @@ export function usernames(inbounds: readonly Inbound[], bot: string): Map<string
 }
 
 /**
- * The seed of `state` (a replay's): its market and companies whole; each player's investments
+ * The seed of `state` (a replay's): its market and its history whole; each player's investments
  * under their username (`names`, by display name; one not known keeps the name the replay gave,
  * the owner's being their username already), those with none left out.
  */
@@ -52,5 +53,5 @@ export function seedOf(state: LoreState, names: ReadonlyMap<string, string>): Ma
       configurable: true,
     });
   }
-  return { market: state.market, companies: state.companies, players };
+  return { market: state.market, market_history: state.market_history, players };
 }
