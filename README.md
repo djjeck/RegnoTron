@@ -94,7 +94,10 @@ npm run validate   # tests with coverage, types, lint, formatting
 `npm run lore-check -- <export folders> …` replays exports of @LoreGameBot (the private chat and the
 group) through the real `loregame` and `loregame-state` nodes, and reports how much the grammar read
 and whether the state agrees with the bot: [tools/lore-check/README.md](tools/lore-check/README.md).
-The exports and the report stay local.
+The exports and the report stay local. `npm run market-seed -- <export folders> … --out <file>`
+replays them the same way and writes the market's history, for `loregame-state` to take once:
+[tools/market-seed/README.md](tools/market-seed/README.md); the file stays local, and on the
+instance's volume.
 
 To take newer shell code, move the submodule to a newer tag of MegaBotTron1999 and commit the new
 pin with the lockfile.

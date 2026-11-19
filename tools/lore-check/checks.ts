@@ -35,6 +35,8 @@ export interface Run {
   drift: { read: number; unread: number };
   /** Shown for a player's name: their own, or a stand-in (P1, P2, …) for a report to share. */
   name: (player: string) => string;
+  /** The state as the replay left it (`loregame-state`'s whole state). */
+  state: unknown;
 }
 
 /** A check's findings: a line per measure, a label and a value. */

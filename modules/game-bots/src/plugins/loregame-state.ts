@@ -39,6 +39,13 @@
  *   guardians asked, and its exits), `state.guardians()` (the places a guardian has been made at,
  *   by anyone, as told) and `state.trip({ to, player?, at? })` (a trip planned before it is made:
  *   its way, and what each step takes of the player, src/trips.ts).
+ * - **The market** (docs/game-bots.md §5.11): `state.market()` (each company's latest value, and
+ *   the bot's updates' schedule as their times teach it, the next due, those missed),
+ *   `state.marketHistory({ company?, since?, until? })` (each company's values through time) and
+ *   `state.investments({ player? })` (a player's open investments, each worth now); the companies'
+ *   pages in `companies`. `loregame-state.marketUpdated` announces each update, live. A seed of the
+ *   market's history (tools/market-seed) is taken once, by the migration to 0.35.0, if its store
+ *   holds one (`market-seed`).
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -65,13 +72,18 @@ import {
   holdersOf,
   initialAccumulo,
   initialInventory,
+  initialMarket,
+  initialPlayer,
   initialState,
   initialTraining,
   initialXp,
   inventoryOfPlayer,
+  investmentsOf,
   LORE_READINESS,
   LOREGAME_STATE,
   type LoreState,
+  marketHistory,
+  marketNow,
   PINS,
   placesOf,
   playerOf,
@@ -156,6 +168,24 @@ const base = statePlugin<Kept>({
         max: z.number(),
       })
       .describe("Our count and the bot's word disagree about the accumulo"),
+    marketUpdated: z
+      .object({
+        via: z
+          .enum(['update', 'forced'])
+          .describe("The bot's own update, or one out of turn (its developer's, or off schedule)"),
+        quotes: z
+          .array(
+            z.looseObject({
+              company: z.string(),
+              value: z.number(),
+              change: z.number(),
+              pct: z.number(),
+              direction: z.string(),
+            })
+          )
+          .describe('Each company, its value now, and its change since the update before'),
+      })
+      .describe('The market was updated: every company quoted anew'),
   },
   announce,
   migrations: [
@@ -413,6 +443,49 @@ const base = statePlugin<Kept>({
         state: { ...kept.state, readiness: { ...r, commands, holds } },
       });
     },
+    // 0.35.0 keeps the market, the companies and every player's investments: added, from the seed
+    // its store holds if one was put there before it started (`market-seed`, the history the
+    // exports tell: tools/market-seed), else none known.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined) return;
+      const seed = store.read<{
+        market?: unknown;
+        companies?: unknown;
+        players?: Record<string, { investments?: unknown }>;
+      }>('market-seed');
+      const players = (kept.state['players'] ?? {}) as Record<string, Record<string, unknown>>;
+      const invested = seed?.players ?? {};
+      const at = new Date().toISOString();
+      const all: Record<string, Record<string, unknown>> = { ...players };
+      for (const name of Object.keys(invested))
+        if (!Object.hasOwn(all, name))
+          Object.defineProperty(all, name, {
+            value: initialPlayer(at) as unknown as Record<string, unknown>,
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          market: kept.state['market'] ?? seed?.market ?? initialMarket(),
+          companies: kept.state['companies'] ?? seed?.companies ?? {},
+          players: Object.fromEntries(
+            Object.entries(all).map(([name, p]) => [
+              name,
+              {
+                investments: Object.hasOwn(invested, name)
+                  ? (invested[name]?.investments ?? {})
+                  : {},
+                ...p,
+              },
+            ])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -473,6 +546,28 @@ const base = statePlugin<Kept>({
       help: 'The guardians made, by the code of the place a guardian is asked from ("Almeno un guardiano generato da"): whether one has been made there by anyone, as last told',
       output: z.record(z.string(), z.boolean()),
       run: (s) => s.guardians,
+    },
+    market: {
+      help: "The market now: each company's latest value, its change and direction, how it was told, and when; and the bot's updates, the interval their times teach, the last on schedule, the next due, and those missed",
+      output: z.looseObject({ as_of: z.string().nullable() }),
+      run: (s) => marketNow(s),
+    },
+    marketHistory: {
+      help: "Each company's values through time (one if named, as the market names it, emoji included), oldest first, between `since` and `until` (ISO; all without): each point's time, value, change, percentage, and how it was told (`update`, `forced`, `listing`)",
+      input: z.object({
+        company: z.string().optional(),
+        since: z.string().optional(),
+        until: z.string().optional(),
+      }),
+      output: z.record(z.string(), z.array(z.looseObject({ t: z.string(), value: z.number() }))),
+      run: (s, input: { company?: string; since?: string; until?: string }) =>
+        marketHistory(s, input),
+    },
+    investments: {
+      help: "A player's open investments (the owner's unless named), by company: what is invested, the value it was entered at, its worth as last told, and `now`, its worth at the company's latest value; none for a player the state does not know",
+      input: z.object({ player: z.string().optional() }),
+      output: z.record(z.string(), z.looseObject({ now: z.number().nullable() })).nullable(),
+      run: (s, input: { player?: string }) => investmentsOf(s, input.player),
     },
     trip: {
       help: 'A trip planned (the owner\'s unless a player is named) to a place, by its code: the way from where they are through the places known, and each step\'s level, the items it takes (one each, up or down alike) and those they are known to lack or not known to hold, the guardians it asks and whether one has been made at each (by anyone; a neutral place asks none of a ticket holder), and for a neutral place whether "Neutralizzato" holds (not asked of "Il Neutrale"); ok true, false, or none when it cannot be told. `at` (ISO) is when, now by default',

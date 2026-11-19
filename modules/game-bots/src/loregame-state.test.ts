@@ -60,6 +60,11 @@ describe('the loregame state', () => {
       'loregame.requirements',
       'loregame.gift',
       'loregame.neutral',
+      'loregame.market',
+      'loregame.investments',
+      'loregame.invest',
+      'loregame.cashout',
+      'loregame.company',
     ]);
   });
 

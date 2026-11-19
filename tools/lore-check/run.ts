@@ -3,7 +3,7 @@
  * (MegaBotTron1999's telegram-export `replay`, bot-os.md D131): its messages fed in time order on
  * the dev kit's clock, every chat they come from read by the parser, from every sender (as the
  * group's edge must be for every player to be named). Out come the parser's events as steps, for
- * the checks (checks.ts).
+ * the checks (checks.ts), and the state it left (for tools/market-seed).
  */
 import { type BusEvent, type Inbound } from '@megabottron1999/core';
 import { OWNER_ACCOUNT, replay } from '@megabottron1999/telegram-export/replay.ts';
@@ -55,6 +55,7 @@ export async function replayLore(
       steps: stepsOf(events),
       drift: { read: drift?.read ?? 0, unread: drift?.unread ?? 0 },
       name: o.name ?? ((p) => p),
+      state: run.read('loregame-state', 'get', {}),
     };
   } finally {
     await run.stop();

@@ -522,6 +522,55 @@ would count a gift twice that they also saw sent in the group). Its refusals (`F
 The state moves the items from the giver's inventory to the receiver's, or the coins from the one's
 `coins` to the other's; the receiver known whatever the case of their name.
 
+### 5.11 The market
+
+The "📈 Mercato Fazionario 📉" [M] quotes the companies the players make (`/creaazienda`: a name, an
+emoji, 1.000 ₭) and run (a leader, up to 20 members, of any faction). A company is named as the
+market writes it, its emoji included (`F.R.O.D.E. Capital Partners ⚖️`): its leader changes them at
+times (`⚖️`, `✡️ ⚖️`, `🩲💼 ⚖️` in September 2026), and each name is a company of its own, as a
+player renamed is. Every message of the market in the exports is read (615: 372 updates, 142
+markets, 54 investments, 27 withdrawals, 20 company pages):
+
+- **An update**, a message of the bot's own: `📈 Mercato Fazionario 📉 aggiornato!`, then a line a
+  company, `↗ <company>: <value> (<change>, <pct>%)`, its arrow the direction (`↗` up, `↘` down, `→`
+  flat), the change since the update before. Every 6 hours, at the same hours of the bot's clock
+  (Italy's: 22, 4, 10 and 16 UTC until the end of summer time, 23, 5, 11 and 17 after; 286 of the
+  exports'); and out of turn when its developer asks (`/aggiornaborsa`, `/aggiornamercato`, 60; a
+  player's is refused, "Questo comando è riservato allo sviluppatore.").
+- **The market**, `/mercato` or `/borsa`: `📈 Mercato Fazionario 📉`, the same lines (or
+  `Nessuna azienda quotata.`, and nothing more), then the asker's investments,
+  `I tuoi investimenti`, a line each, `> <company>: <n> ₭ investiti, valore <n> ₭ (<pct>%)`, and
+  `Totale investito`, `Valore attuale`; or `Non hai investimenti attivi.`
+- **An investment**, `/punta` or `/investi` `<n> <company>`: `Hai puntato <n> ₭ su <company>.`,
+  `Totale investito: <n> ₭ al valore iniziale <value>.`, `Ti rimangono <n> ₭.` One open a company:
+  another is refused (`Hai gia' una puntata aperta su questa azienda!`). An investment is worth what
+  is invested, times the company's value over the one it was entered at.
+- **A withdrawal**, `/riscuoti` or `/ritira`: of a part or of one,
+  `Hai riscosso <n> ₭ da <company>.`, `Incasso: <n> ₭ (<pct>%).`, and, for a part,
+  `Valore rimasto: <n> ₭.`; of all,
+  `Hai riscosso tutti gli investimenti dal 📈 Mercato Fazionario 📉.`, a line each,
+  `> <company>: <n> ₭ investiti, incasso <n> ₭`, and `Totale ritirato`, `Incasso totale`.
+- **A company's page**, `/azienda`: `Azienda <name> (<members>/<max>)`, `👑 <leader>`, `⚔️ <power>`,
+  `👥 <n> membri`, a line a member, `- <faction> <player> [L<level>] (<power> ⚔️)`,
+  `📈 Valore: <value>`, at times `Profilo: <profile>`. It names the company without its emoji.
+
+None of the answers replies to its command: each follows it within seconds, and the parser pairs it
+with the command waiting, as the accumulo's answers (§5.2); an update needs none. Their refusals
+(`Quantità non valida!`, `Non hai abbastanza soldi!`, `Azienda non trovata!`,
+`Troppe aziende trovate per …`, `Non hai investimenti in questa azienda!`, `Non sei in un'azienda!`)
+change nothing, and are not read. Numbers are written with the bot's thousands (`1.341`),
+percentages with a decimal point (`+9.25`).
+
+**`loregame.market`** carries the values of every update and market listed, anyone's: `via`
+(`update`, the bot's own; `forced`, one that answers its developer's command; `listing`) and
+`quotes` (each `company`, `value`, `change`, `pct`, `direction`). **`loregame.investments`** carries
+a player's open investments, as the market they asked for lists them (`positions`, each `company`,
+`invested`, `value`, `pct`; and `total`); **`loregame.invest`** an investment (`company`, `amount`,
+`invested`, `entry`, `coins`); **`loregame.cashout`** a withdrawal (`all`, and `positions`, each
+`company`, `amount` of what was invested, `cashed`, and what is `left` there at its value, none when
+all of it was taken): each with its `player` and `owner`. **`loregame.company`** carries a company's
+page, whoever asked.
+
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
 
@@ -578,6 +627,33 @@ It is a floor, not the truth, while the turns are all it reads:
 - **The guardians made** (§5.9, `guardians`, `state.guardians()`): by the code of a place a guardian
   is asked from, whether one has been made there, by anyone, as last told: a refusal's (`Hai già:`,
   or `Ti serve:`), whoever's, and an arrival's (all its place asks, made).
+- **The market** (§5.11, `market`), the first part of the state that is a series through time, not
+  only a value now:
+  - **Its latest values** (`quotes`, `state.market()`), the primary way to follow it: each company
+    by its name, emoji included, with its value, change, percentage and direction, how it was told
+    (`via`) and when.
+  - **Each company's series** (`series`, `state.marketHistory({ company?, since?, until? })`): a
+    point `{ t, value, change, pct, via }` for each update (`update`, the bot's own; `forced`, out
+    of turn), and for a market listed (`listing`) only when it shows a value the point before does
+    not. The same update heard twice is one point, a point told late takes its place by time, and a
+    company keeps its latest 3,000 (two years at four a day).
+  - **The bot's updates** (`schedule`): their interval, learned from their times, not from a clock
+    (the interval most seen among the latest twelve, to 5 minutes, once seen three times: 6 hours).
+    An update a whole number of intervals after the last (10 minutes either way) is on schedule, and
+    the ones between it and the last are **missed** (`missed`, ISO); one off it is out of turn,
+    `forced`, as its developer's are. The schedule moves with the bot's clock (summer time ended on
+    25 October 2026, and every update came an hour later in UTC): an update off it that the next one
+    follows by an interval starts it anew, and is relabelled `update`. `state.market()` gives the
+    `next` update due.
+  - **`loregame-state.marketUpdated`** announces each update, live: its `via` and its `quotes`.
+- **The companies** (`companies`): each one's page as last told (§5.11), by the name it gives
+  (without its emoji): its leader, members (each with their faction, level and power), power, value
+  and profile.
+- **Every player's investments** (`investments`, `state.investments({ player? })`): each open one,
+  by company, as an investment (its `invested` and `entry` value), a market listed to them (all of
+  them: the others are gone) and a withdrawal (what is left, or none) tell, and `now`, its worth at
+  the company's latest value. An investment sets their `coins` exactly (`Ti rimangono`); a
+  withdrawal adds what it cashed.
 - **Neutrality** (§5.9): a ticket used is gone from its player's inventory, and adds 10 hours to
   their `Neutralizzato` (in their `effects`, exact); its end, told the owner, takes it off, and
   moves them out of a neutral place to the same step of their faction's ladder, not exactly (their

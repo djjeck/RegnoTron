@@ -53,9 +53,9 @@ formatting. Address every error before marking a sub-task complete.
   long numbers that could be ids, and names, and run gitleaks:
   `docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 git /repo --no-banner -v`.
 - **Test data is synthetic.** Tests and fixtures are made up, never copied from a real chat, log or
-  export; tests never read real exports. `tools/lore-check` replays real exports through the plugins
-  on the owner's computer (its README): its input and its report are never committed, and its tests
-  use invented chats.
+  export; tests never read real exports. `tools/lore-check` and `tools/market-seed` replay real
+  exports through the plugins on the owner's computer (their READMEs): their input, report and seed
+  are never committed, and their tests use invented chats.
 - **No automation.** No module imports the shell's actors (`@megabottron1999/turns/player.ts` and
   `attention.ts`; ESLint refuses them), and nothing here sends a game command. A parser names its
   game's commands (its spec's `turnCommands` and `commands`, with their aliases), and a state their

@@ -5,6 +5,9 @@
   "description": "NorelecBot's game and the turns of the group's other game bots, as modules for MegaBotTron1999",
   "license": "MIT",
   "type": "module",
+  "imports": {
+    "#tools/*": "./tools/*"
+  },
   "workspaces": [
     "modules/*",
     "vendor/MegaBotTron1999/packages/*"
@@ -19,6 +22,7 @@
     "lint:fix": "eslint --fix .",
     "typecheck": "tsc",
     "lore-check": "node tools/lore-check/cli.ts",
+    "market-seed": "node tools/market-seed/cli.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "ci": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage",

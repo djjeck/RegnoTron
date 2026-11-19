@@ -46,6 +46,12 @@
  * A gift (`/give`, `/dai`, §5.10), paired with its giver as the accumulo's answers are, as
  * `loregame.gift`.
  *
+ * **The market** (docs/game-bots.md §5.11): every company's value, from each update (the bot's own,
+ * or one its developer forced) and each market listed, as `loregame.market`; and, paired with the
+ * player's command as the accumulo's answers are, the investments a listing shows them
+ * (`loregame.investments`), an investment (`loregame.invest`) and a withdrawal
+ * (`loregame.cashout`); and any company's page (`/azienda`), as `loregame.company`.
+ *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
  * - To the owner's turn, it is an outcome (`banned`, with its `until`), declared a refusal
@@ -78,6 +84,14 @@ import { BanWatch } from '#src/bans.ts';
 import { parseEquip } from '#src/equipment.ts';
 import { GiftWatch } from '#src/gifts.ts';
 import { pageOf, parseInventory } from '#src/inventory.ts';
+import {
+  CASHOUT_COMMANDS,
+  ForcedWatch,
+  INVEST_COMMANDS,
+  MARKET_COMMANDS,
+  MarketWatch,
+  parseMarket,
+} from '#src/market.ts';
 import { parseNeutrality, parseTravel, placeRequirements, type Requirements } from '#src/places.ts';
 import { PlayerWatch } from '#src/players.ts';
 import { parseProfile } from '#src/profile.ts';
@@ -151,6 +165,12 @@ export const TRAINING_EVENT = `${LOREGAME_PARSER}.training`;
 /** The events of every player's turns and `/accumulo`, the owner's included (§6.1). */
 export const PLAYER_TURN_EVENT = `${LOREGAME_PARSER}.playerTurn`;
 export const PLAYER_ACCUMULO_EVENT = `${LOREGAME_PARSER}.playerAccumulo`;
+/** The market's events (§5.11): the values; a player's investments, investment, withdrawal; a company. */
+export const MARKET_EVENT = `${LOREGAME_PARSER}.market`;
+export const INVESTMENTS_EVENT = `${LOREGAME_PARSER}.investments`;
+export const INVEST_EVENT = `${LOREGAME_PARSER}.invest`;
+export const CASHOUT_EVENT = `${LOREGAME_PARSER}.cashout`;
+export const COMPANY_EVENT = `${LOREGAME_PARSER}.company`;
 /** The store's document of the bans it knows. */
 const BANS_DOC = 'bans';
 
@@ -463,6 +483,98 @@ const equipmentEvent = z
   })
   .describe("What @LoreGameBot's answer to a player's /equipaggia changed, or listed");
 
+const back = z.literal(true).optional().describe('Read from history, not news: act on none');
+const quote = z.object({
+  company: z.string().describe('As the market names it, its emoji included'),
+  value: z.number(),
+  change: z.number().describe('Since the update before'),
+  pct: z.number(),
+  direction: z.enum(['up', 'down', 'flat']),
+});
+const marketEvent = z
+  .object({
+    chat: z.string(),
+    via: z
+      .enum(['update', 'forced', 'listing'])
+      .describe("The bot's own update, one its developer forced, or a market listed to a player"),
+    quotes: z.array(quote),
+    playback: back,
+  })
+  .describe("The market's values, as @LoreGameBot quoted them");
+const investmentsEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    positions: z
+      .array(
+        z.object({ company: z.string(), invested: z.number(), value: z.number(), pct: z.number() })
+      )
+      .describe('Every investment they have open; none: `[]`'),
+    total: z
+      .object({ invested: z.number(), value: z.number(), pct: z.number() })
+      .nullable()
+      .describe('Their totals; none with nothing open'),
+    playback: back,
+  })
+  .describe("A player's open investments, as the market listed them to them (/mercato, /borsa)");
+const investEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    company: z.string(),
+    amount: z.number().describe('Put in now'),
+    invested: z.number().describe('All they have in it now'),
+    entry: z.number().describe('The value it was entered at'),
+    coins: z.number().describe('What they have left'),
+    playback: back,
+  })
+  .describe("A player's investment (/punta, /investi), as @LoreGameBot answered it");
+const cashoutEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    all: z.boolean().describe('Every investment withdrawn at once'),
+    positions: z
+      .array(
+        z.object({
+          company: z.string(),
+          amount: z.number().describe('Of what was invested'),
+          cashed: z.number(),
+          left: z
+            .number()
+            .nullable()
+            .describe('What is still invested there, at its value; none: all taken'),
+        })
+      )
+      .describe('Each investment withdrawn'),
+    playback: back,
+  })
+  .describe("A player's withdrawal (/riscuoti, /ritira), as @LoreGameBot answered it");
+const companyEvent = z
+  .object({
+    chat: z.string(),
+    name: z.string().describe('As its page names it: without its emoji'),
+    size: z.number(),
+    max: z.number(),
+    leader: z.string(),
+    power: z.number().describe('Its combat level, its members summed'),
+    members: z.array(
+      z.object({
+        player: z.string(),
+        faction: z.string().describe('Its emoji: 😇, 👿, 👤'),
+        level: z.number(),
+        power: z.number(),
+      })
+    ),
+    value: z.number(),
+    profile: z.string().nullable(),
+    playback: back,
+  })
+  .describe("A company's page (/azienda), as @LoreGameBot showed it");
+
 const playerTurnEvent = z
   .object({
     chat: z.string(),
@@ -538,6 +650,11 @@ export const loregamePlugin: Plugin = {
       [REQUIREMENTS_EVENT]: requirementsEvent,
       [PLAYER_TURN_EVENT]: playerTurnEvent,
       [PLAYER_ACCUMULO_EVENT]: playerAccumuloEvent,
+      [MARKET_EVENT]: marketEvent,
+      [INVESTMENTS_EVENT]: investmentsEvent,
+      [INVEST_EVENT]: investEvent,
+      [CASHOUT_EVENT]: cashoutEvent,
+      [COMPANY_EVENT]: companyEvent,
     },
     // The ban comes first: any other outcome of a turn is an `ok`.
     answers: [
@@ -617,6 +734,75 @@ export const loregamePlugin: Plugin = {
     };
     const trained = new TrainingWatch(LOREGAMEBOT);
     const gifts = new GiftWatch(LOREGAMEBOT);
+    const marketAsked = new MarketWatch(LOREGAMEBOT, MARKET_COMMANDS, ['market']);
+    const invests = new MarketWatch(LOREGAMEBOT, INVEST_COMMANDS, ['invest']);
+    const cashouts = new MarketWatch(LOREGAMEBOT, CASHOUT_COMMANDS, ['cashout', 'cashout-all']);
+    const forced = new ForcedWatch(LOREGAMEBOT);
+    /**
+     * The market (§5.11): every message heard by each watch (a player's command waits; the bot's
+     * answer is paired); the values quoted, anyone's; what is a player's, theirs.
+     */
+    const market = (m: Inbound, self: string | undefined): void => {
+      const old = m.playback ? { playback: true as const } : {};
+      const listed = marketAsked.answer(m, self);
+      const invested = invests.answer(m, self);
+      const cashed = cashouts.answer(m, self);
+      const force = forced.answer(m, self);
+      if (m.own === true || m.sender.toLowerCase() !== LOREGAMEBOT.toLowerCase()) return;
+      const r = parseMarket(m.text);
+      if (r === undefined) return;
+      const who = (a: { player: string; owner: boolean } | undefined) =>
+        a === undefined || a.player === '' ? undefined : { player: a.player, owner: a.owner };
+      if (r.kind === 'update' || r.kind === 'market') {
+        if (r.quotes.length > 0)
+          ctx.bus.publish(
+            MARKET_EVENT,
+            {
+              chat: m.chat,
+              via: r.kind === 'market' ? 'listing' : force === undefined ? 'update' : 'forced',
+              quotes: r.quotes,
+              ...old,
+            },
+            m.time
+          );
+        const of = who(listed);
+        if (r.kind === 'market' && r.positions !== null && of !== undefined)
+          ctx.bus.publish(
+            INVESTMENTS_EVENT,
+            { chat: m.chat, ...of, positions: r.positions, total: r.total, ...old },
+            m.time
+          );
+        return;
+      }
+      if (r.kind === 'invest') {
+        const of = who(invested);
+        if (of === undefined) return;
+        const { kind: _, ...made } = r;
+        ctx.bus.publish(INVEST_EVENT, { chat: m.chat, ...of, ...made, ...old }, m.time);
+        return;
+      }
+      if (r.kind === 'cashout' || r.kind === 'cashout-all') {
+        const of = who(cashed);
+        if (of === undefined) return;
+        const positions =
+          r.kind === 'cashout'
+            ? [{ company: r.company, amount: r.amount, cashed: r.cashed, left: r.left }]
+            : r.positions.map((p) => ({
+                company: p.company,
+                amount: p.invested,
+                cashed: p.cashed,
+                left: null,
+              }));
+        ctx.bus.publish(
+          CASHOUT_EVENT,
+          { chat: m.chat, ...of, all: r.kind === 'cashout-all', positions, ...old },
+          m.time
+        );
+        return;
+      }
+      const { kind: _, ...page } = r;
+      ctx.bus.publish(COMPANY_EVENT, { chat: m.chat, ...page, ...old }, m.time);
+    };
     chat.onMessage((m) => {
       const old = m.playback ? { playback: true as const } : {};
       // While an owner's /accumulo or /allenati waits for its answer, each message of the bot's in
@@ -682,6 +868,7 @@ export const loregamePlugin: Plugin = {
           m.time
         );
       }
+      market(m, self);
       // A gift, its giver's (the answer names the receiver alone, and replies to nothing, §5.10).
       const gift = gifts.answer(m, self);
       if (gift !== undefined) {
@@ -809,6 +996,7 @@ export const loregamePlugin: Plugin = {
             asked.sent(sent);
             trained.sent(sent);
             gifts.sent(sent);
+            for (const w of [marketAsked, invests, cashouts]) w.sent(sent);
             if (asked.isCommand(sent.command ?? '') || trained.isCommand(sent.command ?? ''))
               ctx.log.info(
                 `waits for the answer to ${sent.command} #${sent.id ?? '?'} in ${sent.chat}`

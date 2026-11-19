@@ -46,6 +46,7 @@ describe('the loregame-state node', () => {
       'loregame-state.accumuloUsed',
       'loregame-state.statsDrift',
       'loregame-state.accumuloDrift',
+      'loregame-state.marketUpdated',
     ]);
     expect(Object.keys(m.interface.state ?? {})).toEqual([
       'get',
@@ -59,6 +60,9 @@ describe('the loregame-state node', () => {
       'inventory',
       'places',
       'guardians',
+      'market',
+      'marketHistory',
+      'investments',
       'trip',
       'holders',
       'count',
@@ -355,6 +359,11 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.requirements',
       'loregame.playerTurn',
       'loregame.playerAccumulo',
+      'loregame.market',
+      'loregame.investments',
+      'loregame.invest',
+      'loregame.cashout',
+      'loregame.company',
     ]);
   });
 
@@ -1917,5 +1926,211 @@ describe('gifts, as /give and /dai answer', () => {
       { player: 'alice', qty: 1, exact: true },
     ]);
     await run.core.stop();
+  });
+});
+
+describe('the market, every company’s and every player’s (§5.11)', () => {
+  // Invented companies and players; the bot's own words are the game's.
+  const UPDATE = (pinco: number, change: string) =>
+    `📈 Mercato Fazionario 📉 aggiornato!\n\n${change.startsWith('-') ? '↘' : change === '0' ? '→' : '↗'} Pinco Spa 🍕: ${pinco} (${change}, ${change}.00%)\n→ Tizio Srl: 50 (0, 0.00%)`;
+  const PROFILE = (player: string, coins: number) =>
+    [
+      `👤 ${player}`,
+      '',
+      '👥 Pinco Spa',
+      '',
+      'Livello 4 (500 ⚔️)',
+      '▓░░░░░░░░░ 6.20%',
+      '',
+      'Il Bene 😇',
+      'Episodio 100',
+      '0 Ricette completate',
+      `${coins} ₭`,
+      '',
+      'Armatura 🛡 - (vuoto)',
+      'Amuleto 🩺 - (vuoto)',
+      'Arma 🗡 - (vuoto)',
+    ].join('\n');
+
+  it('keeps each company’s value and series, its updates’ schedule, and every player’s investments', async () => {
+    const run = await bootState(path.join(dir, 'market'), { group: true });
+    const HOUR = 60 * MIN;
+    // Four updates of the bot's own, six hours apart: the interval learned.
+    for (const [i, v] of [100, 104, 102, 108].entries()) {
+      if (i > 0) run.clock.advance(6 * HOUR);
+      await run.group('LoreGameBot', UPDATE(v, i === 0 ? '0' : '+2'));
+    }
+    // One its developer forces out of turn, then the next on schedule, two later: one missed.
+    run.clock.advance(HOUR);
+    await run.group('carol', '/aggiornaborsa');
+    await run.group('LoreGameBot', UPDATE(110, '+2'));
+    run.clock.advance(11 * HOUR);
+    await run.group('LoreGameBot', UPDATE(97, '-13'));
+    const market = run.read('market') as {
+      quotes: Record<string, { value: number; via: string; direction: string }>;
+      schedule: { period_min: number; missed: string[]; next: string };
+    };
+    expect(market.quotes['Pinco Spa 🍕']).toMatchObject({
+      value: 97,
+      via: 'update',
+      direction: 'down',
+    });
+    expect(market.schedule.period_min).toBe(360);
+    expect(market.schedule.missed).toEqual([new Date(T0 + 24 * HOUR).toISOString()]);
+    expect(market.schedule.next).toBe(new Date(T0 + 36 * HOUR).toISOString());
+    const history = run.read('marketHistory', { company: 'Pinco Spa 🍕' }) as Record<
+      string,
+      { value: number; via: string }[]
+    >;
+    expect(history['Pinco Spa 🍕']?.map((p) => [p.value, p.via])).toEqual([
+      [100, 'update'],
+      [104, 'update'],
+      [102, 'update'],
+      [108, 'update'],
+      [110, 'forced'],
+      [97, 'update'],
+    ]);
+    expect(Object.keys(run.read('marketHistory') as object)).toEqual(['Pinco Spa 🍕', 'Tizio Srl']);
+    expect(run.of('loregame-state.marketUpdated').map((e) => e['via'])).toEqual([
+      'update',
+      'update',
+      'update',
+      'update',
+      'forced',
+      'update',
+    ]);
+    // bob, known by a profile with his coins: his investment, and his market listed to him.
+    await run.group('LoreGameBot', PROFILE('bob', 300));
+    await run.group('bob', '/punta 100 pinco');
+    await run.group(
+      'LoreGameBot',
+      'Hai puntato 100 ₭ su Pinco Spa 🍕.\nTotale investito: 100 ₭ al valore iniziale 97.\nTi rimangono 200 ₭.'
+    );
+    run.clock.advance(MIN);
+    await run.group('bob', '/borsa');
+    await run.group(
+      'LoreGameBot',
+      '📈 Mercato Fazionario 📉\n\n↗ Pinco Spa 🍕: 99 (+2, +2.06%)\n→ Tizio Srl: 50 (0, 0.00%)\n\nI tuoi investimenti\n> Pinco Spa 🍕: 100 ₭ investiti, valore 102 ₭ (+2.06%)\n\nTotale investito: 100 ₭\nValore attuale: 102 ₭ (+2.06%)'
+    );
+    expect(run.read('investments', { player: 'bob' })).toEqual({
+      'Pinco Spa 🍕': {
+        invested: 100,
+        entry: 97,
+        value: 102,
+        now: 102,
+        as_of: new Date(run.clock.now()).toISOString(),
+      },
+    });
+    expect(run.read('stat', { player: 'bob', stat: 'coins' })).toMatchObject({
+      value: 200,
+      exact: true,
+    });
+    // The listing's value is a point of its own; it announces no update.
+    expect(
+      (run.read('marketHistory', { company: 'Pinco Spa 🍕' }) as Record<string, { via: string }[]>)[
+        'Pinco Spa 🍕'
+      ]?.at(-1)
+    ).toMatchObject({ value: 99, via: 'listing' });
+    expect(run.of('loregame-state.marketUpdated')).toHaveLength(6);
+    // A part withdrawn, then all of it.
+    await run.group('bob', '/riscuoti 40 pinco');
+    await run.group(
+      'LoreGameBot',
+      'Hai riscosso 40 ₭ da Pinco Spa 🍕.\nIncasso: 41 ₭ (+2.06%).\nValore rimasto: 61 ₭.'
+    );
+    expect(run.read('investments', { player: 'bob' })).toMatchObject({
+      'Pinco Spa 🍕': { invested: 60, entry: 97, value: 61 },
+    });
+    await run.group('bob', '/ritira');
+    await run.group(
+      'LoreGameBot',
+      'Hai riscosso tutti gli investimenti dal 📈 Mercato Fazionario 📉.\n\n> Pinco Spa 🍕: 60 ₭ investiti, incasso 61 ₭\n\nTotale ritirato: 60 ₭\nIncasso totale: 61 ₭ (+1.67%)'
+    );
+    expect(run.read('investments', { player: 'bob' })).toEqual({});
+    expect(run.read('stat', { player: 'bob', stat: 'coins' })).toMatchObject({ value: 302 });
+    // A company's page, as it names it; and an answer no one waits for is no one's.
+    await run.group(
+      'LoreGameBot',
+      'Azienda Pinco Spa (1/20)\n\n👑 bob\n\n⚔️ 500\n\n👥 1 membri\n\n- 😇 bob [L4] (500 ⚔️)\n\n📈 Valore: 99'
+    );
+    expect(run.read('get', { path: 'companies' })).toMatchObject({
+      'Pinco Spa': { leader: 'bob', members: [{ player: 'bob', faction: '😇' }], value: 99 },
+    });
+    await run.group(
+      'LoreGameBot',
+      'Hai puntato 5 ₭ su Tizio Srl.\nTotale investito: 5 ₭ al valore iniziale 50.\nTi rimangono 0 ₭.'
+    );
+    expect(run.of('loregame.invest')).toHaveLength(1);
+    expect(run.read('investments', { player: 'nobody' })).toBeNull();
+    await run.core.stop();
+  });
+
+  it('keeps history played back, and announces none of it; an empty market quotes nothing', async () => {
+    const run = await bootState(path.join(dir, 'market-back'), { group: true });
+    await run.bot(UPDATE(100, '0'), { playback: true });
+    await run.bot('📈 Mercato Fazionario 📉\n\nNessuna azienda quotata.');
+    expect(run.of('loregame.market')).toMatchObject([{ playback: true, via: 'update' }]);
+    expect(run.read('marketHistory')).toMatchObject({ 'Pinco Spa 🍕': [{ value: 100 }] });
+    expect(run.of('loregame-state.marketUpdated')).toEqual([]);
+    // The owner's market, in private: theirs, though no command was heard.
+    await run.bot(
+      '📈 Mercato Fazionario 📉\n\n→ Tizio Srl: 50 (0, 0.00%)\n\nNon hai investimenti attivi.'
+    );
+    expect(run.of('loregame.investments')).toMatchObject([{ owner: true, positions: [] }]);
+    await run.core.stop();
+  });
+
+  it('takes the market, the companies and the investments from a seed, if one is kept (0.35.0)', async () => {
+    const dir2 = path.join(dir, 'v15');
+    const run = await bootState(dir2, { group: true });
+    await run.group('LoreGameBot', PROFILE('bob', 10));
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    // As 0.34.0 kept it: no market, no companies, no investments.
+    delete kept.state.market;
+    delete kept.state.companies;
+    delete kept.state.players.bob.investments;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    const point = { t: '2026-05-18T16:00:00.000Z', value: 100, change: 0, pct: 0, via: 'update' };
+    fs.writeFileSync(
+      path.join(docs, 'market-seed.json'),
+      JSON.stringify({
+        market: {
+          as_of: point.t,
+          quotes: {
+            'Pinco Spa 🍕': {
+              value: 100,
+              change: 0,
+              pct: 0,
+              direction: 'flat',
+              via: 'update',
+              as_of: point.t,
+            },
+          },
+          series: { 'Pinco Spa 🍕': [point] },
+          schedule: { last: point.t, period_min: null, gaps_min: [], missed: [], pending: null },
+        },
+        companies: {},
+        players: {
+          bob: {
+            investments: {
+              'Pinco Spa 🍕': { invested: 10, entry: 100, value: 10, as_of: point.t },
+            },
+          },
+          carol: { investments: {} },
+        },
+      })
+    );
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 14 }));
+    const again = await bootState(dir2, { group: true });
+    expect(again.read('marketHistory')).toEqual({ 'Pinco Spa 🍕': [point] });
+    expect(again.read('investments', { player: 'bob' })).toMatchObject({
+      'Pinco Spa 🍕': { invested: 10, now: 10 },
+    });
+    expect(again.read('investments', { player: 'carol' })).toEqual({});
+    expect(again.read('stat', { player: 'bob', stat: 'coins' })).toMatchObject({ value: 10 });
+    await again.core.stop();
   });
 });
