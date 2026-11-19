@@ -22,7 +22,10 @@ const place = (
 });
 const stat = (value: unknown, exact = true) => ({ value, exact, as_of: AT });
 
-/** A state: alice at `at`, level 3, holding `held` (listed whole, unless not), with these effects. */
+/**
+ * A state: alice at `at`, level 3, holding `held` (listed whole, unless not), with these effects;
+ * the guardians made (by anyone) as `guardians`.
+ */
 function state(o: {
   at?: string | null;
   held?: Record<string, { qty: number; exact?: boolean }>;
@@ -53,7 +56,6 @@ function state(o: {
     players: {
       alice: {
         ...p,
-        guardians: o.guardians ?? {},
         stats: {
           level: stat(3),
           location: stat(o.at === null ? null : { name: o.at ?? 'B1', code: o.at ?? 'B1' }),
@@ -72,6 +74,7 @@ function state(o: {
       M1: place('L’Inferno', 1, []),
       X: place('Altrove', null, []),
     },
+    guardians: o.guardians ?? {},
   };
 }
 
@@ -143,7 +146,7 @@ describe('a trip', () => {
     });
   });
 
-  it('checks a guardian asked against those the player is known to have', () => {
+  it('checks a guardian asked against those known made, by anyone', () => {
     const at = (guardians?: Record<string, boolean>) =>
       tripOf(
         state({
@@ -161,6 +164,19 @@ describe('a trip', () => {
     expect(at({ N1: false })).toMatchObject({ ok: false, steps: [{ guardians_ok: false }] });
     expect(at()).toMatchObject({ ok: null, steps: [{ guardians_ok: null }] });
     expect(tripOf(state({}), 'B2', NOW).steps[0]).toMatchObject({ guardians_ok: null });
+    // A neutral place asks none of a faction's player, there with a ticket.
+    expect(
+      tripOf(
+        state({
+          at: 'N1',
+          alignment: 'Bene',
+          guardians: { N1: false },
+          effects: [{ name: 'Neutralizzato', until: null }],
+        }),
+        'N2',
+        NOW
+      )
+    ).toMatchObject({ ok: true, steps: [{ guardians: [], guardians_ok: null, neutral: false }] });
   });
 
   it('asks no ticket of a player of "Il Neutrale" for the neutral ladder', () => {

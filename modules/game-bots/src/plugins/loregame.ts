@@ -362,7 +362,9 @@ const travelEvent = z
         met: z
           .array(z.string())
           .nullable()
-          .describe('refused: the guardians the player has ("Hai già:"); none if not told'),
+          .describe(
+            'refused: the guardians already made, by anyone ("Hai già:"); none if not told'
+          ),
       })
       .nullable()
       .optional()
@@ -382,7 +384,9 @@ const requirementsEvent = z
     items: z.array(requiredItem).describe('The items it takes at the arrival, one each'),
     guardians: z
       .array(z.string())
-      .describe('"Almeno un guardiano [generato da] [<code>]": a condition, consumed by none'),
+      .describe(
+        '"Almeno un guardiano [generato da] [<code>]": one made there by anyone, consumed by none'
+      ),
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("A place's requirements, wherever @LoreGameBot states them");

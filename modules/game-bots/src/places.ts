@@ -18,9 +18,10 @@
  *
  * An item's name may run over several lines (players write them): it ends at the line that ends in
  * its rarity and tags. A requirement may be no item but a condition: "Almeno un guardiano [generato
- * da] [<code>]", a guardian the player made at that place (`/generaguardiano`, with a "generatore di
- * guardiani", standing there) [M]; listed under "Hai già:" once they have one, and entering does not
- * consume it. The making itself is confirmed by a button, and is not read.
+ * da] [<code>]", a guardian made at that place by anyone (`/generaguardiano`, with a "generatore di
+ * guardiani", standing there; a faction's places only) [M]; listed under "Hai già:" once one is, for
+ * every player, and entering does not consume it. A neutral place does not ask it of a faction's
+ * player [M]. The making itself is confirmed by a button, and is not read.
  *
  * **Neutrality** (the ticket, "un biglietto neutralizzante 🎫", `/usa`): "<username>, prendi il
  * biglietto ma ti sbriciola in mano! … perché hai perso colore?", a message of its own, naming its
@@ -39,9 +40,9 @@ export interface Place {
 
 /**
  * What entering a place takes: a level, and items, one each, consumed at the arrival; and the
- * places a guardian must have been made from (`guardians`), which nothing consumes. A refusal
- * splits them, for its player, into what they lack ("Ti serve:") and what they hold ("Hai già:"):
- * `met` is the guardians they hold, none where the block is not split.
+ * places a guardian must have been made at (`guardians`, by anyone), which nothing consumes. A
+ * refusal splits them, for its player, into what they lack ("Ti serve:") and what they hold ("Hai
+ * già:"): `met` is the guardians already made, none where the block is not split.
  */
 export interface Requirements {
   level: number | null;

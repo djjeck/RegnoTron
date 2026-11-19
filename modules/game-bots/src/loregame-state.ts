@@ -400,11 +400,6 @@ const player = z.object({
       })
     )
     .describe('Their equippable items seen, by name: the slot each goes in, and its level range'),
-  guardians: z
-    .record(z.string(), z.boolean())
-    .describe(
-      'The places a place asks a guardian of theirs from ("Almeno un guardiano generato da"), by code: they have one or not, as last told'
-    ),
   stats_drift: z
     .array(
       z.object({
@@ -451,7 +446,7 @@ export const stateSchema = z.object({
         guardians: z
           .array(z.string())
           .describe(
-            'The places a guardian of the player must come from: a condition, not consumed'
+            'The places a guardian must have been made at, by anyone: a condition, not consumed'
           ),
         exits: z
           .array(z.object({ name: z.string(), code: z.string() }))
@@ -461,6 +456,11 @@ export const stateSchema = z.object({
     )
     .describe(
       "The game's places, by code: what entering each takes, and where one can go from it (as last told)"
+    ),
+  guardians: z
+    .record(z.string(), z.boolean())
+    .describe(
+      'Guardians made: by the code of a place a guardian is asked from, whether one has been made there (by anyone), as last told'
     ),
 });
 
@@ -495,6 +495,7 @@ export function initialState(): LoreState {
     players: {},
     inventory: initialInventory(),
     places: {},
+    guardians: {},
   };
 }
 
@@ -523,7 +524,6 @@ export function initialPlayer(at: string): Player {
     inventory: initialInventory(),
     listing: null,
     gear: {},
-    guardians: {},
     stats_drift: [],
   };
 }
@@ -1441,7 +1441,8 @@ function placeIn(s: LoreState, place: { name: string; code: string }): PlaceStat
  * entering consumed, as the bot lists them, one each; a place's requirements, wherever the bot
  * states them, and where one can go from it, are the game's (`places`). Entering takes the place's
  * items whichever way one comes, up or down [M]: what an arrival consumed is what the place takes
- * now, none if it consumed none.
+ * now, none if it consumed none. A guardian a place asks is one made at another, by anyone
+ * (`guardians`): a refusal tells which are made, an arrival that all were.
  */
 function reducePlaces(state: LoreState, e: BusEvent): LoreState {
   const at = asIso(e.t);
@@ -1470,8 +1471,8 @@ function reducePlaces(state: LoreState, e: BusEvent): LoreState {
   if (!r.success || r.data.player === '') return state;
   const d = r.data;
   let s = state;
-  // The guardians a player has: a refusal tells, of those its place asks, which ("Hai già:"); an
-  // arrival, that they had all the place asked (none consumed).
+  // The guardians made, by anyone [M]: a refusal tells, of those its place asks, which are
+  // ("Hai già:") and which not yet ("Ti serve:"); an arrival, that all the place asked were.
   const asked =
     d.kind === 'refused'
       ? (d.requirements?.guardians ?? [])
@@ -1479,15 +1480,15 @@ function reducePlaces(state: LoreState, e: BusEvent): LoreState {
         ? placeIn(s, d.place).guardians
         : [];
   const met = d.kind === 'refused' ? d.requirements?.met : asked;
-  if (asked.length > 0 && met !== null && met !== undefined) {
-    const p = playerOf(s, d.player) ?? initialPlayer(at);
+  if (asked.length > 0 && met !== null && met !== undefined)
     // Codes, as the bot writes them (`[A-Z]+\d*`): no key of Object's.
-    const guardians = {
-      ...p.guardians,
-      ...Object.fromEntries(asked.map((g) => [g, met.includes(g)])),
+    s = {
+      ...s,
+      guardians: {
+        ...s.guardians,
+        ...Object.fromEntries(asked.map((g) => [g, met.includes(g)])),
+      },
     };
-    s = { ...s, players: { ...s.players, [d.player]: { ...p, as_of: at, guardians } } };
-  }
   if (d.kind === 'refused') return s;
   if (d.kind === 'here' && d.exits !== undefined) {
     const was = placeIn(s, d.place);
@@ -1710,6 +1711,10 @@ function reduceNeutral(state: LoreState, e: BusEvent): LoreState {
 
 /** Every place the state knows of, by code. */
 export const placesOf = (s: LoreState): LoreState['places'] => s.places;
+
+/** Whether a guardian has been made at the place `code`, by anyone; none if never told. */
+export const guardianMade = (s: LoreState, code: string): boolean | null =>
+  Object.hasOwn(s.guardians, code) ? (s.guardians[code] ?? null) : null;
 
 /** What an inventory listing event says (the parser's `loregame.inventory`). */
 const listingSchema = z.looseObject({

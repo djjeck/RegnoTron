@@ -36,8 +36,9 @@
  *   profile that says otherwise of a stat held exactly is announced as `loregame-state.statsDrift`.
  * - **Inventories and places:** `state.inventory({ player? })` and `state.holders({ item })`
  *   (every player's items, and who holds one); `state.places()` (each place's level, items and
- *   guardians asked, and its exits; each player's guardians, as told) and `state.trip({ to, player?, at? })` (a trip planned before it
- *   is made: its way, and what each step takes of the player, src/trips.ts).
+ *   guardians asked, and its exits), `state.guardians()` (the places a guardian has been made at,
+ *   by anyone, as told) and `state.trip({ to, player?, at? })` (a trip planned before it is made:
+ *   its way, and what each step takes of the player, src/trips.ts).
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -366,6 +367,32 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.32.0 knows a guardian asked is one made by anyone, not by the player [M]: the guardians
+    // made kept by place, those each player was told folded in (one made if any was told so).
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined) return;
+      const players = (kept.state['players'] ?? {}) as Record<string, Record<string, unknown>>;
+      const made: Record<string, boolean> = {};
+      for (const p of Object.values(players))
+        for (const [code, had] of Object.entries((p['guardians'] ?? {}) as Record<string, boolean>))
+          Object.defineProperty(made, code, {
+            value: had || (Object.hasOwn(made, code) && made[code] === true),
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          guardians: { ...made, ...((kept.state['guardians'] ?? {}) as Record<string, boolean>) },
+          players: Object.fromEntries(
+            Object.entries(players).map(([name, { guardians: _, ...p }]) => [name, p])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -389,7 +416,7 @@ const base = statePlugin<Kept>({
       run: (s): Accumulo => accumuloOf(s),
     },
     player: {
-      help: 'A player as the turns and answers the account reads tell (by username): their name and level in the game, their turns seen and unseen, their rest, their accumulo, their trainings, the XP seen and their level-ups, the guardians they are known to have or not; none if never heard of',
+      help: 'A player as the turns and answers the account reads tell (by username): their name and level in the game, their turns seen and unseen, their rest, their accumulo, their trainings, the XP seen and their level-ups; none if never heard of',
       input: z.object({ name: z.string() }),
       output: z.looseObject({ turns: z.number(), unseen: z.number() }).nullable(),
       run: (s, input: { name: string }) => playerOf(s, input.name),
@@ -422,8 +449,13 @@ const base = statePlugin<Kept>({
       output: z.record(z.string(), z.looseObject({ name: z.string() })),
       run: (s) => placesOf(s),
     },
+    guardians: {
+      help: 'The guardians made, by the code of the place a guardian is asked from ("Almeno un guardiano generato da"): whether one has been made there by anyone, as last told',
+      output: z.record(z.string(), z.boolean()),
+      run: (s) => s.guardians,
+    },
     trip: {
-      help: 'A trip planned (the owner\'s unless a player is named) to a place, by its code: the way from where they are through the places known, and each step\'s level, the items it takes (one each, up or down alike) and those they are known to lack or not known to hold, the guardians it asks and whether they have them, and for a neutral place whether "Neutralizzato" holds (not asked of "Il Neutrale"); ok true, false, or none when it cannot be told. `at` (ISO) is when, now by default',
+      help: 'A trip planned (the owner\'s unless a player is named) to a place, by its code: the way from where they are through the places known, and each step\'s level, the items it takes (one each, up or down alike) and those they are known to lack or not known to hold, the guardians it asks and whether one has been made at each (by anyone; a neutral place asks none of a ticket holder), and for a neutral place whether "Neutralizzato" holds (not asked of "Il Neutrale"); ok true, false, or none when it cannot be told. `at` (ISO) is when, now by default',
       input: z.object({ to: z.string(), player: z.string().optional(), at: z.string().optional() }),
       output: z.looseObject({ to: z.string(), ok: z.boolean().nullable() }),
       run: (s, input: { to: string; player?: string; at?: string }) =>

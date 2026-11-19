@@ -8,17 +8,24 @@
  * - **Each place entered takes its items**, one each, whichever way one comes, up or down; the bot
  *   refuses a player who lacks one (or the level), going down too. A place's items change as the
  *   players generate (a requirement added for a faction's place), so each is as last told.
- * - **A guardian asked** ("Almeno un guardiano [generato da] [<code>]") is one the player made at
- *   that place, and is not consumed: checked against what the state was last told of theirs (a
- *   refusal's "Hai già:", an arrival there), not known otherwise.
+ * - **A guardian asked** ("Almeno un guardiano [generato da] [<code>]") is one made at that place by
+ *   anyone (`/generaguardiano`, there), and is not consumed: checked against what the state was last
+ *   told (a refusal's "Hai già:" or "Ti serve:", an arrival there), not known otherwise. A neutral
+ *   place does not ask it of a faction's player (with a ticket) [M].
  * - **The ladders:** each place leads to the next and the one before of its own ladder (`M3` to
  *   `M2` and `M4`); some neutral places (`N1`, `N2`, …) to the same step of the factions' ladders.
  *   The exits the bot lists (`/v`) are kept; a ladder's next step is assumed where none were told.
- *   A sideways step takes its place's items as any other (`N10` to `M10` took all of `M10`'s).
+ *   A sideways step takes its place's items as any other.
  * - **A neutral place** is open to a player of a faction only while "Neutralizzato" lasts (a
  *   ticket); to one of "Il Neutrale", the neutral ladder is their own.
  */
-import { inventoryOfPlayer, type LoreState, placesOf, statOf } from '#src/loregame-state.ts';
+import {
+  guardianMade,
+  inventoryOfPlayer,
+  type LoreState,
+  placesOf,
+  statOf,
+} from '#src/loregame-state.ts';
 import { ladderOf, NEUTRAL_EFFECT } from '#src/places.ts';
 
 /** An item a step takes, as the place lists it. */
@@ -39,9 +46,9 @@ export interface TripStep {
   missing: TripItem[];
   /** Of those, the ones the state cannot tell they hold (an inventory not listed, or not exact). */
   unsure: TripItem[];
-  /** The places a guardian of theirs must come from. */
+  /** The places a guardian must have been made at, as asked of this player. */
   guardians: string[];
-  /** They have each; none if one is not known (or none is asked). */
+  /** One has been made at each; none if one is not known (or none is asked). */
   guardians_ok: boolean | null;
   /** A neutral place entered from a faction's, by a faction's player: "Neutralizzato" must hold. */
   neutral: boolean;
@@ -120,9 +127,6 @@ export function tripOf(s: LoreState, to: string, now: number, player?: string): 
           : []
         ).some((f) => f.name === NEUTRAL_EFFECT && (f.until === null || Date.parse(f.until) > now));
   const own = stat('alignment')?.value === 'Neutrale';
-  const them = name === null || !Object.hasOwn(s.players, name) ? undefined : s.players[name];
-  const has = (g: string): boolean | undefined =>
-    them === undefined || !Object.hasOwn(them.guardians, g) ? undefined : them.guardians[g];
   const inv = name === null ? null : inventoryOfPlayer(s, player);
   const used = new Map<string, number>();
   let prev = from;
@@ -141,12 +145,12 @@ export function tripOf(s: LoreState, to: string, now: number, player?: string): 
       if (left >= 1 && (h?.exact ?? false)) continue;
       (sure ? missing : unsure).push(item);
     }
-    const neutral =
-      !own && ladderOf(code)?.ladder === 'N' && (prev === null || ladderOf(prev)?.ladder !== 'N');
+    const ticket = !own && ladderOf(code)?.ladder === 'N';
+    const neutral = ticket && (prev === null || ladderOf(prev)?.ladder !== 'N');
     prev = code;
     const asks = known?.level ?? null;
-    const guardians = known?.guardians ?? [];
-    const held = guardians.map(has);
+    const guardians = ticket ? [] : (known?.guardians ?? []);
+    const held = guardians.map((g) => guardianMade(s, g));
     return {
       code,
       name: place?.name ?? null,
@@ -159,7 +163,7 @@ export function tripOf(s: LoreState, to: string, now: number, player?: string): 
       guardians,
       guardians_ok: held.includes(false)
         ? false
-        : guardians.length === 0 || held.includes(undefined)
+        : guardians.length === 0 || held.includes(null)
           ? null
           : true,
       neutral,
