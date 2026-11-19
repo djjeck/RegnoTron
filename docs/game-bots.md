@@ -196,16 +196,17 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
   free (`/lore is not resting: nothing to end`), and declares no effect for the player to derive a
   condition from: legal, the player plays it at once; illegal, it is not offered. A use is the
   success, and ends the turns' rest (the state's rule); "not yet" holds it for the turns still
-  needed (15 minutes each) and withdraws its unlock until the next line, the level gate holds it 6
-  hours. **A whole turn of the owner's without the line withdraws its unlock too** (one cut off, or
-  quoting the line, says nothing): the bot's word that it is not full, whatever the state believed,
-  so a use whose answer the account missed, or a start that knew nothing, never leaves it offered.
-  The line is missing from 3% of the turns while full (above): such a turn holds it until the next
-  line, a turn later. The owner's own answer, by hand or in the group (where the shell cannot pair
-  it), counts the same: the state folds `loregame.accumulo` into the readiness, a use ending the
-  turns' rest. A player in the group (D139): the bot answers its `/accumulo` with a message of its
-  own, so the parser pairs it with the send the player tells it of (through the state), declares it
-  the answer (`loregame.accumulo`), and the state frees the turn.
+  needed (15 minutes each) and withdraws its unlock until the next line, which ends that hold too (a
+  guess: the turns may come sooner, and it held a full accumulo 5 minutes past its line); the level
+  gate holds it 6 hours. **A whole turn of the owner's without the line withdraws its unlock too**
+  (one cut off, or quoting the line, says nothing): the bot's word that it is not full, whatever the
+  state believed, so a use whose answer the account missed, or a start that knew nothing, never
+  leaves it offered. The line is missing from 3% of the turns while full (above): such a turn holds
+  it until the next line, a turn later. The owner's own answer, by hand or in the group (where the
+  shell cannot pair it), counts the same: the state folds `loregame.accumulo` into the readiness, a
+  use ending the turns' rest. A player in the group (D139): the bot answers its `/accumulo` with a
+  message of its own, so the parser pairs it with the send the player tells it of (through the
+  state), declares it the answer (`loregame.accumulo`), and the state frees the turn.
 
 **Not read yet**: Stoccaggio itself (the maximum is the one the bot's counter states, else the usual
 20). The level is read off any level-up the parser can place (§5.4).

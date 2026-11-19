@@ -167,6 +167,14 @@ function endRest(r: ReadinessState, t: number): ReadinessState {
   };
 }
 
+/** `command`'s own hold ended at `t`, if it held past it: the bot said it may be played. Pure. */
+function lift(r: ReadinessState, command: string, t: number): ReadinessState {
+  const was = r.commands[command];
+  if (was?.readyAt === undefined || was.readyAt <= t) return r;
+  const { why: _, ...rest } = was;
+  return { ...r, commands: { ...r.commands, [command]: { ...rest, readyAt: t } } };
+}
+
 /** The key of the owner's ban, and of the level gate, among the readiness's holds. */
 const BAN_HOLD = 'ban';
 const LEVEL_HOLD = 'level';
@@ -178,14 +186,20 @@ const LEVEL_HOLD = 'level';
  * unlock (the level gate also holding it for `LOCKED_RETRY_MS`); the owner's training, wherever it
  * came, starts its cooldown (a "too soon" replies to the command, which the shell pairs); and a
  * turn of the owner's without the accumulo's line withdraws its unlock: the bot's word that it is
- * not full, whatever the state believed (a use it did not hear, a start that knew nothing).
+ * not full, whatever the state believed (a use it did not hear, a start that knew nothing). With
+ * the line, it ends any "not yet" still holding `/accumulo`: that hold guessed the turns lacking
+ * at the bot's rest each, and the turns came sooner.
  */
 export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
   if (e.type === TURN_EVENT) {
     const o = outcomeOf(e);
     // A turn says it only when whole (one cut off lost its line) and not quoting it (a story's).
     const whole = o?.place !== undefined && !(o.kind === 'nothing' && o.reason === 'truncated');
-    return whole && o.accumulo === undefined ? LORE_READINESS.lock(r, ACCUMULO) : r;
+    if (!whole) return r;
+    if (o.accumulo === undefined) return LORE_READINESS.lock(r, ACCUMULO);
+    // Its line ("ready") is the bot's word that it is full now: a "not yet" told before held it
+    // for the turns it lacked at the bot's rest each, a guess, which the line ends.
+    return o.accumulo.ready === true ? lift(r, ACCUMULO, e.t) : r;
   }
   if ((e.type === BAN_EVENT || e.type === UNBAN_EVENT) && e['owner'] === true) {
     const until = e['until'];

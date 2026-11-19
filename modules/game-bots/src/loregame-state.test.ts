@@ -964,4 +964,41 @@ describe('the owner’s readiness, with what the state knows besides (MegaBotTro
     // Any other event of the parser's is the shell's to reduce.
     expect(foldReadiness(rested, at('turn', T, {}))).toBe(rested);
   });
+
+  it('ends a "not yet" held over /accumulo when a turn says it is full', () => {
+    // Asked by hand, 12 turns short: held 3 hours, a guess at the bot's rest each.
+    const asked = LORE_READINESS.reduce(
+      LORE_READINESS.initial(),
+      at('answer', T, {
+        command: '/accumulo',
+        outcome: { kind: 'nothing', bot: 'LoreGameBot', reason: 'cooldown' },
+        retryAt: T + 180 * MIN,
+      })
+    );
+    // The 12th turn came sooner: the bot's line unlocks it, and ends the guess.
+    const turn = (accumulo?: { ready: boolean; sure: boolean }) =>
+      at('turn', T + 170 * MIN, {
+        outcome: {
+          kind: 'gain',
+          bot: 'LoreGameBot',
+          place: { name: 'Il Bosco', code: 'B1' },
+          ...(accumulo === undefined ? {} : { accumulo }),
+        },
+        retryAt: T + 185 * MIN,
+        unlocks: accumulo === undefined ? [] : ['/accumulo'],
+      });
+    const full = foldReadiness(
+      LORE_READINESS.reduce(asked, turn({ ready: true, sure: true })),
+      turn({ ready: true, sure: true })
+    );
+    expect(ready(full, T + 170 * MIN)['/accumulo']).toMatchObject({
+      ready: true,
+      since: T + 170 * MIN,
+    });
+    // Without the line it is not full: nothing lifted, the unlock withdrawn.
+    const not = foldReadiness(LORE_READINESS.reduce(asked, turn()), turn());
+    expect(ready(not, T + 170 * MIN)['/accumulo']).toMatchObject({ ready: false });
+    // A hold that ended already stays as it was.
+    expect(foldReadiness(rested, turn({ ready: true, sure: true }))).toBe(rested);
+  });
 });
