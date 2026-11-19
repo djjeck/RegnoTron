@@ -9,7 +9,7 @@ nothing: there is no automation here. Its models of the games include the rules 
 without announcing them, since a rule that is public levels the field.
 
 **Status: v1-alpha.** The code is the parsers, state and tools that ran in production on an earlier,
-monolithic version, now split into modules for MegaBotTron1999 (`v0.1.48`), whose loader installs
+monolithic version, now split into modules for MegaBotTron1999 (`v0.1.49`), whose loader installs
 them into a running shell. Everything here changes freely until the shell's launch.
 
 ## The modules
@@ -79,7 +79,7 @@ Each module's README lists its plugins' config fields.
 ## Developing
 
 MegaBotTron1999 is vendored as a git submodule, `vendor/MegaBotTron1999`, pinned to a tag (now
-`v0.1.48`, with D144's message edits and D145's buttons, as labels, which a plugin asks for), or to
+`v0.1.49`, with D144's message edits and D145's buttons, as labels, which a plugin asks for), or to
 a commit past it when the modules need a change not tagged yet. The shell's packages are workspaces
 here, beside the modules, which are workspaces too (each `@regnotron/<id>`, with `exports` `./*` →
 `./src/*`), so that imports and tests resolve as the loader will resolve them.
