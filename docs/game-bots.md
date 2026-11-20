@@ -1,6 +1,6 @@
 # The game bots RegnoTron reads
 
-Documented as of 17 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
+Documented as of 20 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
 has other game bots, each with its own game played one turn at a time. RegnoTron reads the turns of
 two of them, @LoreGameBot and @EpicLorelecBot, in `modules/game-bots/`: their reply grammars
 (`src/replies.ts`) and their parser plugins in `src/plugins/`. @InventoryBot's parser, the plugin
@@ -571,6 +571,44 @@ a player's open investments, as the market they asked for lists them (`positions
 `company`, `amount` of what was invested, `cashed`, and what is `left` there at its value, none when
 all of it was taken): each with its `player` and `owner`. **`loregame.company`** carries a company's
 page, whoever asked.
+
+### 5.12 The shop
+
+`/negozio` and `/shop` [M] list what the shop sells today (178 listings in the exports, August to
+November 2026, every line read; `/store` is NorelecBot's, which @LoreGameBot answers only with a
+ban, §5.1). The answer replies to the command (126 of the 133 bare `/negozio`, 49 of the 50 `/shop`;
+the others are a listing edited into a purchase, below, and one answer missing), naming the player
+who asked, then an item a line:
+
+```
+bob, oggi nel negozio:
+- 🛒 un generatore di oggetti [X] [generatore] 100₭
+- ✅ una pigna [B1] 200₭
+- 🛒 un mestolo [M4] 400₭
+```
+
+- **An item's line** is `- 🛒 <item> [<rarity>][ <tag>…] <price>₭`, the price with the bot's
+  thousands (`1.000₭`). A name may run over several lines (players write them), the item ending at
+  the line that ends in its rarity, tags and price. The prices follow no rule measured [?]: an item
+  of a rarity is sold at different prices on different days, and the generators' (`[X]`) differ by
+  kind.
+- **`✅` for `🛒`** marks an item the player who asked has already bought (29 listings): the list is
+  otherwise the same for everyone.
+- **A sagra day** (the bot's event): the answer starts with `bob, c'è la sagra <of something>!` and
+  a blank line, then `oggi nel negozio:` and its list, of 10 items instead of 3. The bot announces
+  the sagra in the group at midnight Italian time, as a message of its own,
+  `È arrivata la sagra <of something>!` (11 in the exports, each at 00:00). Before 22 September 2026
+  a sagra day's listing had 10 items without the sagra line.
+- **The same shop for every player**, all day: on every day with several listings (48), they list
+  the same items, `✅` aside, whoever asked and in whichever group.
+- **It changes at midnight Italian time:** at each of the 75 day boundaries the exports cross, the
+  last listing before midnight and the first after it differ (the closest, 23:59 and 00:01). It
+  changed during a day three times (24 August, 10 and 12 September 2026: three generators' prices
+  swapped, the whole list, an item's rarity), each by the bot's own data [?], not on a clock.
+- **Buying** is done with the listing's buttons [M]: the bot edits the listing into
+  `bob, sei sicuro di voler comprare <item> per <price> ₭?` (7 listings were last seen so in the
+  exports, which show each message as it was last edited), and the purchase itself sends no message.
+  Not read.
 
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
