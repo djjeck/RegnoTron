@@ -616,6 +616,12 @@ const playerTurnEvent = z
     outcome: z
       .looseObject({ kind: z.string(), bot: z.string() })
       .describe("The turn as the parser reads it (src/replies.ts's Outcome), or a 'too soon'"),
+    message: z
+      .string()
+      .describe(
+        "The player's turn command's message id in its chat (what the bot replied to): a supergroup's ids are every member's"
+      ),
+    answer: z.string().nullable().describe("The bot's answer's message id, if known"),
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("A player's turn, as @LoreGameBot answered it: any player's the account reads");

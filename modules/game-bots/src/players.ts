@@ -35,6 +35,10 @@ export interface PlayerTurn {
   /** The turn command it answered, by first word, lower case (`/avventura`, `/lore`, `/l`). */
   command: string;
   outcome: Outcome;
+  /** The player's turn command's message id in its chat: what the bot replied to. */
+  message: string;
+  /** The bot's answer's message id, when the connector gave one. */
+  answer: string | null;
 }
 
 /** A turn command's first word, lower case, without the bot it is addressed to. */
@@ -82,7 +86,16 @@ export class PlayerWatch {
     const outcome = parseLoreGameBot(m.text);
     if (outcome.kind !== 'gain' && outcome.kind !== 'nothing') return undefined;
     const player = to.owner ? (self ?? to.player) : to.player;
-    return player === '' ? undefined : { player, owner: to.owner, command: to.command, outcome };
+    return player === ''
+      ? undefined
+      : {
+          player,
+          owner: to.owner,
+          command: to.command,
+          outcome,
+          message: m.replyTo,
+          answer: m.id ?? null,
+        };
   }
 
   /**

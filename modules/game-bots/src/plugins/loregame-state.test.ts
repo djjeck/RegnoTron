@@ -684,13 +684,14 @@ describe('every player, as the group shows them', () => {
   it('keeps the players of the group and the owner, by username, from their turns and answers', async () => {
     const run = await bootState(path.join(dir, 'p'), { group: true });
     const bobs = await run.group('bob', '/lore@LoreGameBot');
-    await run.group('LoreGameBot', lit('un sasso [B1]'), { replyTo: bobs });
+    const answer = await run.group('LoreGameBot', lit('un sasso [B1]'), { replyTo: bobs });
     const mine = await run.group('alice', '/l', { own: true });
     await run.group('LoreGameBot', gain('una perla [B1]'), { replyTo: mine });
     await run.group('bob', '/acc');
     await run.group('LoreGameBot', USED);
     expect(run.of('loregame.playerTurn')).toMatchObject([
-      { player: 'bob', owner: false, outcome: { kind: 'gain' } },
+      // With the turn command's message and the bot's answer, by their ids.
+      { player: 'bob', owner: false, outcome: { kind: 'gain' }, message: bobs, answer },
       { player: 'alice', owner: true, outcome: { kind: 'gain' } },
     ]);
     expect(run.of('loregame.playerAccumulo')).toMatchObject([

@@ -760,10 +760,12 @@ It is a floor, not the truth, while the turns are all it reads:
 
 The state also keeps **every player** whose turns the account reads (`players`, by username; the
 owner's included), from five events of the parser for any player, `loregame.playerTurn` (a turn, or
-a "too soon"), `loregame.playerAccumulo` (an answer to `/accumulo`), `loregame.training` (an answer
-to `/allenati`), `loregame.levelUp` and `loregame.profile`: the bot replies to a turn command naming
-nobody, so the parser names the player by the message it replies to, and pairs an `/accumulo` or a
-training answer as it does the owner's (§5.2, §5.3, §5.4). Per player:
+a "too soon"; with the turn command's message id, `message`, and the bot's answer's, `answer`, so
+that a consumer can reply to a player's turn: a supergroup's message ids are the same for every
+member, a bot's too), `loregame.playerAccumulo` (an answer to `/accumulo`), `loregame.training` (an
+answer to `/allenati`), `loregame.levelUp` and `loregame.profile`: the bot replies to a turn command
+naming nobody, so the parser names the player by the message it replies to, and pairs an `/accumulo`
+or a training answer as it does the owner's (§5.2, §5.3, §5.4). Per player:
 
 - **in the game:** their name and level, as a fight's line and a level-up (§5.4) say;
 - **turns seen**, the last one's time, and their **rest** (15 minutes, 30 after a fight lost, a "too

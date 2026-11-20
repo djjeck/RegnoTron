@@ -320,7 +320,9 @@ listing is checked against the stats held exactly: each it says otherwise is kep
 and announced as `loregame-state.statsDrift` (`player`, `owner`, `stat`, `expected`, `said`), then
 seeds them again (docs/game-bots.md §6.1). The parser publishes them as `loregame.playerTurn`,
 `loregame.playerAccumulo`, `loregame.training`, `loregame.levelUp` and `loregame.profile`, which
-needs the group edge to deliver every sender, as the bans do.
+needs the group edge to deliver every sender, as the bans do. A player's turn carries the message id
+of their turn command (`message`) and of the bot's answer (`answer`), so that another node can reply
+to it.
 
 `loregame-state.accumuloReady` (`count`, `max`, `via`: `turn` or `reading`), `accumuloUsed` (`turns`
 since the last use, `exact`) and `accumuloDrift` (`kind`, `counted`, `said`, `max`) announce each
