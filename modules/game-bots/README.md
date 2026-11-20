@@ -175,6 +175,11 @@ list, the day's, with each player's purchases apart, and every item ever seen on
 `loregame-state.shopChanged` announces a new day's items, or the day's told otherwise, with those
 never seen on sale before (docs/game-bots.md §5.12, §6).
 
+**The catalogue.** Every item any of these events names with its rarity (a drop, a level-up, an
+inventory, a gift, a place's requirements, the shop), anyone's, is kept once in the state's
+catalogue, with when and how it was first seen; `loregame-state.itemsDiscovered` announces the new
+ones (docs/game-bots.md §6).
+
 **Gifts.** `/give` and `/dai` are published as `loregame.gift`, paired with the giver's command (the
 answer replies to none): the state moves the items or the coins from the giver to the receiver, each
 player's (docs/game-bots.md §5.10).
@@ -255,6 +260,7 @@ have gained what the reply lost: it changes no count, and marks the inventory `u
 | `state.investments({ player? })`                           | A player's open investments (the owner's unless named), by company id, each worth now                                                   |
 | `state.shop({ player?, at? })`                             | The shop's items for its day, each bought or not by the player (the owner unless named), and whether its day is today's                 |
 | `state.shopSeen()`                                         | Every item seen on sale: its rarity, tags, first and latest day, and on how many days                                                   |
+| `state.catalogue()`                                        | Every item seen in the game: its rarity and tags, when and how it was first seen                                                        |
 | `state.trip({ to, player?, at? })`                         | A trip planned: its way, each step's level, items and guardians (made or not), and whether it is open                                   |
 | `state.holders({ item })`                                  | Who holds an item, by its exact name, with how many                                                                                     |
 | `state.ban({ player? })`                                   | A player's ban (the owner's unless named): `{ until, since }`                                                                           |

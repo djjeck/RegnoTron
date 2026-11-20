@@ -52,6 +52,9 @@
  *   today's) and `state.shopSeen()` (every item seen on sale, its first and latest day).
  *   `loregame-state.shopChanged` announces a new day's items, or the day's told otherwise, with
  *   those never seen on sale before, live.
+ * - **The catalogue** (docs/game-bots.md §6): `state.catalogue()`, every item seen in the game, by
+ *   name, its rarity and tags, when and how first seen; `loregame-state.itemsDiscovered` announces
+ *   those seen for the first time, live. Seeded, by the migration to 0.39.0, from the state's items.
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -72,6 +75,7 @@ import {
   accumuloOf,
   announce,
   banOf,
+  catalogueOf,
   CONSUMES,
   foldReadiness,
   freshness,
@@ -217,6 +221,18 @@ const base = statePlugin<Kept>({
         new: z.array(z.string()).describe('Those never seen on sale before'),
       })
       .describe("The shop sells other items: a new day's, or the day's told otherwise"),
+    itemsDiscovered: z
+      .object({
+        items: z.array(
+          z.object({
+            item: z.string(),
+            rarity: z.string(),
+            tags: z.array(z.string()),
+            via: z.string().describe('How: drop, level-up, inventory, gift, place, shop'),
+          })
+        ),
+      })
+      .describe('Items seen in the game for the first time'),
   },
   announce,
   migrations: [
@@ -613,6 +629,17 @@ const base = statePlugin<Kept>({
       if (kept?.state === undefined || kept.state['shop'] !== undefined) return;
       store.write('state', { ...kept, state: { ...kept.state, shop: initialShop() } });
     },
+    // 0.39.0 keeps a catalogue of every item seen: seeded from the items the state holds (every
+    // inventory, the places, the shop's history).
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined || kept.state['catalogue'] !== undefined) return;
+      const s = { ...initialState(), ...kept.state } as LoreState;
+      store.write('state', {
+        ...kept,
+        state: { ...kept.state, catalogue: catalogueOf(s, new Date().toISOString()) },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -719,6 +746,11 @@ const base = statePlugin<Kept>({
       help: 'Every item the shop has been seen selling, by name: its rarity and tags, its first and latest day on sale (YYYY-MM-DD, in Italy), and on how many days',
       output: z.record(z.string(), z.looseObject({ first: z.string(), last: z.string() })),
       run: (s) => s.shop.seen,
+    },
+    catalogue: {
+      help: 'Every item seen in the game, by name: its rarity and tags as last told, and when and how it was first seen (drop, level-up, inventory, gift, place, shop)',
+      output: z.record(z.string(), z.looseObject({ rarity: z.string(), first: z.string() })),
+      run: (s) => s.catalogue,
     },
     trip: {
       help: 'A trip planned (the owner\'s unless a player is named) to a place, by its code: the way from where they are through the places known, and each step\'s level, the items it takes (one each, up or down alike) and those they are known to lack or not known to hold, the guardians it asks and whether one has been made at each (by anyone; a neutral place asks none of a ticket holder), and for a neutral place whether "Neutralizzato" holds (not asked of "Il Neutrale"); ok true, false, or none when it cannot be told. `at` (ISO) is when, now by default',

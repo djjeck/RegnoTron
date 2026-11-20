@@ -741,6 +741,15 @@ It is a floor, not the truth, while the turns are all it reads:
   day is `today`'s; `state.shopSeen()` every item seen. **`loregame-state.shopChanged`** announces a
   new day's items, or the day's told otherwise (`day`, `sagra`, `items`), with those never seen on
   sale before (`new`), from live news alone. A purchase's coins and item are not read yet.
+- **The catalogue** (`catalogue`, `state.catalogue()`): every item seen in the game, by name, its
+  `rarity` and `tags` as last told (an item told without its rarity, a gift's at times, keeps the
+  one known), when it was `first` seen and how (`via`: `drop`, anyone's turn; `level-up`;
+  `inventory`, anyone's listing; `gift`; `place`, a place's requirements or what an arrival
+  consumed; `shop`). **`loregame-state.itemsDiscovered`** announces the items seen for the first
+  time (`items`, each `item`, `rarity`, `tags`, `via`), from live news alone. The migration to
+  0.39.0 seeded it from the items the state held: every inventory, the places, the shop's history.
+  On the exports of Oct–Nov 2026 (`npm run lore-check`), 673 items: 496 first seen in a drop, 89 in
+  an inventory, 52 at a place, 24 in a gift, 8 in a level-up, 4 in the shop; 8 of them generators.
 - **Their profile** (§5.5), and their username (`owner.name`), as with every player's (§6.1).
 - **Items and players are named by players**, anything, `__proto__` included.
 

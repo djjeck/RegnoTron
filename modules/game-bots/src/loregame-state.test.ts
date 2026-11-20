@@ -492,6 +492,8 @@ describe('the accumulo', () => {
     expect(announce(s0, s1, e1)).toEqual([
       { type: 'accumuloReady', payload: { count: 11, max: 20, via: 'turn' } },
       { type: 'accumuloDrift', payload: { kind: 'early', counted: 11, said: null, max: 20 } },
+      // Its drop, the first seen in the game.
+      { type: 'itemsDiscovered', payload: { items: [expect.objectContaining({ via: 'drop' })] } },
     ]);
     const e2 = lore('sure');
     expect(announce(s1, reduce(s1, e2), e2)).toEqual([]);

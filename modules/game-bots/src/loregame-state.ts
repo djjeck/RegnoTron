@@ -491,6 +491,17 @@ const shopItemSchema = z.object({
   price: z.number().describe('In coins (₭)'),
 });
 
+const discoveredVia = z
+  .enum(['drop', 'level-up', 'inventory', 'gift', 'place', 'shop'])
+  .describe('How it was first seen: a turn, a level-up, an inventory, a gift, a place, the shop');
+const catalogued = z.object({
+  rarity: z.string(),
+  tags: z.array(z.string()),
+  first: z.string().describe('First seen'),
+  via: discoveredVia,
+});
+export type Catalogued = z.infer<typeof catalogued>;
+
 /** The state's schema: its sections, each described for the panel. */
 export const stateSchema = z.object({
   owner: z
@@ -600,6 +611,11 @@ export const stateSchema = z.object({
         .describe('Every item the shop has been seen selling, by name'),
     })
     .describe('Shop'),
+  catalogue: z
+    .record(z.string(), catalogued)
+    .describe(
+      'Every item seen in the game, by name: its rarity and tags as last told, when and how first seen'
+    ),
 });
 
 export type Holding = z.infer<typeof holding>;
@@ -637,6 +653,7 @@ export function initialState(): LoreState {
     market: initialMarket(),
     market_history: { series: {}, gone: {} },
     shop: initialShop(),
+    catalogue: {},
   };
 }
 
@@ -1476,6 +1493,110 @@ function reduceOwner(state: LoreState, e: BusEvent): LoreState {
   return { ...state, owner: { as_of: asIso(e.t), name: player } };
 }
 
+/** An item an event names, with its rarity: what the catalogue is fed. */
+interface Named {
+  item: string;
+  rarity: string;
+  tags: string[];
+  via: Catalogued['via'];
+}
+
+/** Every item an event names with its rarity (§6, the catalogue), anyone's. */
+function namedIn(e: BusEvent): Named[] {
+  const of = (
+    items: readonly { item: string; rarity: string; tags: string[] }[],
+    via: Named['via']
+  ) => items.map(({ item, rarity, tags }) => ({ item, rarity, tags, via }));
+  if (e.type === LEVEL_UP_EVENT) {
+    const u = levelUpSchema.safeParse(e);
+    return u.success ? of(u.data.items, 'level-up') : [];
+  }
+  if (e.type === TURN_EVENT || e.type === PLAYER_TURN_EVENT) return of(turnGains(e), 'drop');
+  if (e.type === INVENTORY_EVENT) {
+    const l = listingSchema.safeParse(e);
+    return l.success ? of(l.data.items, 'inventory') : [];
+  }
+  if (e.type === GIFT_EVENT) {
+    const g = giftSchema.safeParse(e);
+    return g.success && g.data.kind === 'item' && g.data.item !== undefined
+      ? [{ item: g.data.item, rarity: g.data.rarity ?? '', tags: g.data.tags ?? [], via: 'gift' }]
+      : [];
+  }
+  if (e.type === TRAVEL_EVENT) {
+    const t = travelSchema.safeParse(e);
+    return t.success ? of(t.data.consumed ?? [], 'place') : [];
+  }
+  if (e.type === REQUIREMENTS_EVENT) {
+    const r = requirementsSchema.safeParse(e);
+    return r.success ? of(r.data.items, 'place') : [];
+  }
+  if (e.type === SHOP_EVENT) {
+    const l = shopListingSchema.safeParse(e);
+    return l.success ? of(l.data.items, 'shop') : [];
+  }
+  return [];
+}
+
+/**
+ * The catalogue after `found`, seen at `at`: an item new is added, one known takes the rarity and
+ * tags told now; one told without its rarity (a gift's, at times) is added only if new, with none.
+ */
+export function withCatalogued(
+  catalogue: LoreState['catalogue'],
+  found: readonly Named[],
+  at: string
+): LoreState['catalogue'] {
+  let next = catalogue;
+  for (const f of found) {
+    if (f.item === '') continue;
+    const was = ownOf(next, f.item);
+    if (was === undefined) {
+      next = withKey(next, f.item, { rarity: f.rarity, tags: f.tags, first: at, via: f.via });
+      continue;
+    }
+    if (f.rarity === '' || (was.rarity === f.rarity && sameTags(was.tags, f.tags))) continue;
+    next = withKey(next, f.item, { ...was, rarity: f.rarity, tags: f.tags });
+  }
+  return next;
+}
+
+const sameTags = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((t, i) => t === b[i]);
+
+/**
+ * The catalogue as the state held its items before it kept one (the migration to 0.39.0): every
+ * inventory's, the places', the shop's; each first seen when its section last told it, or `at`.
+ */
+export function catalogueOf(s: LoreState, at: string): LoreState['catalogue'] {
+  const found: (Named & { t: string })[] = [];
+  const via = (v: Holding['via']): Named['via'] => (v === 'listing' ? 'inventory' : v);
+  const inventories = [s.inventory, ...Object.values(s.players).map((p) => p.inventory)];
+  for (const inv of inventories)
+    for (const [item, h] of Object.entries(inv.items))
+      found.push({ item, rarity: h.rarity ?? '', tags: h.tags, via: via(h.via), t: h.date ?? at });
+  for (const p of Object.values(s.places))
+    for (const i of p.items) found.push({ ...i, via: 'place', t: p.as_of === '' ? at : p.as_of });
+  for (const [item, x] of Object.entries(s.shop.seen))
+    found.push({
+      item,
+      rarity: x.rarity,
+      tags: x.tags,
+      via: 'shop',
+      t: `${x.first}T00:00:00.000Z`,
+    });
+  // The earliest first, so that each is first seen at its earliest.
+  found.sort((x, y) => x.t.localeCompare(y.t));
+  return found.reduce((c, f) => withCatalogued(c, [f], f.t), {} as LoreState['catalogue']);
+}
+
+/** Every item seen in the game, by name (§6). */
+function reduceCatalogue(state: LoreState, e: BusEvent): LoreState {
+  const found = namedIn(e);
+  if (found.length === 0) return state;
+  const catalogue = withCatalogued(state.catalogue, found, asIso(e.t));
+  return catalogue === state.catalogue ? state : { ...state, catalogue };
+}
+
 /** The next state: an event's gains added to the inventory, a ban set or ended (pure). */
 /** The reducer's steps, in order: each a part of the state, after an event. */
 const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
@@ -1489,6 +1610,7 @@ const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
   reduceNeutral,
   reduceMarket,
   reduceShop,
+  reduceCatalogue,
 ];
 
 export function reduce(state: LoreState, e: BusEvent): LoreState {
@@ -2454,7 +2576,17 @@ export function announce(before: LoreState, after: LoreState, e: BusEvent): Anno
     ...announceStats(before, after, e),
     ...announceMarket(before, after, e),
     ...announceShop(before, after),
+    ...announceDiscovered(before, after),
   ];
+}
+
+/** The items seen for the first time: their name, rarity and tags, and how. */
+function announceDiscovered(before: LoreState, after: LoreState): Announcement[] {
+  if (before.catalogue === after.catalogue) return [];
+  const found = Object.entries(after.catalogue)
+    .filter(([item]) => !Object.hasOwn(before.catalogue, item))
+    .map(([item, c]) => ({ item, rarity: c.rarity, tags: c.tags, via: c.via }));
+  return found.length === 0 ? [] : [{ type: 'itemsDiscovered', payload: { items: found } }];
 }
 
 /**

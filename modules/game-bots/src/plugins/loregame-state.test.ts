@@ -48,6 +48,7 @@ describe('the loregame-state node', () => {
       'loregame-state.accumuloDrift',
       'loregame-state.marketUpdated',
       'loregame-state.shopChanged',
+      'loregame-state.itemsDiscovered',
     ]);
     expect(Object.keys(m.interface.state ?? {})).toEqual([
       'get',
@@ -66,6 +67,7 @@ describe('the loregame-state node', () => {
       'investments',
       'shop',
       'shopSeen',
+      'catalogue',
       'trip',
       'holders',
       'count',
@@ -2366,6 +2368,91 @@ describe('the shop, the same for every player (§5.12)', () => {
     expect(again.read('shopSeen')).toEqual({});
     await again.group('LoreGameBot', SHOP('bob', MESTOLO));
     expect(shopNow(again).items.map((i) => i.item)).toEqual(['un mestolo']);
+    await again.core.stop();
+  });
+});
+
+describe('the catalogue, every item seen in the game (§6)', () => {
+  type Catalogue = Record<string, { rarity: string; tags: string[]; first: string; via: string }>;
+
+  it('keeps each item the first time it is seen anywhere, and announces it', async () => {
+    const run = await bootState(path.join(dir, 'cat'), { group: true });
+    const at = () => new Date(run.clock.now()).toISOString();
+    const t0 = at();
+    // bob's drop, in the group.
+    const turn = await run.group('bob', '/lore');
+    await run.group('LoreGameBot', gain('una pigna [B1]'), { replyTo: turn });
+    // carol's inventory, a minute later: the pigna again, and a mestolo.
+    run.clock.advance(MIN);
+    const asked = await run.group('carol', '/zaino');
+    await run.group(
+      'LoreGameBot',
+      [
+        'carol, hai:',
+        '> una pigna [B1] x2',
+        '> un mestolo (2 - 6) [M2] [equipaggiabile 🗡] x1',
+      ].join('\n'),
+      { replyTo: asked }
+    );
+    // The shop: the mestolo's tags told otherwise, and a sasso.
+    run.clock.advance(MIN);
+    await run.group(
+      'LoreGameBot',
+      ['dave, oggi nel negozio:', '- 🛒 un mestolo [M2] 400₭', '- 🛒 un sasso [B2] 50₭'].join('\n')
+    );
+    const catalogue = run.read('catalogue') as Catalogue;
+    expect(catalogue).toEqual({
+      'una pigna': { rarity: 'B1', tags: [], first: t0, via: 'drop' },
+      'un mestolo': {
+        rarity: 'M2',
+        tags: [],
+        first: new Date(Date.parse(t0) + MIN).toISOString(),
+        via: 'inventory',
+      },
+      'un sasso': { rarity: 'B2', tags: [], first: at(), via: 'shop' },
+    });
+    expect(run.of('loregame-state.itemsDiscovered').map((e) => e['items'])).toEqual([
+      [{ item: 'una pigna', rarity: 'B1', tags: [], via: 'drop' }],
+      [{ item: 'un mestolo', rarity: 'M2', tags: ['equipaggiabile 🗡'], via: 'inventory' }],
+      [{ item: 'un sasso', rarity: 'B2', tags: [], via: 'shop' }],
+    ]);
+    await run.core.stop();
+  });
+
+  it('is seeded from the items the state held, by the migration to 0.39.0', async () => {
+    const dir2 = path.join(dir, 'v19');
+    const run = await bootState(dir2, { group: true });
+    await run.turn(gain('un sasso [B1]'));
+    await run.group('LoreGameBot', 'bob, oggi nel negozio:\n- 🛒 una pigna [B1] 200₭');
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    // As 0.38.0 kept it: no catalogue; a place's items besides.
+    delete kept.state.catalogue;
+    kept.state.places = {
+      B2: {
+        name: 'Il Bosco',
+        level: 3,
+        items: [{ item: 'un ramo', rarity: 'B1', tags: ['usabile'], level: null }],
+        guardians: [],
+        exits: [],
+        as_of: '2026-11-01T00:00:00.000Z',
+      },
+    };
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 18 }));
+    const again = await bootState(dir2, { group: true });
+    expect(again.read('catalogue')).toEqual({
+      'un ramo': {
+        rarity: 'B1',
+        tags: ['usabile'],
+        first: '2026-11-01T00:00:00.000Z',
+        via: 'place',
+      },
+      'una pigna': { rarity: 'B1', tags: [], first: '2026-11-06T00:00:00.000Z', via: 'shop' },
+      'un sasso': { rarity: 'B1', tags: [], first: new Date(T0).toISOString(), via: 'drop' },
+    });
     await again.core.stop();
   });
 });

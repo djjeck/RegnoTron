@@ -452,6 +452,24 @@ export const shop: Check = {
   },
 };
 
+/** The catalogue (docs/game-bots.md §6): every item seen, how each was first seen, the generators. */
+export const catalogue: Check = {
+  id: 'catalogue',
+  run: (r) => {
+    const last = r.steps.at(-1)?.after ?? initialState();
+    const all = Object.values(last.catalogue);
+    return {
+      title: 'Catalogue',
+      rows: [
+        ['items seen', String(all.length)],
+        ['generators', String(all.filter((c) => c.tags.includes(GENERATOR_TAG)).length)],
+        ['first seen by', tally(all.map((c) => c.via))],
+        ['by rarity', tally(all.map((c) => c.rarity || '?'))],
+      ],
+    };
+  },
+};
+
 /** Every check, in the report's order: add one here as the parser learns to read more. */
 export const CHECKS: readonly Check[] = [
   coverage,
@@ -462,6 +480,7 @@ export const CHECKS: readonly Check[] = [
   profiles,
   players,
   shop,
+  catalogue,
 ];
 
 /** The report's text: each check's title, then its rows. */

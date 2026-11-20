@@ -248,6 +248,13 @@ describe('the lore check', () => {
     expect(row('changes of the items within a day')).toBe('0');
     expect(row('items seen on sale')).toBe('3 (1 generators)');
     expect(row('players whose purchases were told')).toBe('2');
+    // The catalogue: the three items, two first seen in the shop, the sasso the next day.
+    const cat = CHECKS.find((c) => c.id === 'catalogue')?.run(run);
+    const of = (label: string) => cat?.rows.find(([k]) => k === label)?.[1];
+    expect(of('items seen')).toBe('3');
+    expect(of('generators')).toBe('1');
+    expect(of('first seen by')).toBe('shop ×3');
+    expect(of('by rarity')).toBe('B1 ×1, X ×1, B2 ×1');
   });
 
   it('takes a group renamed between two exports as one chat, each message once', () => {
