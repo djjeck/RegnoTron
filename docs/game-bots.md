@@ -748,8 +748,11 @@ It is a floor, not the truth, while the turns are all it reads:
   consumed; `shop`). **`loregame-state.itemsDiscovered`** announces the items seen for the first
   time (`items`, each `item`, `rarity`, `tags`, `via`), from live news alone. The migration to
   0.39.0 seeded it from the items the state held: every inventory, the places, the shop's history.
-  On the exports of Oct–Nov 2026 (`npm run lore-check`), 673 items: 496 first seen in a drop, 89 in
-  an inventory, 52 at a place, 24 in a gift, 8 in a level-up, 4 in the shop; 8 of them generators.
+  Replayed (`npm run lore-check`), the owner's exports catalogue 673 items over their whole span,
+  the game before its reset of 17 August 2026 included (§5.9: its items were discarded), and **324
+  since the reset** (`--since 2026-08-17`): 242 first seen in a drop, 46 in an inventory, 19 in a
+  gift, 12 at a place, 4 in the shop, 1 in a level-up; 8 of them generators. A state that started
+  after the reset holds no item of before it.
 - **Their profile** (§5.5), and their username (`owner.name`), as with every player's (§6.1).
 - **Items and players are named by players**, anything, `__proto__` included.
 
