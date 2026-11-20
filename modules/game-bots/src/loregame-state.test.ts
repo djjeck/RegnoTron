@@ -65,6 +65,7 @@ describe('the loregame state', () => {
       'loregame.invest',
       'loregame.cashout',
       'loregame.company',
+      'loregame.shop',
     ]);
   });
 

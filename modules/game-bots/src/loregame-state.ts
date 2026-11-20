@@ -85,6 +85,7 @@ import {
   PLAYER_TURN_EVENT,
   PROFILE_EVENT,
   REQUIREMENTS_EVENT,
+  SHOP_EVENT,
   SKILLS_EVENT,
   TRAINING_EVENT,
   TRAVEL_EVENT,
@@ -92,6 +93,7 @@ import {
 } from '#src/plugins/loregame.ts';
 import { levelForXp, xpForLevel } from '#src/profile.ts';
 import { loreRestMs, type Outcome } from '#src/replies.ts';
+import { shopDayOf } from '#src/shop.ts';
 import {
   mismatches,
   move,
@@ -134,6 +136,7 @@ export const CONSUMES: readonly string[] = [
   INVEST_EVENT,
   CASHOUT_EVENT,
   COMPANY_EVENT,
+  SHOP_EVENT,
 ];
 
 /**
@@ -481,6 +484,13 @@ const companySchema = z.object({
   as_of: z.string().describe('Latest change'),
 });
 
+const shopItemSchema = z.object({
+  item: z.string(),
+  rarity: z.string(),
+  tags: z.array(z.string()),
+  price: z.number().describe('In coins (₭)'),
+});
+
 /** The state's schema: its sections, each described for the panel. */
 export const stateSchema = z.object({
   owner: z
@@ -567,6 +577,29 @@ export const stateSchema = z.object({
         ),
     })
     .describe('Market history'),
+  shop: z
+    .object({
+      day: date.describe('The day it sells for: the date in Italy, when it changes (YYYY-MM-DD)'),
+      sagra: z.string().nullable().describe("The day's sagra, as the bot names it; none without"),
+      items: z.array(shopItemSchema).describe("The day's items, in the listing's order"),
+      as_of: date.describe('Last told'),
+      bought: z
+        .record(z.string(), z.array(z.string()))
+        .describe("The day's items each player has bought, as their own listing marks them (✅)"),
+      seen: z
+        .record(
+          z.string(),
+          z.object({
+            rarity: z.string(),
+            tags: z.array(z.string()),
+            first: z.string().describe('The first day it was seen on sale (YYYY-MM-DD)'),
+            last: z.string().describe('The latest'),
+            days: z.number().describe('The days it was seen on sale'),
+          })
+        )
+        .describe('Every item the shop has been seen selling, by name'),
+    })
+    .describe('Shop'),
 });
 
 export type Holding = z.infer<typeof holding>;
@@ -603,7 +636,13 @@ export function initialState(): LoreState {
     guardians: {},
     market: initialMarket(),
     market_history: { series: {}, gone: {} },
+    shop: initialShop(),
   };
+}
+
+/** A shop nothing is known of. */
+export function initialShop(): LoreState['shop'] {
+  return { day: null, sagra: null, items: [], as_of: null, bought: {}, seen: {} };
 }
 
 /** A market nothing is known of. */
@@ -1449,6 +1488,7 @@ const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
   reduceGift,
   reduceNeutral,
   reduceMarket,
+  reduceShop,
 ];
 
 export function reduce(state: LoreState, e: BusEvent): LoreState {
@@ -2294,6 +2334,97 @@ export function inventoryOfPlayer(s: LoreState, player?: string): Inventory | nu
   return playerOf(s, player)?.inventory ?? null;
 }
 
+const shopListingSchema = z.looseObject({
+  player: z.string(),
+  sagra: z.string().nullable(),
+  items: z.array(shopItemSchema.extend({ bought: z.boolean() })),
+});
+
+/** Whether two lists of the shop's items are the same, in the same order. */
+const sameItems = (a: LoreState['shop']['items'], b: LoreState['shop']['items']): boolean =>
+  a.length === b.length && a.every((x, i) => JSON.stringify(x) === JSON.stringify(b[i]));
+
+/**
+ * A shop listing (§5.12): the day's items, the same for every player, as last told; the items its
+ * player has bought that day, apart; and every item seen on sale. A listing of a day before the
+ * one kept (told late) changes nothing.
+ */
+function reduceShop(state: LoreState, e: BusEvent): LoreState {
+  if (e.type !== SHOP_EVENT) return state;
+  const parsed = shopListingSchema.safeParse(e);
+  if (!parsed.success) return state;
+  const listing = parsed.data;
+  const day = shopDayOf(e.t);
+  const was = state.shop;
+  if (was.day !== null && day < was.day) return state;
+  const at = asIso(e.t);
+  const items = listing.items.map(({ item, rarity, tags, price }) => ({
+    item,
+    rarity,
+    tags,
+    price,
+  }));
+  const newDay = was.day !== day;
+  let seen = was.seen;
+  for (const i of items) {
+    const before = ownOf(seen, i.item);
+    if (before !== undefined && before.last === day && before.rarity === i.rarity) continue;
+    seen = withKey(seen, i.item, {
+      rarity: i.rarity,
+      tags: i.tags,
+      first: before?.first ?? day,
+      last: day,
+      days: (before?.days ?? 0) + (before?.last === day ? 0 : 1),
+    });
+  }
+  const bought = withKey(
+    newDay ? {} : was.bought,
+    listing.player,
+    listing.items.filter((i) => i.bought).map((i) => i.item)
+  );
+  return {
+    ...state,
+    shop: {
+      day,
+      sagra: listing.sagra,
+      items: !newDay && sameItems(was.items, items) ? was.items : items,
+      as_of: at,
+      bought,
+      seen,
+    },
+  };
+}
+
+/** The shop now, as `state.shop` answers it. */
+export interface ShopNow {
+  day: string | null;
+  sagra: string | null;
+  as_of: string | null;
+  /** Its day is today's, in Italy: what it lists is on sale now. */
+  today: boolean;
+  /** Each item, `bought` by the player asked about (none: not known). */
+  items: (z.infer<typeof shopItemSchema> & { bought: boolean | null })[];
+}
+
+/**
+ * The shop now (§5.12): its day's items, each marked bought or not by `player` (the owner unless
+ * named; none when their listing of the day was not read), and whether its day is today's at `now`.
+ */
+export function shopOf(s: LoreState, now: number, player?: string): ShopNow {
+  const who = player ?? s.owner.name ?? '';
+  const mine = ownOf(s.shop.bought, who);
+  return {
+    day: s.shop.day,
+    sagra: s.shop.sagra,
+    as_of: s.shop.as_of,
+    today: s.shop.day !== null && s.shop.day === shopDayOf(now),
+    items: s.shop.items.map((i) => ({
+      ...i,
+      bought: mine === undefined ? null : mine.includes(i.item),
+    })),
+  };
+}
+
 /** What a state tells of a change in its bans, as `loregame-state` announces it. */
 export function announce(before: LoreState, after: LoreState, e: BusEvent): Announcement[] {
   const owner = (player: string): boolean => player === after.owner.name;
@@ -2322,6 +2453,28 @@ export function announce(before: LoreState, after: LoreState, e: BusEvent): Anno
     ...announceAccumulo(before.accumulo, after.accumulo, e),
     ...announceStats(before, after, e),
     ...announceMarket(before, after, e),
+    ...announceShop(before, after),
+  ];
+}
+
+/**
+ * The shop's items changed (a new day, or the same day's list told otherwise): its day, its sagra,
+ * its items, and those never seen on sale before (`new`).
+ */
+function announceShop(before: LoreState, after: LoreState): Announcement[] {
+  if (before.shop.items === after.shop.items && before.shop.day === after.shop.day) return [];
+  return [
+    {
+      type: 'shopChanged',
+      payload: {
+        day: after.shop.day,
+        sagra: after.shop.sagra,
+        items: after.shop.items,
+        new: after.shop.items
+          .filter((i) => !Object.hasOwn(before.shop.seen, i.item))
+          .map((i) => i.item),
+      },
+    },
   ];
 }
 

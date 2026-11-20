@@ -52,6 +52,10 @@
  * (`loregame.investments`), an investment (`loregame.invest`) and a withdrawal
  * (`loregame.cashout`); and any company's page (`/azienda`), as `loregame.company`.
  *
+ * **The shop** (docs/game-bots.md §5.12): every listing of the shop's (`/negozio`, `/shop`), in any
+ * chat, the player who asked named by it, as `loregame.shop`: the day's items, the same for everyone,
+ * each marked bought or not by that player. A listing its buttons edit back into one is read again.
+ *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
  * - To the owner's turn, it is an outcome (`banned`, with its `until`), declared a refusal
@@ -103,6 +107,7 @@ import {
   splitLevelUp,
   TURN_COMMANDS,
 } from '#src/replies.ts';
+import { parseShop, type ShopListing } from '#src/shop.ts';
 import { parseSkillMenu } from '#src/skills.ts';
 import {
   parseTraining,
@@ -171,6 +176,8 @@ export const INVESTMENTS_EVENT = `${LOREGAME_PARSER}.investments`;
 export const INVEST_EVENT = `${LOREGAME_PARSER}.invest`;
 export const CASHOUT_EVENT = `${LOREGAME_PARSER}.cashout`;
 export const COMPANY_EVENT = `${LOREGAME_PARSER}.company`;
+/** The event of every shop listing (§5.12), whoever asked. */
+export const SHOP_EVENT = `${LOREGAME_PARSER}.shop`;
 /** The store's document of the bans it knows. */
 const BANS_DOC = 'bans';
 
@@ -575,6 +582,31 @@ const companyEvent = z
   })
   .describe("A company's page (/azienda), as @LoreGameBot showed it");
 
+const shopEvent = z
+  .object({
+    chat: z.string(),
+    player: player.describe('Who asked, as the listing names them'),
+    owner: z.boolean().describe('The player is the owner of the account'),
+    sagra: z
+      .string()
+      .nullable()
+      .describe('The day\'s sagra, as the bot names it ("della pigna"); none on an ordinary day'),
+    items: z
+      .array(
+        z.object({
+          item: z.string(),
+          rarity: z.string(),
+          tags: z.array(z.string()),
+          price: z.number().describe('In coins (₭)'),
+          bought: z.boolean().describe('The player who asked has already bought it (✅)'),
+        })
+      )
+      .describe("The day's items, in the listing's order: the same for every player"),
+    edited: z.literal(true).optional().describe('A listing its buttons edited (D144)'),
+    playback: back,
+  })
+  .describe("What @LoreGameBot's shop sells today (/negozio, /shop), as listed to a player");
+
 const playerTurnEvent = z
   .object({
     chat: z.string(),
@@ -655,6 +687,7 @@ export const loregamePlugin: Plugin = {
       [INVEST_EVENT]: investEvent,
       [CASHOUT_EVENT]: cashoutEvent,
       [COMPANY_EVENT]: companyEvent,
+      [SHOP_EVENT]: shopEvent,
     },
     // The ban comes first: any other outcome of a turn is an `ok`.
     answers: [
@@ -731,6 +764,22 @@ export const loregamePlugin: Plugin = {
       if (w !== undefined)
         return w.word === word ? { player: w.player, owner: w.owner } : undefined;
       return isPrivate(m) ? { player: self ?? '', owner: true } : undefined;
+    };
+    /** A shop listing (§5.12), published for the player it names, at `t`. */
+    const shop = (m: Inbound, self: string | undefined, t: number): void => {
+      const listing: ShopListing | undefined = parseShop(m.text);
+      if (listing === undefined) return;
+      ctx.bus.publish(
+        SHOP_EVENT,
+        {
+          chat: m.chat,
+          ...listing,
+          owner: self !== undefined && listing.player.toLowerCase() === self.toLowerCase(),
+          ...(m.edited === undefined ? {} : { edited: true as const }),
+          ...(m.playback ? { playback: true as const } : {}),
+        },
+        t
+      );
     };
     const trained = new TrainingWatch(LOREGAMEBOT);
     const gifts = new GiftWatch(LOREGAMEBOT);
@@ -929,6 +978,7 @@ export const loregamePlugin: Plugin = {
         if (equip !== undefined && equipOf !== undefined)
           ctx.bus.publish(EQUIPMENT_EVENT, { chat: m.chat, ...equipOf, ...equip, ...old }, m.time);
         listed(m, self);
+        shop(m, self, m.time);
         // Neutrality (§5.9): a ticket's answer names its player; its end is told the owner alone, in
         // private.
         const neutral = parseNeutrality(m.text);
@@ -976,6 +1026,7 @@ export const loregamePlugin: Plugin = {
     chat.onEdit?.((m) => {
       if (m.own === true || m.sender.toLowerCase() !== LOREGAMEBOT.toLowerCase()) return;
       listed(m, chat.self());
+      shop(m, chat.self(), m.edited ?? m.time);
       const menu = parseSkillMenu(m.text);
       const of = menu === undefined ? undefined : answerTo(m, SKILLS_COMMAND, chat.self());
       if (menu === undefined || of === undefined) return;

@@ -167,6 +167,14 @@ bot's updates' schedule (learned from their times: those missed are marked, one 
 turn); and every player's investments (docs/game-bots.md §5.11, §6). The history before it ran can
 be seeded once from the exports (`tools/market-seed`).
 
+**The shop.** Every listing of the shop (`/negozio`, `/shop`), in any chat, is published as
+`loregame.shop` for the player it names: the day's items (each its rarity, tags and price, and `✅`,
+bought by that player) and the day's sagra; a listing its buttons edit back into one is read again.
+The shop is the same for every player and changes at midnight Italian time, so the state keeps one
+list, the day's, with each player's purchases apart, and every item ever seen on sale;
+`loregame-state.shopChanged` announces a new day's items, or the day's told otherwise, with those
+never seen on sale before (docs/game-bots.md §5.12, §6).
+
 **Gifts.** `/give` and `/dai` are published as `loregame.gift`, paired with the giver's command (the
 answer replies to none): the state moves the items or the coins from the giver to the receiver, each
 player's (docs/game-bots.md §5.10).
@@ -245,6 +253,8 @@ have gained what the reply lost: it changes no count, and marks the inventory `u
 | `state.market()`                                           | The market now: the companies there are, by id, each its name and latest value; the updates' interval, the next due, those missed       |
 | `state.marketHistory({ company?, since?, until?, gone? })` | Each company's values through time, by id: those there are (those gone too with `gone`; one by its id or any name it had), oldest first |
 | `state.investments({ player? })`                           | A player's open investments (the owner's unless named), by company id, each worth now                                                   |
+| `state.shop({ player?, at? })`                             | The shop's items for its day, each bought or not by the player (the owner unless named), and whether its day is today's                 |
+| `state.shopSeen()`                                         | Every item seen on sale: its rarity, tags, first and latest day, and on how many days                                                   |
 | `state.trip({ to, player?, at? })`                         | A trip planned: its way, each step's level, items and guardians (made or not), and whether it is open                                   |
 | `state.holders({ item })`                                  | Who holds an item, by its exact name, with how many                                                                                     |
 | `state.ban({ player? })`                                   | A player's ban (the owner's unless named): `{ until, since }`                                                                           |

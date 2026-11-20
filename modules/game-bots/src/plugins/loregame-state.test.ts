@@ -47,6 +47,7 @@ describe('the loregame-state node', () => {
       'loregame-state.statsDrift',
       'loregame-state.accumuloDrift',
       'loregame-state.marketUpdated',
+      'loregame-state.shopChanged',
     ]);
     expect(Object.keys(m.interface.state ?? {})).toEqual([
       'get',
@@ -63,6 +64,8 @@ describe('the loregame-state node', () => {
       'market',
       'marketHistory',
       'investments',
+      'shop',
+      'shopSeen',
       'trip',
       'holders',
       'count',
@@ -364,6 +367,7 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.invest',
       'loregame.cashout',
       'loregame.company',
+      'loregame.shop',
     ]);
   });
 
@@ -2258,6 +2262,110 @@ describe('the market, every company’s and every player’s (§5.11)', () => {
     expect(again.read('get', { path: 'companies' })).toBeUndefined();
     expect(again.read('investments', { player: 'carol' })).toEqual({});
     expect(again.read('stat', { player: 'bob', stat: 'coins' })).toMatchObject({ value: 10 });
+    await again.core.stop();
+  });
+});
+
+describe('the shop, the same for every player (§5.12)', () => {
+  // Invented items; the bot's own words are the game's.
+  const SHOP = (player: string, ...items: string[]) =>
+    [`${player}, oggi nel negozio:`, ...items].join('\n');
+  const PIGNA = '- 🛒 una pigna [B1] 200₭';
+  const MESTOLO = '- 🛒 un mestolo [M4] [equipaggiabile 🗡] 1.000₭';
+  const GENERATORE = '- 🛒 un generatore di oggetti [X] [generatore] 100₭';
+  const HOUR = 60 * MIN;
+  /** The shop, as the state answers it at the clock's time. */
+  const shopNow = (run: Awaited<ReturnType<typeof bootState>>, player?: string): Shop =>
+    run.read('shop', {
+      at: new Date(run.clock.now()).toISOString(),
+      ...(player === undefined ? {} : { player }),
+    }) as Shop;
+  type Shop = {
+    day: string | null;
+    today: boolean;
+    sagra: string | null;
+    items: { item: string; price: number; bought: boolean | null }[];
+  };
+
+  it('keeps the day’s items, each player’s purchases apart, and announces a new day’s', async () => {
+    const run = await bootState(path.join(dir, 'shop'), { group: true });
+    // Nothing known yet.
+    expect(shopNow(run)).toEqual({ day: null, sagra: null, as_of: null, today: false, items: [] });
+    // bob asks in the group: the day's items (13:00 in Rome), none bought by alice as far as told.
+    const asked = await run.group('bob', '/negozio');
+    await run.group('LoreGameBot', SHOP('bob', PIGNA, MESTOLO, GENERATORE), { replyTo: asked });
+    expect(run.of('loregame.shop')).toMatchObject([{ player: 'bob', owner: false, sagra: null }]);
+    let shop = shopNow(run);
+    expect(shop).toMatchObject({ day: '2026-11-06', today: true, sagra: null });
+    expect(shop.items.map((i) => [i.item, i.price, i.bought])).toEqual([
+      ['una pigna', 200, null],
+      ['un mestolo', 1000, null],
+      ['un generatore di oggetti', 100, null],
+    ]);
+    expect(shopNow(run, 'bob').items.map((i) => i.bought)).toEqual([false, false, false]);
+    // alice's own, in private, the pigna bought: hers, and the same list, so nothing announced.
+    run.clock.advance(HOUR);
+    await run.owner('/shop');
+    await run.bot(SHOP('alice', PIGNA.replace('🛒', '✅'), MESTOLO, GENERATORE));
+    shop = shopNow(run);
+    expect(shop.items.map((i) => i.bought)).toEqual([true, false, false]);
+    expect(run.of('loregame-state.shopChanged')).toEqual([
+      expect.objectContaining({
+        day: '2026-11-06',
+        new: ['una pigna', 'un mestolo', 'un generatore di oggetti'],
+      }),
+    ]);
+    // After midnight in Rome: yesterday's is not today's, and no one's purchases are known.
+    run.clock.advance(10 * HOUR);
+    expect(shopNow(run).today).toBe(false);
+    // A sagra day's, listed to carol, its button pressed (an edit): the pigna is not new.
+    const SAGRA = [
+      "carol, c'è la sagra della pigna!",
+      '',
+      'oggi nel negozio:',
+      PIGNA,
+      '- 🛒 un sasso [B2] 50₭',
+    ].join('\n');
+    const listing = await run.group('LoreGameBot', SAGRA);
+    await run.edit(listing, 'carol, sei sicuro di voler comprare un sasso per 50 ₭?', {
+      time: run.clock.now(),
+    });
+    await run.edit(listing, SAGRA.replace('🛒 un sasso', '✅ un sasso'), { time: run.clock.now() });
+    shop = shopNow(run, 'carol');
+    expect(shop).toMatchObject({ day: '2026-11-07', today: true, sagra: 'della pigna' });
+    expect(shop.items.map((i) => [i.item, i.bought])).toEqual([
+      ['una pigna', false],
+      ['un sasso', true],
+    ]);
+    expect(shopNow(run).items.map((i) => i.bought)).toEqual([null, null]);
+    expect(run.of('loregame-state.shopChanged').map((e) => e['new'])).toEqual([
+      ['una pigna', 'un mestolo', 'un generatore di oggetti'],
+      ['un sasso'],
+    ]);
+    expect(run.read('shopSeen')).toMatchObject({
+      'una pigna': { first: '2026-11-06', last: '2026-11-07', days: 2 },
+      'un sasso': { rarity: 'B2', first: '2026-11-07', days: 1 },
+      'un generatore di oggetti': { tags: ['generatore'], last: '2026-11-06', days: 1 },
+    });
+    await run.core.stop();
+  });
+
+  it('keeps the shop from 0.38.0 on, nothing known of it before', async () => {
+    const dir2 = path.join(dir, 'v18');
+    const run = await bootState(dir2, { group: true });
+    await run.group('LoreGameBot', SHOP('bob', PIGNA));
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    // As 0.37.0 kept it: no shop.
+    delete kept.state.shop;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 17 }));
+    const again = await bootState(dir2, { group: true });
+    expect(again.read('shopSeen')).toEqual({});
+    await again.group('LoreGameBot', SHOP('bob', MESTOLO));
+    expect(shopNow(again).items.map((i) => i.item)).toEqual(['un mestolo']);
     await again.core.stop();
   });
 });

@@ -47,6 +47,11 @@
  *   `loregame-state.marketUpdated` announces each update, live. A seed of the
  *   market's history (tools/market-seed) is taken once, by the migration to 0.35.0, if its store
  *   holds one (`market-seed`).
+ * - **The shop** (docs/game-bots.md §5.12): `state.shop({ player?, at? })` (the day's items, the same for
+ *   everyone, each marked bought by the player, the owner unless named; and whether the day is
+ *   today's) and `state.shopSeen()` (every item seen on sale, its first and latest day).
+ *   `loregame-state.shopChanged` announces a new day's items, or the day's told otherwise, with
+ *   those never seen on sale before, live.
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -76,6 +81,7 @@ import {
   initialInventory,
   initialMarket,
   initialPlayer,
+  initialShop,
   initialState,
   initialTraining,
   initialXp,
@@ -91,6 +97,7 @@ import {
   playerOf,
   profileOf,
   reduce,
+  shopOf,
   stateSchema,
   statOf,
 } from '#src/loregame-state.ts';
@@ -110,7 +117,7 @@ type Kept = LoreState & Record<string, unknown>;
 const base = statePlugin<Kept>({
   id: LOREGAME_STATE,
   description:
-    "The owner's state at @LoreGameBot: the inventory the turns gained, the accumulo, the players' bans, and every player's turns, rest, accumulo, trainings, level and XP",
+    "The owner's state at @LoreGameBot: the inventory the turns gained, the accumulo, the players' bans, every player's turns, rest, accumulo, trainings, level and XP, the market and the shop",
   schema: stateSchema,
   initial: initialState() as Kept,
   consumes: CONSUMES,
@@ -193,6 +200,23 @@ const base = statePlugin<Kept>({
           .describe('The companies it no longer quotes: gone'),
       })
       .describe('The market was updated: every company quoted anew'),
+    shopChanged: z
+      .object({
+        day: z.string().nullable().describe('The day it sells for, in Italy (YYYY-MM-DD)'),
+        sagra: z.string().nullable().describe("The day's sagra; none on an ordinary day"),
+        items: z
+          .array(
+            z.object({
+              item: z.string(),
+              rarity: z.string(),
+              tags: z.array(z.string()),
+              price: z.number(),
+            })
+          )
+          .describe("The day's items"),
+        new: z.array(z.string()).describe('Those never seen on sale before'),
+      })
+      .describe("The shop sells other items: a new day's, or the day's told otherwise"),
   },
   announce,
   migrations: [
@@ -583,6 +607,12 @@ const base = statePlugin<Kept>({
         state: { ...kept.state, market_history: { series, gone: c.gone } },
       });
     },
+    // 0.38.0 keeps the shop: added, nothing known (from the next listing).
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined || kept.state['shop'] !== undefined) return;
+      store.write('state', { ...kept, state: { ...kept.state, shop: initialShop() } });
+    },
   ],
   queries: {
     ban: {
@@ -673,6 +703,22 @@ const base = statePlugin<Kept>({
       input: z.object({ player: z.string().optional() }),
       output: z.record(z.string(), z.looseObject({ now: z.number().nullable() })).nullable(),
       run: (s, input: { player?: string }) => investmentsOf(s, input.player),
+    },
+    shop: {
+      help: "The shop's items for its day (the same for every player; `today`: its day is today's, in Italy), each with its rarity, tags and price, and whether the player (the owner unless named) has bought it, as their own listing of the day marked it (none: not known). `at` (ISO) is when `today` is told of, now by default",
+      input: z.object({ player: z.string().optional(), at: z.string().optional() }),
+      output: z.looseObject({
+        day: z.string().nullable(),
+        today: z.boolean(),
+        items: z.array(z.looseObject({ item: z.string(), bought: z.boolean().nullable() })),
+      }),
+      run: (s, input: { player?: string; at?: string }) =>
+        shopOf(s, input.at === undefined ? Date.now() : Date.parse(input.at), input.player),
+    },
+    shopSeen: {
+      help: 'Every item the shop has been seen selling, by name: its rarity and tags, its first and latest day on sale (YYYY-MM-DD, in Italy), and on how many days',
+      output: z.record(z.string(), z.looseObject({ first: z.string(), last: z.string() })),
+      run: (s) => s.shop.seen,
     },
     trip: {
       help: 'A trip planned (the owner\'s unless a player is named) to a place, by its code: the way from where they are through the places known, and each step\'s level, the items it takes (one each, up or down alike) and those they are known to lack or not known to hold, the guardians it asks and whether one has been made at each (by anyone; a neutral place asks none of a ticket holder), and for a neutral place whether "Neutralizzato" holds (not asked of "Il Neutrale"); ok true, false, or none when it cannot be told. `at` (ISO) is when, now by default',

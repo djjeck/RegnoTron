@@ -572,6 +572,14 @@ a player's open investments, as the market they asked for lists them (`positions
 all of it was taken): each with its `player` and `owner`. **`loregame.company`** carries a company's
 page, whoever asked.
 
+**Not supported**, as past the game's changes: the encounter of level 0 that ends in
+`Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
+
+The outcome the plugin publishes carries all this, as `Outcome` (`replies.ts`): a gain has its
+`item` (without its count and its stats), `qty`, `rarity`, `tags` and `stats`; every outcome of a
+turn has its `place`, its `fight` (`enemy`, `result`, `player`, `learned`, `powers`) and its
+`levelUp` (`level`, `coins`, `skillPoints`, `items`, `other`) when the reply had them.
+
 ### 5.12 The shop
 
 `/negozio` and `/shop` [M] list what the shop sells today (178 listings in the exports, August to
@@ -608,15 +616,14 @@ bob, oggi nel negozio:
 - **Buying** is done with the listing's buttons [M]: the bot edits the listing into
   `bob, sei sicuro di voler comprare <item> per <price> ₭?` (7 listings were last seen so in the
   exports, which show each message as it was last edited), and the purchase itself sends no message.
-  Not read.
+  Not read: a listing edited back is read again, its `✅` telling what was bought.
 
-**Not supported**, as past the game's changes: the encounter of level 0 that ends in
-`Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
-
-The outcome the plugin publishes carries all this, as `Outcome` (`replies.ts`): a gain has its
-`item` (without its count and its stats), `qty`, `rarity`, `tags` and `stats`; every outcome of a
-turn has its `place`, its `fight` (`enemy`, `result`, `player`, `learned`, `powers`) and its
-`levelUp` (`level`, `coins`, `skillPoints`, `items`, `other`) when the reply had them.
+**`loregame.shop`** carries every listing the parser reads, in any chat, whoever asked: `player` (as
+the listing names them), `owner`, `sagra` (none on an ordinary day), `items` (each `item`, `rarity`,
+`tags`, `price` in coins, and `bought`, the `✅`) and `edited`. `npm run lore-check` reads every one
+of the exports' 178 listings, over 76 days; the shop sold 35 items in them, 8 of them generators
+(`[generatore]`). The sagra announced in the group (`È arrivata la sagra …!`) is not read: the day's
+first listing names it.
 
 ## 6. The owner's state at @LoreGameBot
 
@@ -724,6 +731,16 @@ It is a floor, not the truth, while the turns are all it reads:
   (not one of `Il Neutrale`), whether `Neutralizzato` holds; `ok` is true, false (something known
   lacking), or none (a step it cannot tell: a place whose requirements were never told, a guardian
   not known, an inventory not listed).
+- **The shop** (§5.12, `shop`): its `day` (the date in Italy, when it changes), its `sagra` and its
+  `items` (each `item`, `rarity`, `tags`, `price`), as the day's latest listing told, whoever's (one
+  for every player); the items each player has bought that day, apart (`bought`, by player, as their
+  own listing's `✅` marks them, forgotten at the next day's listing); and every item seen on sale
+  (`seen`, by name: rarity, tags, `first` and `last` day, `days`). A listing of a day before the one
+  kept changes nothing. `state.shop({ player?, at? })` answers the day's items, each `bought` by the
+  player (the owner unless named; none when their listing of the day was not read), and whether its
+  day is `today`'s; `state.shopSeen()` every item seen. **`loregame-state.shopChanged`** announces a
+  new day's items, or the day's told otherwise (`day`, `sagra`, `items`), with those never seen on
+  sale before (`new`), from live news alone. A purchase's coins and item are not read yet.
 - **Their profile** (§5.5), and their username (`owner.name`), as with every player's (§6.1).
 - **Items and players are named by players**, anything, `__proto__` included.
 

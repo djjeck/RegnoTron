@@ -17,8 +17,10 @@ import {
   playerOf,
   reduce,
 } from '@regnotron/game-bots/loregame-state.ts';
+import { SHOP_EVENT } from '@regnotron/game-bots/plugins/loregame.ts';
 import { levelForXp } from '@regnotron/game-bots/profile.ts';
 import { LOREGAMEBOT, TURN_COMMANDS } from '@regnotron/game-bots/replies.ts';
+import { GENERATOR_TAG } from '@regnotron/game-bots/shop.ts';
 
 /** One event of the parser, with the state before and after it. */
 export interface Step {
@@ -407,6 +409,49 @@ export const players: Check = {
   },
 };
 
+/**
+ * The shop (docs/game-bots.md §5.12): of the bot's listings, those read; the days they cover, and
+ * how often the day's items changed within a day (the shop changes at midnight); the items seen on
+ * sale, the generators apart.
+ */
+export const shop: Check = {
+  id: 'shop',
+  run: (r) => {
+    const listed = r.inbounds.filter((m) => isBot(m) && m.text.includes('oggi nel negozio:'));
+    const read = r.steps.filter((s) => s.event.type === SHOP_EVENT);
+    const changed = read.filter(
+      (s) => s.before.shop.items !== s.after.shop.items || s.before.shop.day !== s.after.shop.day
+    );
+    const last = r.steps.at(-1)?.after ?? initialState();
+    const seen = Object.values(last.shop.seen);
+    const generators = seen.filter((i) => i.tags.includes(GENERATOR_TAG)).length;
+    return {
+      title: 'Shop',
+      rows: [
+        ['listings of the bot’s', String(listed.length)],
+        ['read', pct(read.length, listed.length)],
+        ['days', String(new Set(read.map((s) => s.after.shop.day)).size)],
+        [
+          'sagra days',
+          String(
+            new Set(read.filter((s) => s.after.shop.sagra !== null).map((s) => s.after.shop.day))
+              .size
+          ),
+        ],
+        [
+          'changes of the items within a day',
+          String(changed.filter((s) => s.before.shop.day === s.after.shop.day).length),
+        ],
+        ['items seen on sale', `${seen.length} (${generators} generators)`],
+        [
+          'players whose purchases were told',
+          String(new Set(read.map((s) => String(s.event['player']))).size),
+        ],
+      ],
+    };
+  },
+};
+
 /** Every check, in the report's order: add one here as the parser learns to read more. */
 export const CHECKS: readonly Check[] = [
   coverage,
@@ -416,6 +461,7 @@ export const CHECKS: readonly Check[] = [
   levels,
   profiles,
   players,
+  shop,
 ];
 
 /** The report's text: each check's title, then its rows. */

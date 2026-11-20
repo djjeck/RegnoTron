@@ -225,6 +225,31 @@ describe('the lore check', () => {
     expect(row('with every turn seen')).toBe('1 of 1 (100.0%)');
   });
 
+  it('reads every shop listing, and tells the days and the items they sold', async () => {
+    const SHOP = (player: string, ...items: string[]) =>
+      [`${player}, oggi nel negozio:`, ...items].join('\n');
+    const PIGNA = '- 🛒 una pigna [B1] 200₭';
+    const GEN = '- 🛒 un generatore di oggetti [X] [generatore] 100₭';
+    const run = await replayLore(
+      [
+        // Two listings in a day, the same items; one of another day (13:00 + 12 hours, in Rome).
+        ...asked(0, 'bob', '/negozio', SHOP('bob', PIGNA, GEN)),
+        ...asked(5, 'carol', '/shop', SHOP('carol', PIGNA.replace('🛒', '✅'), GEN)),
+        ...asked(12 * 60, 'bob', '/negozio', SHOP('bob', '- 🛒 un sasso [B2] 50₭')),
+      ],
+      { self: 'alice' }
+    );
+    const shop = CHECKS.find((c) => c.id === 'shop')?.run(run);
+    const row = (label: string) => shop?.rows.find(([k]) => k.startsWith(label))?.[1];
+    expect(row('listings of the bot’s')).toBe('3');
+    expect(row('read')).toBe('3 of 3 (100.0%)');
+    expect(row('days')).toBe('2');
+    expect(row('sagra days')).toBe('0');
+    expect(row('changes of the items within a day')).toBe('0');
+    expect(row('items seen on sale')).toBe('3 (1 generators)');
+    expect(row('players whose purchases were told')).toBe('2');
+  });
+
   it('takes a group renamed between two exports as one chat, each message once', () => {
     const before = Array.from({ length: 12 }, (_, i) => say(i, 'bob', `messaggio ${i}`));
     // The later export, titled anew, holds the last ten again, and two more.
