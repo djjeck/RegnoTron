@@ -41,8 +41,11 @@ const FILTER = /^Filtri attivi: (.+)$/u;
 const ITEM = /^(.*?) \[([A-Z]+\d*\+?)\]((?: ?\[[a-z][^\]\n]*\])*) x(\d+)$/su;
 const RANGE = /^(.+) \((\d+)(?: - (\d+))?\)$/su;
 
-/** An item's lines, read: its name, its range, its rarity, tags and count; none if not whole. */
-function itemOf(lines: readonly string[]): Listed | undefined {
+/**
+ * An item's lines, read: its name, its range, its rarity, tags and count; none if not whole. A recipe
+ * lists its items so too (`src/recipes.ts`).
+ */
+export function listedOf(lines: readonly string[]): Listed | undefined {
   const m = ITEM.exec(lines.join('\n'));
   if (m === null) return undefined;
   const range = RANGE.exec(m[1] as string);
@@ -88,7 +91,7 @@ export function parseInventory(raw: string): InventoryListing | undefined {
       if (empty || !line.startsWith('> ')) return undefined;
       name = [line.slice(2)];
     } else name.push(line);
-    const item = itemOf(name);
+    const item = listedOf(name);
     if (item === undefined) continue;
     items.push(item);
     name = undefined;

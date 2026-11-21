@@ -184,6 +184,14 @@ player's inventory, what it made or gave enters it, its reward and cost move the
 made is recorded at their place, and a season made takes its faction's season generators. The moving
 box opened (`/usa`) is `loregame.used`: the box out, what it held in (docs/game-bots.md §5.13, §6).
 
+**The recipes.** A player's list of recipes (`/ricetta`), a recipe's answer (`/ricetta <name>`: what
+they lack, and what they hold of what it takes) and a recipe made are published as
+`loregame.recipes`, `loregame.recipe` and `loregame.recipeMade`, each for the player it names. The
+state keeps the game's recipes (each one's level, what it takes and gives) and each player's (how
+many items they lack, and which); an answer sets the inventory of the items it names, exactly; a
+recipe made takes its items out, puts what it gives in, and adds one to the player's `recipes`
+(docs/game-bots.md §5.14, §6).
+
 **The catalogue.** Every item any of these events names with its rarity (a drop, a level-up, an
 inventory, a gift, a place's requirements, the shop), anyone's, is kept once in the state's
 catalogue, with when and how it was first seen; `loregame-state.itemsDiscovered` announces the new

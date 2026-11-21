@@ -100,6 +100,7 @@ import {
 import { parseNeutrality, parseTravel, placeRequirements, type Requirements } from '#src/places.ts';
 import { PlayerWatch } from '#src/players.ts';
 import { parseProfile } from '#src/profile.ts';
+import { parseRecipeMade, parseRecipeNeeds, parseRecipes } from '#src/recipes.ts';
 import {
   type LoreAccumulo,
   LOREGAMEBOT,
@@ -182,6 +183,10 @@ export const SHOP_EVENT = `${LOREGAME_PARSER}.shop`;
 /** The event of every generator used (§5.13), and of an item `/usa` consumed (the box). */
 export const GENERATED_EVENT = `${LOREGAME_PARSER}.generated`;
 export const USED_EVENT = `${LOREGAME_PARSER}.used`;
+/** The events of the recipes (§5.14): a player's list, a recipe's needs, a recipe made. */
+export const RECIPES_EVENT = `${LOREGAME_PARSER}.recipes`;
+export const RECIPE_EVENT = `${LOREGAME_PARSER}.recipe`;
+export const RECIPE_MADE_EVENT = `${LOREGAME_PARSER}.recipeMade`;
 /** The event of every purchase at the shop (§5.12), as its listing's edits tell it. */
 export const PURCHASE_EVENT = `${LOREGAME_PARSER}.purchase`;
 /** The store's document of the bans it knows. */
@@ -666,6 +671,46 @@ const usedEvent = z
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("An item a player's /usa consumed (the moving box), and what it gave");
+const countedItem = listedItem.extend({ qty: z.number() });
+const recipesEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    recipes: z
+      .array(
+        z.object({
+          name: z.string(),
+          level: z.number().describe('Its level, [L<n>]'),
+          lacking: z.number().nullable().describe('How many items they lack; none for [*]'),
+          starred: z.boolean().describe('[*]: not explained by the bot'),
+        })
+      )
+      .describe('The recipes they can make, each as the list tells it'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("A player's recipes, as /ricetta lists them");
+const recipeEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    name: z.string().describe('The recipe'),
+    lacking: z.array(countedItem).describe('What they lack, each by how many'),
+    held: z.array(countedItem).describe('What they hold of what it takes, each their whole count'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe('What a recipe takes that a player lacks and holds, as /ricetta <name> tells it');
+const recipeMadeEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    used: z.array(countedItem).describe('The items it took, each by how many'),
+    made: countedItem.describe('The item it gave'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe('A recipe a player made: what it took and gave (it names no recipe)');
 
 const playerTurnEvent = z
   .object({
@@ -757,6 +802,9 @@ export const loregamePlugin: Plugin = {
       [PURCHASE_EVENT]: purchaseEvent,
       [GENERATED_EVENT]: generatedEvent,
       [USED_EVENT]: usedEvent,
+      [RECIPES_EVENT]: recipesEvent,
+      [RECIPE_EVENT]: recipeEvent,
+      [RECIPE_MADE_EVENT]: recipeMadeEvent,
     },
     // The ban comes first: any other outcome of a turn is an `ok`.
     answers: [
@@ -1109,6 +1157,39 @@ export const loregamePlugin: Plugin = {
               found: box.found,
               ...old,
             },
+            m.time
+          );
+        // The recipes (§5.14): each answer names its player.
+        const whom = (p: string) => ({
+          player: p,
+          owner: self !== undefined && p.toLowerCase() === self.toLowerCase(),
+        });
+        const recipes = parseRecipes(m.text);
+        if (recipes !== undefined)
+          ctx.bus.publish(
+            RECIPES_EVENT,
+            { chat: m.chat, ...whom(recipes.player), recipes: recipes.recipes, ...old },
+            m.time
+          );
+        const needs = parseRecipeNeeds(m.text);
+        if (needs !== undefined)
+          ctx.bus.publish(
+            RECIPE_EVENT,
+            {
+              chat: m.chat,
+              ...whom(needs.player),
+              name: needs.name,
+              lacking: needs.lacking,
+              held: needs.held,
+              ...old,
+            },
+            m.time
+          );
+        const made = parseRecipeMade(m.text);
+        if (made !== undefined)
+          ctx.bus.publish(
+            RECIPE_MADE_EVENT,
+            { chat: m.chat, ...whom(made.player), used: made.used, made: made.made, ...old },
             m.time
           );
         // Neutrality (§5.9): a ticket's answer names its player; its end is told the owner alone, in

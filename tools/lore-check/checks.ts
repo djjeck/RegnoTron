@@ -13,15 +13,21 @@ import { isTurnCommand } from '@megabottron1999/turns/turn-parser.ts';
 import { parseGenerated, parseGenerationAsked } from '@regnotron/game-bots/generators.ts';
 import {
   initialState,
+  inventoryOfPlayer,
   type LoreState,
   type Player,
   playerOf,
+  recipeMadeOf,
   reduce,
 } from '@regnotron/game-bots/loregame-state.ts';
 import {
   GENERATED_EVENT,
+  INVENTORY_EVENT,
   PROFILE_EVENT,
   PURCHASE_EVENT,
+  RECIPE_EVENT,
+  RECIPE_MADE_EVENT,
+  RECIPES_EVENT,
   SHOP_EVENT,
   USED_EVENT,
 } from '@regnotron/game-bots/plugins/loregame.ts';
@@ -589,6 +595,65 @@ export const generators: Check = {
   },
 };
 
+/**
+ * The recipes (docs/game-bots.md §5.14): the bot's lists, answers and recipes made, those read;
+ * which recipe each made was; the recipes the game has; and the items a recipe made left, against
+ * its player's next inventory listing (each listed that the state held exactly then).
+ */
+export const recipes: Check = {
+  id: 'recipes',
+  run: (r) => {
+    const said = r.inbounds.filter(isBot);
+    const told = (pattern: RegExp) => said.filter((m) => pattern.test(m.text)).length;
+    const read = (type: string) => r.steps.filter((s) => s.event.type === type);
+    const made = read(RECIPE_MADE_EVENT);
+    const items = (v: unknown) => (Array.isArray(v) ? (v as { item: string; qty: number }[]) : []);
+    const known = made.filter(
+      (s) =>
+        recipeMadeOf(s.after, items(s.event['used']), s.event['made'] as { item: string }) !==
+        undefined
+    );
+    let checked = 0;
+    let agreed = 0;
+    for (const m of made) {
+      const name = String(m.event['player']);
+      const owner = m.event['owner'] === true;
+      const next = r.steps.find(
+        (s) =>
+          s.event.type === INVENTORY_EVENT &&
+          s.event.t >= m.event.t &&
+          (owner ? s.event['owner'] === true : String(s.event['player']) === name)
+      );
+      if (next === undefined) continue;
+      const before = inventoryOfPlayer(next.before, owner ? undefined : name);
+      const listed = new Map(items(next.event['items']).map((i) => [i.item, i.qty]));
+      for (const i of [...items(m.event['used']), m.event['made'] as { item: string }]) {
+        const h =
+          before !== null && Object.hasOwn(before.items, i.item) ? before.items[i.item] : undefined;
+        const said = listed.get(i.item);
+        if (h?.exact !== true || said === undefined) continue;
+        checked++;
+        if (h.qty === said) agreed++;
+      }
+    }
+    const last = r.steps.at(-1)?.after ?? initialState();
+    return {
+      title: 'Recipes',
+      rows: [
+        ['lists of the bot’s', String(told(/ ecco le ricette a tua disposizione:/u))],
+        ['lists read', String(read(RECIPES_EVENT).length)],
+        ['answers lacking something', String(told(/ per fare la ricetta .+ ti mancan[oa]:/u))],
+        ['answers read', String(read(RECIPE_EVENT).length)],
+        ['recipes made', String(told(/^@\w+, prendi in mano:/u))],
+        ['recipes made read', String(made.length)],
+        ['of them, known which recipe', pct(known.length, made.length)],
+        ['recipes the game has', String(Object.keys(last.recipes).length)],
+        ['items a recipe made left, agreeing with the next listing', pct(agreed, checked)],
+      ],
+    };
+  },
+};
+
 /** Every check, in the report's order: add one here as the parser learns to read more. */
 export const CHECKS: readonly Check[] = [
   coverage,
@@ -601,6 +666,7 @@ export const CHECKS: readonly Check[] = [
   whereabouts,
   shop,
   generators,
+  recipes,
   catalogue,
 ];
 

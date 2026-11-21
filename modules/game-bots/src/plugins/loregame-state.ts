@@ -55,6 +55,10 @@
  * - **The catalogue** (docs/game-bots.md §6): `state.catalogue()`, every item seen in the game, by
  *   name, its rarity and tags, when and how first seen; `loregame-state.itemsDiscovered` announces
  *   those seen for the first time, live. Seeded, by the migration to 0.39.0, from the state's items.
+ * - **The recipes** (docs/game-bots.md §5.14): `state.recipes()` (the game's, each one's level,
+ *   what it takes and gives) and `state.recipe({ name, player? })` (one, by a part of its name, with
+ *   a player's own: how many items they lack, and which). Added, none known, by the migration to
+ *   0.44.0.
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -100,6 +104,8 @@ import {
   placesOf,
   playerOf,
   profileOf,
+  recipeOf,
+  recipesOf,
   reduce,
   shopOf,
   stateSchema,
@@ -640,6 +646,21 @@ const base = statePlugin<Kept>({
         state: { ...kept.state, catalogue: catalogueOf(s, new Date().toISOString()) },
       });
     },
+    // 0.44.0 keeps the recipes, the game's and each player's: added, none known (from the next
+    // list or answer).
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined || kept.state['recipes'] !== undefined) return;
+      const players = (kept.state['players'] ?? {}) as Record<string, Record<string, unknown>>;
+      const migrated = Object.entries(players).map(([name, p]) => [
+        name,
+        { ...p, recipes: p['recipes'] ?? {} },
+      ]);
+      store.write('state', {
+        ...kept,
+        state: { ...kept.state, players: Object.fromEntries(migrated), recipes: {} },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -751,6 +772,17 @@ const base = statePlugin<Kept>({
       help: 'Every item seen in the game, by name: its rarity and tags as last told, and when and how it was first seen (drop, level-up, inventory, gift, place, shop, generated)',
       output: z.record(z.string(), z.looseObject({ rarity: z.string(), first: z.string() })),
       run: (s) => s.catalogue,
+    },
+    recipes: {
+      help: "The game's recipes, by name: each one's level, what it takes (each item's rarity, tags and how many, none if not known) and what it gives (once seen made), as any player's list and answers last told",
+      output: z.record(z.string(), z.looseObject({ ingredients: z.array(z.unknown()) })),
+      run: (s) => recipesOf(s),
+    },
+    recipe: {
+      help: "A recipe, by its name or a part of it (as /ricetta, ignoring case, when one recipe alone has it): what it takes and gives, and a player's own (the owner's unless named): how many items they lack and which, as last told; none if no one recipe is named so",
+      input: z.object({ name: z.string(), player: z.string().optional() }),
+      output: z.looseObject({ name: z.string(), player: z.unknown() }).nullable(),
+      run: (s, input: { name: string; player?: string }) => recipeOf(s, input.name, input.player),
     },
     trip: {
       help: 'A trip planned (the owner\'s unless a player is named) to a place, by its code: the way from where they are through the places known, and each step\'s level, the items it takes (one each, up or down alike) and those they are known to lack or not known to hold, the guardians it asks and whether one has been made at each (by anyone; a neutral place asks none of a ticket holder), and for a neutral place whether "Neutralizzato" holds (not asked of "Il Neutrale"); ok true, false, or none when it cannot be told. `at` (ISO) is when, now by default',

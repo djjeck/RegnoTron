@@ -87,6 +87,9 @@ import {
   PLAYER_TURN_EVENT,
   PROFILE_EVENT,
   PURCHASE_EVENT,
+  RECIPE_EVENT,
+  RECIPE_MADE_EVENT,
+  RECIPES_EVENT,
   REQUIREMENTS_EVENT,
   SHOP_EVENT,
   SKILLS_EVENT,
@@ -145,6 +148,9 @@ export const CONSUMES: readonly string[] = [
   PURCHASE_EVENT,
   GENERATED_EVENT,
   USED_EVENT,
+  RECIPES_EVENT,
+  RECIPE_EVENT,
+  RECIPE_MADE_EVENT,
 ];
 
 /**
@@ -276,7 +282,7 @@ const holding = z.object({
   exact: z.boolean().describe('Exact'),
   date: date.describe('Set'),
   via: z
-    .enum(['drop', 'level-up', 'listing', 'gift', 'purchase', 'generated', 'used'])
+    .enum(['drop', 'level-up', 'listing', 'gift', 'purchase', 'generated', 'used', 'recipe'])
     .describe('By'),
   rarity: z.string().nullable().describe('Rarity'),
   tags: z.array(z.string()).describe('Tags'),
@@ -301,6 +307,21 @@ const equippedSchema = z
     level: z.object({ low: z.number(), high: z.number() }).nullable(),
   })
   .nullable();
+
+/** A recipe as a player's list and answers tell it (§5.14). */
+const playerRecipe = z.object({
+  level: z.number().nullable().describe('Its level'),
+  lacking: z
+    .number()
+    .nullable()
+    .describe('How many items they lack for it, as last told; none if not known'),
+  items: z
+    .array(z.string())
+    .nullable()
+    .describe('The items they lack, as its answer named them; none if not known'),
+  starred: z.boolean().describe('Marked [*] in their list (not explained by the bot)'),
+  as_of: z.string().describe('Told'),
+});
 
 /** A player as the state sees them: what their turns and answers in the chats it reads say. */
 const player = z.object({
@@ -429,6 +450,9 @@ const player = z.object({
       })
     )
     .describe("Their open investments, by the company's id (`market`), as last told"),
+  recipes: z
+    .record(z.string(), playerRecipe)
+    .describe('Their recipes, by name, as their list and answers last told'),
   stats_drift: z
     .array(
       z.object({
@@ -502,8 +526,10 @@ const shopItemSchema = z.object({
 });
 
 const discoveredVia = z
-  .enum(['drop', 'level-up', 'inventory', 'gift', 'place', 'shop', 'generated'])
-  .describe('How it was first seen: a turn, a level-up, an inventory, a gift, a place, the shop');
+  .enum(['drop', 'level-up', 'inventory', 'gift', 'place', 'shop', 'generated', 'recipe'])
+  .describe(
+    'How it was first seen: a turn, a level-up, an inventory, a gift, a place, the shop, a generator, a recipe'
+  );
 const catalogued = z.object({
   rarity: z.string(),
   tags: z.array(z.string()),
@@ -511,6 +537,23 @@ const catalogued = z.object({
   via: discoveredVia,
 });
 export type Catalogued = z.infer<typeof catalogued>;
+
+const ingredient = z.object({
+  item: z.string(),
+  rarity: z.string(),
+  tags: z.array(z.string()),
+  qty: z.number().nullable().describe('How many it takes; none if not known'),
+});
+const recipeSchema = z.object({
+  level: z.number().nullable().describe('Its level'),
+  ingredients: z.array(ingredient).describe('What it takes, as last told'),
+  made: z
+    .object({ item: z.string(), rarity: z.string(), tags: z.array(z.string()) })
+    .nullable()
+    .describe('What it gives, once seen made'),
+  as_of: z.string().describe('Told'),
+});
+export type Recipe = z.infer<typeof recipeSchema>;
 
 /** The state's schema: its sections, each described for the panel. */
 export const stateSchema = z.object({
@@ -626,6 +669,9 @@ export const stateSchema = z.object({
     .describe(
       'Every item seen in the game, by name: its rarity and tags as last told, when and how first seen'
     ),
+  recipes: z
+    .record(z.string(), recipeSchema)
+    .describe("The game's recipes, by name: their level, what they take and give, as last told"),
 });
 
 export type Holding = z.infer<typeof holding>;
@@ -664,6 +710,7 @@ export function initialState(): LoreState {
     market_history: { series: {}, gone: {} },
     shop: initialShop(),
     catalogue: {},
+    recipes: {},
   };
 }
 
@@ -703,6 +750,7 @@ export function initialPlayer(at: string): Player {
     listing: null,
     gear: {},
     investments: {},
+    recipes: {},
     stats_drift: [],
   };
 }
@@ -843,6 +891,13 @@ function gainsOf(e: BusEvent): { whose: Whose; gains: Gain[] } | undefined {
       whose: w,
       gains: real(items.map(({ item, rarity, tags }) => ({ item, qty: 1, rarity, tags, via }))),
     };
+  }
+  if (e.type === RECIPE_MADE_EVENT) {
+    const w = whoseOf(e);
+    const d = recipeMadeSchema.safeParse(e);
+    if (w === undefined || !d.success) return undefined;
+    const { item, qty, rarity, tags } = d.data.made;
+    return { whose: w, gains: real([{ item, qty, rarity, tags, via: 'recipe' }]) };
   }
   if (e.type !== TURN_EVENT) return undefined;
   const gains = turnGains(e);
@@ -1571,6 +1626,14 @@ function namedIn(e: BusEvent): Named[] {
     return b.success ? of([b.data], 'shop') : [];
   }
   if (e.type === USED_EVENT) return of(usedSchema.safeParse(e).data?.found ?? [], 'drop');
+  if (e.type === RECIPE_EVENT) {
+    const d = recipeNeedsSchema.safeParse(e);
+    return d.success ? of([...d.data.lacking, ...d.data.held], 'recipe') : [];
+  }
+  if (e.type === RECIPE_MADE_EVENT) {
+    const d = recipeMadeSchema.safeParse(e);
+    return d.success ? of([...d.data.used, d.data.made], 'recipe') : [];
+  }
   if (e.type === GENERATED_EVENT) {
     const g = generatedSchema.safeParse(e);
     if (!g.success) return [];
@@ -1659,6 +1722,7 @@ const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
   reduceShop,
   reducePurchase,
   reduceGenerators,
+  reduceRecipes,
   reduceCatalogue,
 ];
 
@@ -2553,15 +2617,15 @@ function whoseOf(e: BusEvent): Whose | undefined {
   return typeof player === 'string' && player !== '' ? { owner: false, player } : undefined;
 }
 
-/** `item` one less in `whose`'s inventory, at `at`, if they hold it: exact while it was, one held. */
-function used(s: LoreState, whose: Whose, item: string, at: string): LoreState {
+/** `qty` of `item` less in `whose`'s inventory, at `at`, if they hold it: exact while it was, so many held. */
+function used(s: LoreState, whose: Whose, item: string, at: string, qty = 1): LoreState {
   const inv = inventoryOf(s, whose);
   const h = inv === undefined ? undefined : own(inv.items, item);
   if (inv === undefined || h === undefined) return s;
   const items = withItem(inv.items, item, {
     ...h,
-    qty: Math.max(0, h.qty - 1),
-    exact: h.exact && h.qty >= 1,
+    qty: Math.max(0, h.qty - qty),
+    exact: h.exact && h.qty >= qty,
     date: at,
   });
   return withInventory(s, whose, { ...inv, items, held: heldOf(items) }, at);
@@ -2615,6 +2679,230 @@ function reduceGenerators(state: LoreState, e: BusEvent): LoreState {
       s = withInventory(s, w, { ...inv, items, held: heldOf(items) }, at);
     }
   return s;
+}
+
+const countedSchema = listedSchema.extend({ qty: z.number() });
+/** What a recipe list says (the parser's `loregame.recipes`). */
+const recipeListSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  recipes: z.array(
+    z.object({
+      name: z.string(),
+      level: z.number(),
+      lacking: z.number().nullable(),
+      starred: z.boolean(),
+    })
+  ),
+});
+/** What a recipe's needs say (the parser's `loregame.recipe`). */
+const recipeNeedsSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  name: z.string(),
+  lacking: z.array(countedSchema),
+  held: z.array(countedSchema),
+});
+/** What a recipe made says (the parser's `loregame.recipeMade`). */
+const recipeMadeSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  used: z.array(countedSchema),
+  made: countedSchema,
+});
+
+/**
+ * The recipe a recipe made was (it names none): the one known to take the same items, or to give
+ * the same; none if no one recipe is.
+ */
+export function recipeMadeOf(
+  s: LoreState,
+  used: readonly { item: string }[],
+  made: { item: string }
+): string | undefined {
+  const key = (items: readonly { item: string }[]) =>
+    JSON.stringify(items.map((i) => i.item).sort());
+  const takes = key(used);
+  const fits = Object.entries(s.recipes).filter(
+    ([, r]) =>
+      (r.ingredients.length > 0 && key(r.ingredients) === takes) || r.made?.item === made.item
+  );
+  return fits.length === 1 ? fits[0]?.[0] : undefined;
+}
+
+/**
+ * The recipes (§5.14). A list sets the recipes the game has, by level, and the player's own, each
+ * with how many items they lack (theirs is the whole list: those it does not name are gone). An
+ * answer to `/ricetta <name>` tells what a recipe takes, and is evidence of its player's
+ * inventory: each item held, exactly so many; each lacking, none (no item is both [M]). A recipe
+ * made takes its items out (and its item in, as a drop, `reduce`), adds one to the player's
+ * `recipes`, and, if it is known which recipe it was, tells what that takes and gives.
+ */
+function reduceRecipes(state: LoreState, e: BusEvent): LoreState {
+  if (e.type !== RECIPES_EVENT && e.type !== RECIPE_EVENT && e.type !== RECIPE_MADE_EVENT)
+    return state;
+  const whose = whoseOf(e);
+  if (whose === undefined) return state;
+  const at = asIso(e.t);
+  const name = whose.owner ? state.owner.name : whose.player;
+  let s = state;
+  if (!whose.owner && playerOf(s, whose.player) === null)
+    s = { ...s, players: withKey(s.players, whose.player, initialPlayer(at)) };
+  /** The player's recipes, changed by `f`, and maybe their stats. */
+  const theirs = (
+    f: (r: Player['recipes']) => Player['recipes'],
+    stats: (st: Player['stats']) => Player['stats'] = (st) => st
+  ): void => {
+    const p = name === null ? null : playerOf(s, name);
+    if (p === null || name === null) return;
+    const next = { ...p, as_of: at, recipes: f(p.recipes), stats: stats(p.stats) };
+    s = { ...s, players: withKey(s.players, name, next) };
+  };
+  if (e.type === RECIPES_EVENT) {
+    const d = recipeListSchema.safeParse(e);
+    if (!d.success) return state;
+    for (const r of d.data.recipes) {
+      const was = ownOf(s.recipes, r.name);
+      s = {
+        ...s,
+        recipes: withKey(s.recipes, r.name, {
+          level: r.level,
+          ingredients: was?.ingredients ?? [],
+          made: was?.made ?? null,
+          as_of: at,
+        }),
+      };
+    }
+    theirs((before) =>
+      d.data.recipes.reduce<Player['recipes']>((mine, r) => {
+        const was = ownOf(before, r.name);
+        // The items named lacking last, while they lack as many still.
+        const items = was?.items != null && was.items.length === r.lacking ? was.items : null;
+        return withKey(mine, r.name, {
+          level: r.level,
+          lacking: r.lacking,
+          items,
+          starred: r.starred,
+          as_of: at,
+        });
+      }, {})
+    );
+    return s;
+  }
+  if (e.type === RECIPE_EVENT) {
+    const d = recipeNeedsSchema.safeParse(e);
+    if (!d.success) return state;
+    const known = ownOf(s.recipes, d.data.name);
+    const need = (item: string) => known?.ingredients.find((i) => i.item === item)?.qty ?? null;
+    // An item lacking is held none of, so it takes as many as are lacking.
+    const ingredients = [
+      ...d.data.lacking.map(({ item, rarity, tags, qty }) => ({ item, rarity, tags, qty })),
+      ...d.data.held.map(({ item, rarity, tags }) => ({ item, rarity, tags, qty: need(item) })),
+    ];
+    s = {
+      ...s,
+      recipes: withKey(s.recipes, d.data.name, {
+        level: known?.level ?? null,
+        ingredients,
+        made: known?.made ?? null,
+        as_of: at,
+      }),
+    };
+    theirs((r) => {
+      const was = ownOf(r, d.data.name);
+      return withKey(r, d.data.name, {
+        level: was?.level ?? known?.level ?? null,
+        lacking: d.data.lacking.length,
+        items: d.data.lacking.map((l) => l.item),
+        starred: was?.starred ?? false,
+        as_of: at,
+      });
+    });
+    const inv = inventoryOf(s, whose);
+    if (inv === undefined) return s;
+    let items = inv.items;
+    for (const h of d.data.held) {
+      const before = own(items, h.item);
+      items = withItem(items, h.item, {
+        qty: h.qty,
+        exact: true,
+        date: at,
+        via: before?.via ?? 'listing',
+        rarity: h.rarity,
+        tags: h.tags,
+        ...(h.level === null
+          ? before?.level === undefined
+            ? {}
+            : { level: before.level }
+          : { level: h.level }),
+      });
+    }
+    for (const l of d.data.lacking) {
+      const before = own(items, l.item);
+      if (before !== undefined && (before.qty !== 0 || !before.exact))
+        items = withItem(items, l.item, { ...before, qty: 0, exact: true, date: at });
+    }
+    return items === inv.items
+      ? s
+      : withInventory(s, whose, { ...inv, items, held: heldOf(items) }, at);
+  }
+  const d = recipeMadeSchema.safeParse(e);
+  if (!d.success) return state;
+  for (const u of d.data.used) s = used(s, whose, u.item, at, u.qty);
+  const which = recipeMadeOf(s, d.data.used, d.data.made);
+  const recipe = which === undefined ? undefined : ownOf(s.recipes, which);
+  if (which !== undefined && recipe !== undefined) {
+    const { item, rarity, tags } = d.data.made;
+    s = {
+      ...s,
+      recipes: withKey(s.recipes, which, {
+        ...recipe,
+        ingredients: d.data.used.map(({ item, rarity, tags, qty }) => ({
+          item,
+          rarity,
+          tags,
+          qty,
+        })),
+        made: { item, rarity, tags },
+        as_of: at,
+      }),
+    };
+  }
+  theirs(
+    (r) => {
+      const was = which === undefined ? undefined : ownOf(r, which);
+      // What they lack now is not known: what it took may have been all they held.
+      return which === undefined || was === undefined
+        ? r
+        : withKey(r, which, { ...was, lacking: null, items: null, as_of: at });
+    },
+    (st) =>
+      Object.hasOwn(st, 'recipes') ? move(st, 'recipes', (v) => Number(v) + 1, true, at) : st
+  );
+  return s;
+}
+
+/** The recipes the game has, as the state knows them. */
+export const recipesOf = (s: LoreState): LoreState['recipes'] => s.recipes;
+
+/**
+ * A recipe, by its name or a part of it (as `/ricetta <name>`, ignoring case, when one recipe
+ * alone has it), with a player's own (the owner's unless named); none if no one recipe is named so.
+ */
+export function recipeOf(
+  s: LoreState,
+  name: string,
+  player?: string
+): (Recipe & { name: string; player: Player['recipes'][string] | null }) | null {
+  const part = name.toLowerCase();
+  const named = Object.keys(s.recipes).filter((k) => k.toLowerCase().includes(part));
+  const key =
+    ownOf(s.recipes, name) === undefined ? (named.length === 1 ? named[0] : undefined) : name;
+  const recipe = key === undefined ? undefined : ownOf(s.recipes, key);
+  if (key === undefined || recipe === undefined) return null;
+  const who = player ?? s.owner.name;
+  const p = who === null ? null : playerOf(s, who);
+  return { name: key, ...recipe, player: p === null ? null : (ownOf(p.recipes, key) ?? null) };
 }
 
 /** What a purchase event says (the parser's `loregame.purchase`). */

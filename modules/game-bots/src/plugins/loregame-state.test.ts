@@ -68,6 +68,8 @@ describe('the loregame-state node', () => {
       'shop',
       'shopSeen',
       'catalogue',
+      'recipes',
+      'recipe',
       'trip',
       'holders',
       'count',
@@ -373,6 +375,9 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.purchase',
       'loregame.generated',
       'loregame.used',
+      'loregame.recipes',
+      'loregame.recipe',
+      'loregame.recipeMade',
     ]);
   });
 
@@ -2538,6 +2543,62 @@ describe('the catalogue, every item seen in the game (§6)', () => {
       'una pigna': { rarity: 'B1', tags: [], first: '2026-11-06T00:00:00.000Z', via: 'shop' },
       'un sasso': { rarity: 'B1', tags: [], first: new Date(T0).toISOString(), via: 'drop' },
     });
+    await again.core.stop();
+  });
+
+  it('reads the recipes: a list, an answer, one made', async () => {
+    const run = await bootState(path.join(dir, 'recipes'), { group: true });
+    await run.group('bob', '/ricetta');
+    await run.group(
+      'LoreGameBot',
+      '@bob, ecco le ricette a tua disposizione:\n- La zuppa [L1] [manca 1]\n\nScrivi /ricetta <nome ricetta> per vedere quali oggetti ti mancano per una certa ricetta!'
+    );
+    await run.group('bob', '/ricetta zuppa');
+    await run.group(
+      'LoreGameBot',
+      '@bob, per fare la ricetta La zuppa ti mancano:\n- una rapa [B1] x1\n\nMentre hai già:\n- una pentola [B2] x2'
+    );
+    run.clock.advance(MIN);
+    await run.group('bob', '/ricetta zuppa');
+    await run.group(
+      'LoreGameBot',
+      '@bob, prendi in mano:\n- una pentola [B2] x1\n- una rapa [B1] x1\n\ne mescoli.\n\nOttieni: il brodo [L1]!'
+    );
+    expect(run.of('loregame.recipes')).toMatchObject([{ player: 'bob', owner: false }]);
+    expect(run.of('loregame.recipe')).toMatchObject([{ player: 'bob', name: 'La zuppa' }]);
+    expect(run.of('loregame.recipeMade')).toMatchObject([{ made: { item: 'il brodo' } }]);
+    expect(run.read('recipe', { name: 'zuppa', player: 'bob' })).toMatchObject({
+      name: 'La zuppa',
+      level: 1,
+      made: { item: 'il brodo' },
+      player: { lacking: null },
+    });
+    expect(run.read('inventory', { player: 'bob' })).toMatchObject({
+      items: { 'una pentola': { qty: 1, exact: true }, 'il brodo': { qty: 1, via: 'recipe' } },
+    });
+    expect(Object.keys(run.read('recipes') as object)).toEqual(['La zuppa']);
+    await run.core.stop();
+  });
+
+  it('keeps the recipes from 0.44.0 on, none known before', async () => {
+    const dir2 = path.join(dir, 'v19');
+    const run = await bootState(dir2, { group: true });
+    await run.group(
+      'LoreGameBot',
+      '@bob, ecco le ricette a tua disposizione:\n- La zuppa [L1] [*]'
+    );
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    // As 0.43.0 kept it: no recipes, a player's neither.
+    delete kept.state.recipes;
+    delete kept.state.players.bob.recipes;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 19 }));
+    const again = await bootState(dir2, { group: true });
+    expect(again.read('recipes')).toEqual({});
+    expect(again.read('player', { name: 'bob' })).toMatchObject({ recipes: {} });
     await again.core.stop();
   });
 });

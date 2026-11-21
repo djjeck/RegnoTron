@@ -314,6 +314,47 @@ describe('the lore check', () => {
     expect(row('read')).toBe('1 of 2 (50.0%)');
   });
 
+  it('counts the recipes’ lists, answers and recipes made, and checks the inventory left', async () => {
+    const run = await replayLore(
+      [
+        ...asked(
+          0,
+          'bob',
+          '/ricetta',
+          '@bob, ecco le ricette a tua disposizione:\n- La zuppa [L1] [manca 1]'
+        ),
+        ...asked(
+          1,
+          'bob',
+          '/ricetta zuppa',
+          '@bob, per fare la ricetta La zuppa ti mancano:\n- una rapa [B1] x1\n\nMentre hai già:\n- una pentola [B1] x2'
+        ),
+        ...asked(
+          2,
+          'bob',
+          '/ricetta zuppa',
+          '@bob, prendi in mano:\n- una pentola [B1] x1\n- una rapa [B1] x1\n\ne mescoli.\n\nOttieni: il brodo [L1]!'
+        ),
+        // Its next listing: the pentola as the state holds it (2 - 1), the brodo not exactly.
+        ...asked(3, 'bob', '/zaino', 'bob, hai:\n> una pentola [B1] x1\n> il brodo [L1] x1'),
+        // Not read: a line it does not know.
+        ...asked(4, 'carol', '/ricetta', '@carol, ecco le ricette a tua disposizione:\n- ???'),
+      ],
+      { self: 'alice' }
+    );
+    const f = CHECKS.find((c) => c.id === 'recipes')?.run(run);
+    const row = (label: string) => f?.rows.find(([k]) => k === label)?.[1];
+    expect(row('lists of the bot’s')).toBe('2');
+    expect(row('lists read')).toBe('1');
+    expect(row('answers lacking something')).toBe('1');
+    expect(row('answers read')).toBe('1');
+    expect(row('recipes made')).toBe('1');
+    expect(row('recipes made read')).toBe('1');
+    expect(row('of them, known which recipe')).toBe('1 of 1 (100.0%)');
+    expect(row('recipes the game has')).toBe('1');
+    expect(row('items a recipe made left, agreeing with the next listing')).toBe('1 of 1 (100.0%)');
+  });
+
   it('checks each purchase’s coins against the buyer’s next profile', async () => {
     const PROFILE = (coins: string) =>
       [

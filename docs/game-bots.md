@@ -675,6 +675,42 @@ blueprint's copy; `item`, `rarity`, `tags`, `level`), `reward` and `cost` in coi
 (the faction whose season generators went). **`loregame.used`** carries each box opened: `player`,
 `owner`, `item` and `found` (each `item`, `rarity`, `tags`, `level`).
 
+### 5.14 The recipes
+
+A recipe takes items and gives one. Each answer names its player (`@<username>`), and replies to
+nothing [M: none of the exports' does]:
+
+```
+@bob, ecco le ricette a tua disposizione:
+- La zuppa del lunedì [L2] [manca 2]
+- Il razzo a pedali [L1] [*]
+
+Scrivi /ricetta <nome ricetta> per vedere quali oggetti ti mancano per una certa ricetta!
+```
+
+- **`/ricetta`** lists the recipes a player can make (or `Nessuna ricetta creata finora.`): each
+  one's level, `[L<n>]`, and `[manca <n>]`, how many items they lack, the lines its answer lists as
+  lacking [M: 34 of 34]; or `[*]`, which the bot does not explain [?] (4 times in the exports, on
+  one recipe, for players seen making it).
+- **`/ricetta <name>`** (any part of a name) answers what a recipe lacking something lacks, then
+  what is held of what it takes, each with the player's whole count (`Mentre hai già:`, absent when
+  nothing is), an item a line as in an inventory (§5.8):
+  `@bob, per fare la ricetta <name> ti mancano:`, `- <item> [<rarity>][ [<tag>]…] x<n>`. No item is
+  listed as both [M]. A name no recipe has: `Ricetta non trovata!`.
+- **A recipe made** is the same command with nothing lacking: `@bob, prendi in mano:`, the items it
+  takes, each with its count, a story (`e …`), and `Ottieni: <item> [<rarity>]!`. It costs nothing
+  and names no recipe [M: 7 of 7]. A recipe can be made again (one player made one twice in six
+  seconds). `/generaricetta`, which creates a recipe, previews it the same way after its command
+  repeated, with `Ottieni: 1x …` and `Costo: <n>₭`: not read (it creates, through buttons, and moves
+  nothing yet).
+
+Over the exports, `npm run lore-check` reads all 53 lists, 34 answers and 7 recipes made; the game
+had 4 recipes, and each one made is known by the items it took. **`loregame.recipes`** carries a
+list: `player`, `owner`, `recipes` (each `name`, `level`, `lacking`, none for `[*]`, and `starred`).
+**`loregame.recipe`** carries an answer: `player`, `owner`, `name`, `lacking` and `held` (each
+`item`, `qty`, `rarity`, `tags`, `level`). **`loregame.recipeMade`** carries a recipe made:
+`player`, `owner`, `used` (each as above) and `made`.
+
 ## 6. The owner's state at @LoreGameBot
 
 `loregame-state` (`modules/game-bots/`) keeps what the `loregame` parser reads of the owner's turns.
@@ -689,7 +725,7 @@ It is a floor, not the truth, while the turns are all it reads:
   export), a chain whose first page was missed, or one with an item cut between two pages is a part:
   exact for what it lists, no more. An item held exactly that a whole listing says otherwise is a
   mismatch (`stats_drift`, `inventory`: each count expected and said). The shop (§5.12), the
-  generators and `/usa` (§5.13) change items too; the recipes do and are not read yet.
+  generators and `/usa` (§5.13) and the recipes (§5.14) change items too.
 - **A turn cut off** (§5) may have gained an item the reply lost, so the inventory is marked
   uncertain, not changed.
 - **The bans** (§5.1) of every player the parser heard of, the owner's and the group's: per player,
@@ -800,20 +836,32 @@ It is a floor, not the truth, while the turns are all it reads:
   made where its player stands (`guardians`, §5.9); a season made takes every season generator of
   its faction's players. **The moving box opened** is gone, and what it held is in the inventory
   (`via: used`).
+- **The recipes** (§5.14): the game's (`recipes`, `state.recipes()`), by name, each one's `level`,
+  its `ingredients` (each item's rarity, tags and `qty`, how many it takes: from a recipe made, or
+  an item lacking, which its player holds none of; none if not known) and what it gives (`made`,
+  once seen made), as any player's list and answers last told; and each player's (`recipes` in their
+  record), as their list and answers last told: `level`, `lacking` (how many items) and `items`
+  (which, from an answer, while as many lack), `starred` (`[*]`). A list is the player's whole: the
+  recipes it does not name are gone. **An answer is evidence of the inventory:** each item held,
+  exactly so many; each lacking, none. **A recipe made** takes its items out (exact while they
+  were), puts what it gives in, as a drop (`via: recipe`), and adds one to the player's `recipes`
+  (exact if it was); which recipe it was is told by the items it took, or what it gave, when one
+  recipe alone fits. `state.recipe({ name, player? })` answers one, by its name or a part of it as
+  `/ricetta` does, with a player's own (the owner's unless named).
 - **The catalogue** (`catalogue`, `state.catalogue()`): every item seen in the game, by name, its
   `rarity` and `tags` as last told (an item told without its rarity, a gift's at times, keeps the
   one known), when it was `first` seen and how (`via`: `drop`, anyone's turn; `level-up`;
   `inventory`, anyone's listing; `gift`; `place`, a place's requirements or what an arrival
-  consumed; `shop`; `generated`, an item a generator made or gave).
-  **`loregame-state.itemsDiscovered`** announces the items seen for the first time (`items`, each
-  `item`, `rarity`, `tags`, `via`), from live news alone. The migration to 0.39.0 seeded it from the
-  items the state held: every inventory, the places, the shop's history. Replayed
+  consumed; `shop`; `generated`, an item a generator made or gave; `recipe`, one a recipe takes or
+  gives). **`loregame-state.itemsDiscovered`** announces the items seen for the first time (`items`,
+  each `item`, `rarity`, `tags`, `via`), from live news alone. The migration to 0.39.0 seeded it
+  from the items the state held: every inventory, the places, the shop's history. Replayed
   (`npm run lore-check`), the owner's exports catalogue 719 items over their whole span, the game
   before its reset of 17 August 2026 included (§5.9: its items were discarded), and **361 since the
   reset** (`--since 2026-08-17`): 212 first seen made by a generator (most items are players' own,
-  dropped afterwards), 114 in a drop, 17 in an inventory, 8 in a gift, 5 at a place, 4 in the shop,
-  1 in a level-up; 8 of them generators. A state that started after the reset holds no item of
-  before it.
+  dropped afterwards), 113 in a drop, 16 in an inventory, 8 in a gift, 4 at a place, 4 in the shop,
+  3 in a recipe, 1 in a level-up; 8 of them generators. A state that started after the reset holds
+  no item of before it.
 - **Their profile** (§5.5), and their username (`owner.name`), as with every player's (§6.1).
 - **Items and players are named by players**, anything, `__proto__` included.
 
@@ -853,15 +901,17 @@ or a training answer as it does the owner's (§5.2, §5.3, §5.4). Per player:
   since, with whether it is still `exact` and when it changed (`as_of`). A turn moves `xp` (§5.4),
   `episode` (one more) and `location` (its place: the profile's location was the last turn's place
   in all 31 of the owner's [M]), and the `level` the XP makes; a training moves `xp`; a level-up
-  sets `level`, adds its coins to `coins`, and raises `xp` to its threshold if short (not exact). A
-  stat stops being exact when a change to it is not known whole: a turn told of by a "too soon"
-  alone (`xp`, `episode`, `location`, `level`), a draw, a turn cut off. A stat no command read moves
-  (the equipment, the skills, the company, …) stays as the profile said, exact. **Before a profile**
-  there are none but where they are and their faction: a turn, an arrival or `/v` sets `location`,
-  exact, with or without a profile; and, while no profile told it, `alignment` from the place's
-  ladder (`B<n>`, `Il Bene`; `M<n>`, `Il Male`: a faction's player is not seen on the other's [M]; a
-  neutral place tells nothing), not exact, until a profile says it. `state.stat({ player?, stat })`
-  answers one, by its dotted path, with its `exact` and `as_of`;
+  sets `level`, adds its coins to `coins`, and raises `xp` to its threshold if short (not exact); a
+  purchase (§5.12) takes its price off `coins`, a generator (§5.13) moves them by its reward and
+  cost, and a recipe made (§5.14) adds one to `recipes`. A stat stops being exact when a change to
+  it is not known whole: a turn told of by a "too soon" alone (`xp`, `episode`, `location`,
+  `level`), a draw, a turn cut off. A stat no command read moves (the equipment, the skills, the
+  company, …) stays as the profile said, exact. **Before a profile** there are none but where they
+  are and their faction: a turn, an arrival or `/v` sets `location`, exact, with or without a
+  profile; and, while no profile told it, `alignment` from the place's ladder (`B<n>`, `Il Bene`;
+  `M<n>`, `Il Male`: a faction's player is not seen on the other's [M]; a neutral place tells
+  nothing), not exact, until a profile says it. `state.stat({ player?, stat })` answers one, by its
+  dotted path, with its `exact` and `as_of`;
 - **their skills and gear** (§5.6, §5.7): the skills menu is a part of a profile, checked and
   seeding `skills` and `skill_points` (the points left, which the profile does not show and keeps);
   a level-up adds its points; a purchase the account did not hear (the menu's buttons) is no

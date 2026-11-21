@@ -12,6 +12,9 @@ import {
   LORE_READINESS,
   type LoreState,
   playerOf,
+  recipeMadeOf,
+  recipeOf,
+  recipesOf,
   reduce,
   stateSchema,
 } from './loregame-state.ts';
@@ -69,6 +72,9 @@ describe('the loregame state', () => {
       'loregame.purchase',
       'loregame.generated',
       'loregame.used',
+      'loregame.recipes',
+      'loregame.recipe',
+      'loregame.recipeMade',
     ]);
   });
 
@@ -1050,6 +1056,182 @@ describe('the generators and the moving box (§5.13)', () => {
     const carol = reduce(initialState(), made('carol', { kind: 'story', code: 'B1', reward: 0 }));
     expect(playerOf(carol, 'carol')).not.toBeNull();
     expect(reduce(initialState(), made('', { kind: 'story' })).players).toEqual({});
+  });
+});
+
+describe('the recipes (§5.14)', () => {
+  const T = Date.parse('2026-11-06T12:00:00Z');
+  const at = (min: number) => new Date(T + min * 60_000).toISOString();
+  const ev = (type: string, min: number, payload: Record<string, unknown>): BusEvent =>
+    ({
+      type: `loregame.${type}`,
+      t: T + min * 60_000,
+      chat: '-1001',
+      player: 'bob',
+      owner: false,
+      ...payload,
+    }) as unknown as BusEvent;
+  const item = (name: string, qty: number, rarity = 'B1') => ({
+    item: name,
+    qty,
+    rarity,
+    tags: [],
+    level: null,
+  });
+  const listed = (min: number, lacking: number | null) =>
+    ev('recipes', min, {
+      recipes: [
+        { name: 'La zuppa', level: 2, lacking, starred: lacking === null },
+        { name: 'La zuppa fredda', level: 1, lacking: 3, starred: false },
+      ],
+    });
+  const needs = (min: number) =>
+    ev('recipe', min, {
+      name: 'La zuppa',
+      lacking: [item('una rapa', 1)],
+      held: [item('una pentola', 3)],
+    });
+  const made = (min: number) =>
+    ev('recipeMade', min, {
+      used: [item('una pentola', 1), item('una rapa', 2)],
+      made: item('il brodo', 1, 'L1'),
+    });
+  const buy = (name: string, min: number) =>
+    ev('purchase', min, { item: name, rarity: 'B1', tags: [], price: 0, qty: 1 });
+
+  it('keeps the game’s recipes and a player’s, from their list and answers', () => {
+    let s = [buy('una rapa', 0), listed(1, 2)].reduce(reduce, initialState());
+    expect(s.recipes['La zuppa']).toEqual({
+      level: 2,
+      ingredients: [],
+      made: null,
+      as_of: at(1),
+    });
+    expect(playerOf(s, 'bob')?.recipes['La zuppa']).toEqual({
+      level: 2,
+      lacking: 2,
+      items: null,
+      starred: false,
+      as_of: at(1),
+    });
+    s = reduce(s, needs(2));
+    expect(s.recipes['La zuppa']?.ingredients).toEqual([
+      { item: 'una rapa', rarity: 'B1', tags: [], qty: 1 },
+      { item: 'una pentola', rarity: 'B1', tags: [], qty: null },
+    ]);
+    expect(playerOf(s, 'bob')?.recipes['La zuppa']).toMatchObject({
+      level: 2,
+      lacking: 1,
+      items: ['una rapa'],
+    });
+    // Its answer is evidence: the pentola held, exactly 3; the rapa, none.
+    expect(playerOf(s, 'bob')?.inventory.items).toMatchObject({
+      'una pentola': { qty: 3, exact: true, via: 'listing' },
+      'una rapa': { qty: 0, exact: true, via: 'purchase' },
+    });
+    expect(s.catalogue['una pentola']).toMatchObject({ via: 'recipe' });
+    // The next list: the items lacking kept while as many lack; its [*] marked.
+    s = reduce(s, listed(3, 1));
+    expect(playerOf(s, 'bob')?.recipes['La zuppa']).toMatchObject({ items: ['una rapa'] });
+    s = reduce(s, listed(4, null));
+    expect(playerOf(s, 'bob')?.recipes['La zuppa']).toMatchObject({
+      lacking: null,
+      items: null,
+      starred: true,
+    });
+  });
+
+  it('takes a recipe made out of the inventory, and knows which it was', () => {
+    let s = [buy('una pentola', 0), listed(1, 2), needs(2)].reduce(reduce, initialState());
+    const bob = playerOf(s, 'bob');
+    if (bob === null) throw new Error('bob');
+    s = {
+      ...s,
+      players: {
+        ...s.players,
+        bob: { ...bob, stats: { recipes: { value: 3, exact: true, as_of: at(2) } } },
+      },
+    };
+    s = reduce(s, made(5));
+    expect(playerOf(s, 'bob')?.inventory.items).toMatchObject({
+      'una pentola': { qty: 2, exact: true },
+      'il brodo': { qty: 1, via: 'recipe' },
+    });
+    expect(playerOf(s, 'bob')?.stats['recipes']).toMatchObject({ value: 4, exact: true });
+    expect(s.recipes['La zuppa']).toMatchObject({
+      ingredients: [
+        { item: 'una pentola', qty: 1 },
+        { item: 'una rapa', qty: 2 },
+      ],
+      made: { item: 'il brodo', rarity: 'L1' },
+    });
+    expect(playerOf(s, 'bob')?.recipes['La zuppa']).toMatchObject({ lacking: null, items: null });
+    expect(s.catalogue['il brodo']).toMatchObject({ via: 'recipe' });
+    // Made again, known now by what it gives.
+    expect(recipeMadeOf(s, [{ item: 'altro' }], { item: 'il brodo' })).toBe('La zuppa');
+    expect(recipeMadeOf(s, [{ item: 'altro' }], { item: 'altro' })).toBeUndefined();
+  });
+
+  it('answers a recipe by a part of its name, with a player’s own', () => {
+    const s = [listed(1, 2), needs(2)].reduce(reduce, initialState());
+    expect(recipeOf(s, 'zuppa', 'bob')).toBeNull();
+    expect(recipeOf(s, 'La zuppa', 'bob')).toMatchObject({
+      name: 'La zuppa',
+      level: 2,
+      player: { lacking: 1 },
+    });
+    expect(recipeOf(s, 'FREDDA', 'bob')).toMatchObject({ name: 'La zuppa fredda' });
+    expect(recipeOf(s, 'fredda')).toMatchObject({ player: null });
+    expect(recipeOf(s, 'calda')).toBeNull();
+    expect(recipesOf(s)).toBe(s.recipes);
+  });
+
+  it('leaves what it cannot tell: an unknown recipe made, an event it cannot read', () => {
+    let s = [buy('una pentola', 0), needs(1)].reduce(reduce, initialState());
+    // Never listed: no level; an item held with its range, the rapa never held.
+    expect(s.recipes['La zuppa']?.level).toBeNull();
+    s = reduce(
+      s,
+      ev('recipe', 2, {
+        name: 'La zuppa',
+        lacking: [item('una rapa', 1)],
+        held: [{ ...item('una pentola', 3), level: { low: 1, high: 2 } }],
+      })
+    );
+    expect(playerOf(s, 'bob')?.inventory.items['una pentola']).toMatchObject({
+      qty: 3,
+      level: { low: 1, high: 2 },
+      via: 'purchase',
+    });
+    // The same again changes nothing of the inventory.
+    const again = reduce(s, needs(3));
+    expect(playerOf(again, 'bob')?.inventory.items['una pentola']).toMatchObject({
+      level: { low: 1, high: 2 },
+    });
+    // A recipe made that no recipe known takes: its items move, no recipe is told.
+    const other = reduce(
+      again,
+      ev('recipeMade', 4, { used: [item('una pentola', 1)], made: item('altro', 1, 'L1') })
+    );
+    expect(other.recipes).toEqual(again.recipes);
+    expect(playerOf(other, 'bob')?.recipes).toEqual(playerOf(again, 'bob')?.recipes);
+    expect(playerOf(other, 'bob')?.inventory.items['una pentola']?.qty).toBe(2);
+    // Events it cannot read, or of no one: nothing.
+    for (const type of ['recipes', 'recipe', 'recipeMade'])
+      expect(reduce(again, ev(type, 5, { recipes: 1, lacking: 1, used: 1 }))).toBe(again);
+    expect(recipeOf(again, 'La zuppa', 'carol')).toMatchObject({ player: null });
+    expect(recipeOf(again, 'La zuppa', 'bob')).toMatchObject({ player: { lacking: 1 } });
+  });
+
+  it('reads a recipe of the owner’s, or of no one known', () => {
+    const owner = { ...initialState(), owner: { as_of: null, name: 'alice' } };
+    const mine = reduce(owner, { ...listed(1, 2), player: 'alice', owner: true } as BusEvent);
+    expect(Object.keys(mine.recipes)).toEqual(['La zuppa', 'La zuppa fredda']);
+    // The owner unnamed: the game's recipes alone; a player unnamed, nothing.
+    const unnamed = reduce(initialState(), { ...made(1), player: 'x', owner: true } as BusEvent);
+    expect(unnamed.players).toEqual({});
+    const none = reduce(initialState(), { ...needs(1), player: '' } as BusEvent);
+    expect([none.players, none.recipes]).toEqual([{}, {}]);
   });
 });
 
