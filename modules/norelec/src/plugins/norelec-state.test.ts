@@ -150,6 +150,13 @@ describe('the norelec-state node', () => {
       write: (name: string, value: unknown) => void docs.set(name, value),
       remove: (name: string) => void docs.delete(name),
       names: () => [...docs.keys()],
+      // Its files (MegaBotTron1999's D149): none, and none written by this migration.
+      files: {
+        write: () => undefined,
+        read: () => undefined,
+        list: () => [],
+        delete: () => undefined,
+      },
     };
     for (const m of MIGRATIONS) m(store);
     const kept = docs.get('state') as { state: GameRecord };

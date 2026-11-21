@@ -23,7 +23,7 @@ export function mapCommand(deps: MapCommandDeps): (answer: Answer) => Promise<vo
     const photo = await deps.map.photo();
     if (photo === undefined) return answer.text(NOT_YET);
     const upload = async (): Promise<void> => {
-      const fileId = await answer.photo({ data: photo.png, filename: 'mappa.png' });
+      const fileId = await answer.photo({ data: photo.png, mime: 'image/png' });
       if (fileId !== undefined) deps.map.uploaded(photo.key, fileId);
     };
     if (photo.fileId === undefined) return upload();

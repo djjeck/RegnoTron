@@ -75,8 +75,8 @@ describe('the norelec-map plugin', () => {
     const r = answer();
     await command('map').run(r.a, { args: '' });
     expect(r.texts).toEqual([]);
-    const photo = r.photos[0] as { data: Uint8Array; filename: string };
-    expect(photo.filename).toBe('mappa.png');
+    const photo = r.photos[0] as { data: Uint8Array; mime: string };
+    expect(photo.mime).toBe('image/png');
     expect(Buffer.from(photo.data.subarray(1, 4)).toString('latin1')).toBe('PNG');
     expect(lines.some((l) => l.startsWith('norelec-map: map drawn: '))).toBe(true);
     // Sent again by the id Telegram gave it.

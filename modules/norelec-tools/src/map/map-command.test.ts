@@ -4,7 +4,10 @@ import { type MapPhoto } from '#src/map/service.ts';
 import { mapCommand, NOT_YET } from './map-command.ts';
 
 /** A map that remembers the file id it was given. */
-function fakeMap(photo: MapPhoto | null = { key: 'k1', png: Buffer.from([1]) }) {
+/** A PNG's signature: bytes the type they say (MegaBotTron1999's D153). */
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function fakeMap(photo: MapPhoto | null = { key: 'k1', png: PNG }) {
   const uploads: [string, string][] = [];
   let current = photo ?? undefined;
   return {
@@ -29,7 +32,7 @@ function answer(refuse: (photo: CommandPhoto) => boolean = () => false) {
       return Promise.resolve();
     },
     photo: (photo) => {
-      sent.push(typeof photo === 'string' ? photo : `upload ${photo.filename}`);
+      sent.push(typeof photo === 'string' ? photo : `upload ${photo.mime}`);
       if (refuse(photo)) return Promise.reject(new Error('400: wrong file identifier'));
       return Promise.resolve(`photo-${++n}`);
     },
@@ -45,17 +48,17 @@ describe('/map', () => {
     await handle(first.a);
     const second = answer();
     await handle(second.a);
-    expect(first.sent).toEqual(['upload mappa.png']);
+    expect(first.sent).toEqual(['upload image/png']);
     expect(m.uploads).toEqual([['k1', 'photo-1']]);
     expect(second.sent).toEqual(['photo-1']);
   });
 
   it('uploads again when Telegram no longer takes the file id', async () => {
-    const m = fakeMap({ key: 'k1', png: Buffer.from([1]), fileId: 'stale' });
+    const m = fakeMap({ key: 'k1', png: PNG, fileId: 'stale' });
     const warned: string[] = [];
     const r = answer((p) => p === 'stale');
     await mapCommand({ map: m.map, warn: (l) => warned.push(l) })(r.a);
-    expect(r.sent).toEqual(['stale', 'upload mappa.png']);
+    expect(r.sent).toEqual(['stale', 'upload image/png']);
     expect(m.uploads).toEqual([['k1', 'photo-1']]);
     expect(warned).toEqual([
       'map: sending by file id failed, uploading again: Error: 400: wrong file identifier',
