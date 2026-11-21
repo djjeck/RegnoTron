@@ -13,6 +13,7 @@ import {
   fakeConnectorPlugin,
   GraphFile,
   type Heard,
+  type Media,
   VirtualClock,
 } from '@megabottron1999/core';
 import fs from 'node:fs';
@@ -30,13 +31,16 @@ export const GROUP = '-1001';
 
 /**
  * An instance in `dir`, from `at`; `config`, the state node's; `group`: the parser also reads the
- * game's group (`GROUP`), from every sender, as a graph that names the bans' players needs.
+ * game's group (`GROUP`), from every sender, as a graph that names the bans' players needs;
+ * `photos`: the account fetches the photos a test gives (MegaBotTron1999's D151), and the state's
+ * `photo` input is bound to it (with the group).
  */
 export async function bootState(
   dir: string,
-  o: { at?: number; config?: object; group?: boolean } = {}
+  o: { at?: number; config?: object; group?: boolean; photos?: boolean } = {}
 ) {
-  if (o.group === true) {
+  const graphed = o.group === true || o.photos === true;
+  if (graphed) {
     const graph = {
       version: 2,
       nodes: [
@@ -53,6 +57,15 @@ export async function bootState(
         },
         { from: 'loregame.events', to: `${LOREGAME_STATE}.events`, type: 'events' },
         { from: 'loregame.interface', to: `${LOREGAME_STATE}.parser`, type: 'interface' },
+        ...(o.photos === true
+          ? [
+              {
+                from: `${TELEGRAM_USER}.interface`,
+                to: `${LOREGAME_STATE}.photo`,
+                type: 'interface',
+              },
+            ]
+          : []),
       ],
     };
     fs.mkdirSync(path.join(dir, 'graph'), { recursive: true });
@@ -60,12 +73,15 @@ export async function bootState(
   }
   const clock = new VirtualClock(o.at ?? T0);
   const log = new CoreEventLog(path.join(dir, 'events'));
-  const account = new FakeConnector({ account: `telegram:${OWNER}` });
+  const account = new FakeConnector({
+    account: `telegram:${OWNER}`,
+    ...(o.photos === true ? { photos: [] } : {}),
+  });
   const records: BusEvent[] = [];
   const core = new Core({
     clock,
     dataDir: path.join(dir, 'data'),
-    ...(o.group === true ? { graphFile: new GraphFile(path.join(dir, 'graph')) } : {}),
+    ...(graphed ? { graphFile: new GraphFile(path.join(dir, 'graph')) } : {}),
     events: log,
     print: () => undefined,
     record: (r) => {
@@ -112,16 +128,25 @@ export async function bootState(
     if ('error' in r) throw new Error(r.error);
     return r.value;
   };
-  /** A message in the group: from `sender`, replying to `replyTo`; the bot's, if `sender` is its. */
+  /**
+   * A message in the group: from `sender`, replying to `replyTo`; the bot's, if `sender` is its;
+   * with `photo`, the photo the account fetches for it (a why: refused).
+   */
   const group = async (
     sender: string,
     text: string,
-    m: { replyTo?: string; own?: boolean; buttons?: string[][] } = {}
+    m: { replyTo?: string; own?: boolean; buttons?: string[][]; photo?: Media | string } = {}
   ): Promise<string> => {
     const id = String(n++);
-    account.hear({ chat: GROUP, sender, time: clock.now(), id, text, ...m });
+    const { photo, ...heard } = m;
+    if (photo !== undefined) account.givePhoto(GROUP, id, photo);
+    account.hear({ chat: GROUP, sender, time: clock.now(), id, text, ...heard });
     await settle();
     return id;
+  };
+  /** Lets the state fetch what it asked for, and keep what it was given. */
+  const fetched = async (): Promise<void> => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
   };
   /**
    * An edit of a message of the bot's (MegaBotTron1999's D144: a button pressed changes it): its
@@ -173,6 +198,7 @@ export async function bootState(
     of,
     settle,
     group,
+    fetched,
     edit,
     rest,
     ready,

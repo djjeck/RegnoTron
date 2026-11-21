@@ -7,12 +7,14 @@
  * `loregame-state` node, and prints the checks (tools/lore-check/README.md). The players are
  * shown as P1, P2, … unless `--names`: the report can be shared, the exports stay local.
  */
+import { type Inbound } from '@megabottron1999/core';
 import { readExportPaths } from '@megabottron1999/telegram-export/files.ts';
 import { toInbounds } from '@megabottron1999/telegram-export/inbound.ts';
 import { CHECKS, report } from './checks.ts';
-import { mergeRenamedChats, replayLore } from './run.ts';
+import { type ExportPhoto, exportPhotos } from './photos.ts';
+import { chatNames, mergeRenamedChats, replayLore } from './run.ts';
 
-interface Args {
+export interface Args {
   paths: string[];
   owner: string[];
   username: string;
@@ -72,12 +74,15 @@ export function standIns(): (player: string) => string {
   };
 }
 
-async function main(argv: readonly string[]): Promise<number> {
-  const a = parseArgs(argv);
-  if (typeof a === 'string') {
-    console.error(a);
-    return 2;
-  }
+/**
+ * The exports under the arguments' paths, as the replay takes them: the account's messages (each
+ * player by their display name, the bot by its username, a renamed group one chat), and the photos
+ * they hold, by the message they are of (photos.ts).
+ */
+export function readExports(a: Args): {
+  inbounds: Inbound[];
+  photos: Map<string, ExportPhoto>;
+} {
   const { messages } = readExportPaths(a.paths, (line) => console.error(line), {
     timeZone: a.timeZone,
   });
@@ -85,18 +90,33 @@ async function main(argv: readonly string[]): Promise<number> {
   const senders: Record<string, string> = {};
   for (const m of messages) if (m.sender !== null) senders[m.sender] = m.sender;
   senders[a.bot] = 'LoreGameBot';
+  const all = toInbounds(messages, {
+    owner: { username: a.username, names: a.owner },
+    // The private chat with the bot is titled with its name.
+    chats: { [a.bot]: { chat: '@LoreGameBot', private: true } },
+    senders,
+  });
   // A group renamed between two exports is one chat, its messages once.
-  const inbounds = mergeRenamedChats(
-    toInbounds(messages, {
-      owner: { username: a.username, names: a.owner },
-      // The private chat with the bot is titled with its name.
-      chats: { [a.bot]: { chat: '@LoreGameBot', private: true } },
-      senders,
-    })
-  ).filter((m) => a.since === undefined || m.time >= a.since);
-  console.error(`replaying ${inbounds.length} messages…`);
+  const names = chatNames(all);
+  const inbounds = mergeRenamedChats(all).filter((m) => a.since === undefined || m.time >= a.since);
+  const photos = exportPhotos(a.paths, (title) => {
+    const chat = title === a.bot ? '@LoreGameBot' : title;
+    return names.get(chat) ?? chat;
+  });
+  return { inbounds, photos };
+}
+
+async function main(argv: readonly string[]): Promise<number> {
+  const a = parseArgs(argv);
+  if (typeof a === 'string') {
+    console.error(a);
+    return 2;
+  }
+  const { inbounds, photos } = readExports(a);
+  console.error(`replaying ${inbounds.length} messages, ${photos.size} photos…`);
   const run = await replayLore(inbounds, {
     self: a.username,
+    photos,
     ...(a.names ? {} : { name: standIns() }),
   });
   console.log(report(CHECKS.map((c) => c.run(run))));

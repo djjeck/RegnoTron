@@ -8,6 +8,8 @@ The turns of the group's game bots, read on the turn plugins of `@megabottron199
   fight, its gain with the count and the stats, its level-up:
   [docs/game-bots.md](../../docs/game-bots.md) §5), and `loregame.turn` publishes it so;
 - `src/loregame-state.ts`: the owner's state at @LoreGameBot (its schema, reducer and freshness);
+- `src/media.ts`: the pictures the state keeps: an entry's schema, its id (`sha256:<hex>`) and file,
+  and which event shows which place;
 - `src/bans.ts`: @LoreGameBot's bans, as the parser watches them (`BanWatch`) and an actor checks
   them (`bannedUntil`);
 - `src/accumulo.ts`: @LoreGameBot's accumulo: the bot's answers to `/accumulo` (`parseAccumulo`),
@@ -212,6 +214,12 @@ ticket (`loregame.neutral`) opens the neutral ladder for 10 hours a ticket (a pl
 plans a trip before it is made: the way, and what each step takes of the player (docs/game-bots.md
 §5.9, §6).
 
+**The pictures.** An arrival, a `/v` and a season's creation card (its generator's outcome) are a
+photo of the place; `loregame.travel` and `loregame.generated` carry the answer's message id
+(`answer`). The state keeps each place's pictures (`media`, newest last), fetching each once, at the
+place's first sight heard live, through the account's `photo` (below); a turn's photo is its story's
+or its enemy's, not its place's, and stories and enemies are not kept yet (docs/game-bots.md §6.2).
+
 **Skills and equipment.** The `/abilita` menu and the answers to `/equipaggia` that change or list
 the equipment are published as `loregame.skills` and `loregame.equipment`, each the player's whose
 command it replies to (docs/game-bots.md §5.6, §5.7). A point spent with the menu's buttons makes
@@ -239,10 +247,22 @@ its `state` input to this node's interface. In the graph file:
   "edges": [
     { "from": "loregame.events", "to": "loregame-state.events", "type": "events" },
     { "from": "loregame.interface", "to": "loregame-state.parser", "type": "interface" },
+    { "from": "telegram-user.interface", "to": "loregame-state.photo", "type": "interface" },
     { "from": "loregame-state.interface", "to": "lore-player.state", "type": "interface" }
   ]
 }
 ```
+
+**Its pictures** need a third input, `photo`, optional: bind it to the owner's `telegram-user`
+node's interface (members `actions.photo`, MegaBotTron1999's D151; the edge is the leave to download
+from the chats it reads). It fetches each place's picture once, at its first sight heard live (its
+creation card, else an arrival or a `/v`), and keeps the bytes in its node's files (D149),
+`sha256-<hex>`, the same picture once; `state.places()` gives each place's `media` (each entry's
+`id`, `kind`, type, size and where it was seen) and `state.media({ id })` the bytes, as the core's
+`MediaResult` (D153). Unbound, it keeps where each place was first seen, no bytes. **It needs
+MegaBotTron1999 0.1.54 or later** (D149's files, D151's `photo`, D153's `Media`). The pictures the
+exports hold can be seeded (`tools/media-seed`): the file put in its store is taken at its next
+start.
 
 It also keeps the **owner's readiness** at @LoreGameBot (the section `readiness`): when each of the
 bot's commands may be played, reduced by the shell from the parser's events, with the owner's ban,
@@ -270,7 +290,8 @@ have gained what the reply lost: it changes no count, and marks the inventory `u
 | `state.count({ name })`                                    | How many of an item the owner holds, as the state estimates it                                                                          |
 | `state.held()`                                             | Every item held, with its count                                                                                                         |
 | `state.inventory({ player? })`                             | A player's inventory (the owner's unless named), and when it was listed whole                                                           |
-| `state.places()`                                           | The game's places: what entering each takes, where one can go from it                                                                   |
+| `state.places()`                                           | The game's places: what entering each takes, where one can go from it, their pictures (`media`)                                         |
+| `state.media({ id })`                                      | A picture's bytes, by its id (`sha256:<hex>`): `{ ok, media: { data, mime, width?, height? } \| null }` or `{ ok: false, error }`       |
 | `state.guardians()`                                        | The places a guardian has been made at (by anyone), or not, as last told                                                                |
 | `state.market()`                                           | The market now: the companies there are, by id, each its name and latest value; the updates' interval, the next due, those missed       |
 | `state.marketHistory({ company?, since?, until?, gone? })` | Each company's values through time, by id: those there are (those gone too with `gone`; one by its id or any name it had), oldest first |

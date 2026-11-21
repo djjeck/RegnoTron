@@ -2,6 +2,7 @@ import { type Inbound } from '@megabottron1999/core';
 import { describe, expect, it } from 'vitest';
 import { CHECKS, report, stepsOf } from './checks.ts';
 import { parseArgs, standIns, USAGE } from './cli.ts';
+import { type ExportPhoto } from './photos.ts';
 import { mergeRenamedChats, replayLore } from './run.ts';
 
 // An invented chat (CLAUDE.md, "Test data is synthetic"): the bot's phrases are the game's.
@@ -312,6 +313,76 @@ describe('the lore check', () => {
     expect(row('outcomes paired with a player')).toBe('1 of 2 (50.0%) (item ×1)');
     expect(row('moving boxes opened')).toBe('2');
     expect(row('read')).toBe('1 of 2 (50.0%)');
+  });
+
+  it('counts the pictures the bot showed, by what showed them, and whose they are', async () => {
+    const inbounds = [
+      ...asked(
+        0,
+        'bob',
+        '/generastagione',
+        'Stai per generare la stagione Il Bosco Inventato ⛅️. Sei sicuro?'
+      ),
+      say(
+        1,
+        'LoreGameBot',
+        'La tua idea si materializza... hai generato la stagione Il Bosco Inventato ⛅️ [B1]!'
+      ),
+      ...asked(
+        2,
+        'bob',
+        '/vai bosco',
+        'WOOSH! Sei arrivato alla Stagione Il Bosco Inventato ⛅️ [B1]!'
+      ),
+      ...asked(
+        3,
+        'bob',
+        '/v',
+        "Ti trovi nella stagione Il Bosco Inventato ⛅️ [B1]\n\nRequisiti d'accesso (oggetti consumati all'arrivo)\n> Livello 1\n\nPuoi andare in:\n> Il Prato Finto 🌾 [B2]"
+      ),
+      ...asked(20, 'bob', '/lore', TURN),
+      ...asked(
+        40,
+        'bob',
+        '/lore',
+        'Lore - Il Bosco Inventato ⛅️ [B1]\n\nUn’altra storia.\nHai ottenuto un sasso [B1]!'
+      ),
+      ...asked(
+        60,
+        'bob',
+        '/lore',
+        'Lore - Il Bosco Inventato ⛅️ [B1]\n\nUna storia.\n\nDurante il tuo cammino compare Gino [L2]!\nIl combattimento inizia...\nbob [L3] sconfigge Gino [L2]!\nHai ottenuto un sasso [B1]!'
+      ),
+    ];
+    const bot = inbounds.filter((m) => m.sender === 'LoreGameBot').map((m) => m.id as string);
+    const picture = (n: number): ExportPhoto => ({
+      file: `p${n}.jpg`,
+      id: `sha256:${n}`,
+      mime: 'image/jpeg',
+    });
+    // The creation card, the arrival and /v: the place's; a turn its place's, one its story's.
+    const photos = new Map(
+      [1, 1, 1, 1, 2, 3].map((p, i) => [`${GROUP}\n${bot[i + 1] as string}`, picture(p)])
+    );
+    const run = await replayLore(inbounds, { self: 'alice', photos });
+    const f = CHECKS.find((c) => c.id === 'pictures')?.run(run);
+    const row = (label: string) => f?.rows.find(([k]) => k === label)?.[1];
+    expect(row('photos in the exports')).toBe('6');
+    expect(row('a season made (its creation card)')).toBe('1 read, 1 with a photo, 1 pictures');
+    expect(row('an arrival')).toBe('1 read, 1 with a photo, 1 pictures');
+    expect(row('a /v')).toBe('1 read, 1 with a photo, 1 pictures');
+    expect(row('a turn, no enemy met')).toBe('2 read, 2 with a photo, 2 pictures');
+    expect(row('a turn, an enemy met')).toBe('1 read, 1 with a photo, 1 pictures');
+    expect(row('places pictured')).toBe('1');
+    expect(row('of them, told by more than one picture')).toBe('0');
+    expect(row('turns at a place pictured showing its picture')).toBe('1 of 2 (50.0%)');
+    expect(row('enemies met with a photo')).toBe('1');
+    expect(row('of them, one picture each')).toBe('1');
+    // Without the exports' photos.
+    const bare = await replayLore(inbounds, { self: 'alice' });
+    expect(CHECKS.find((c) => c.id === 'pictures')?.run(bare).rows).toEqual([
+      ['photos in the exports', 'none read'],
+    ]);
   });
 
   it('counts the recipes’ lists, answers and recipes made, and checks the inventory left', async () => {

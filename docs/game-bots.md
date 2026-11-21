@@ -1,6 +1,6 @@
 # The game bots RegnoTron reads
 
-Documented as of 20 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
+Documented as of 21 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
 has other game bots, each with its own game played one turn at a time. RegnoTron reads the turns of
 two of them, @LoreGameBot and @EpicLorelecBot, in `modules/game-bots/`: their reply grammars
 (`src/replies.ts`) and their parser plugins in `src/plugins/`. @InventoryBot's parser, the plugin
@@ -104,6 +104,14 @@ up to 17 Nov 2026. A reply, in order:
 | `Nessuno dei due sembra avere la meglio...`                   | A draw, then `L'oggetto si perde nello scontro...`: the item is lost.                                                                                                              | 1.6% of the fights   |
 | `Hai ottenuto [<n>x ]<item> [(<a> - <b>) ]<rarity>[ <tag>…]!` | The gain. `<n>x` is how many (1 without); `(a - b)` follows an equippable item's name, two numbers whose meaning is unknown [?]; the tags are `[usabile]`, `[equipaggiabile 🗡]`, … | 72% of the turns     |
 | `🎉 Congratulazioni, hai raggiunto il livello <n>! 🎉`        | A level-up, after the gain, then `Ottieni:` and a list of `> ` lines: `> <n> monete`, `> <n> punto /abilita` (`punti`) and items (`> 1 <item> [<rarity>]…`).                       | 110 turns            |
+
+**A turn's answer is a photo** [M], its caption the reply above: all 737 of the bot's answers to a
+turn in the one export that holds its photos (22–26 Oct 2026). The picture is the **story's**, not
+the place's: 143 stories told over those days, each with its picture (140 always the same one), at
+whatever place it was told; a turn that meets an enemy shows **the enemy's** instead (13 enemies,
+one picture each, the same at every place). Of 211 turns at a place whose own picture is known, 16
+showed it (stories that have none of their own, it seems [?]). So the state takes no place's picture
+from a turn (§6.2).
 
 Besides these, a turn's reply may be:
 
@@ -418,6 +426,9 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
 - **`/v`** says where one is: `Ti trovi nella stagione <place> [<code>]`, its requirements, then
   where one can go (`Puoi andare in:`, each place, `🔒` if locked to them) or
   `Nessuna stagione disponibile!`.
+- **An arrival and a `/v` are a photo of the place** [M], their text its caption: the arrival and
+  the three `/v` the exports hold photos of (two places) showed the place's picture, the arrival the
+  same as the place's creation card (below).
 - **A place's requirements**
   (`Requisiti d'accesso per <place> [<code>] (oggetti consumati all'arrivo)`, then `> Livello <n>`
   and the items, under `Ti serve:` and `Hai già:` in a refusal) are read wherever the bot states
@@ -441,13 +452,15 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
   command: not read. Every answer and block in the exports is read: 714 answers, 280 blocks, 859
   items.
 - **The places are made by the players** (`/generastagione`, a name, an emoji, an image, then
-  `Stai per generare la stagione <name>. Sei sicuro?`): a ladder's next step, its requirements at
-  first a guardian of the step before (`N3`, made at `N2`). The generators work in one's faction's
-  places alone, none in a neutral one (`Non puoi generare oggetti in questa stagione!`, a ticket's
-  player at `N1`). **The game was reset on 17 August 2026** (`Stai per resettare TUTTO...`, its
-  second season): every place since is new, and `M7` was `Il laboratorio segreto di Kia 🧪` (asking
-  6 items) before it and `Il Paradiso 2 ⛅️` (entered with none consumed) after; each place is as
-  last told.
+  `Stai per generare la stagione <name>. Sei sicuro?`). **Its creation card** is the generator's
+  outcome (§5.13), `La tua idea si materializza... hai generato la stagione <name> [<code>]!`, a
+  photo of the image given [M: the one in the exports' photos], the earliest sight of the place's
+  picture: a ladder's next step, its requirements at first a guardian of the step before (`N3`, made
+  at `N2`). The generators work in one's faction's places alone, none in a neutral one
+  (`Non puoi generare oggetti in questa stagione!`, a ticket's player at `N1`). **The game was reset
+  on 17 August 2026** (`Stai per resettare TUTTO...`, its second season): every place since is new,
+  and `M7` was `Il laboratorio segreto di Kia 🧪` (asking 6 items) before it and `Il Paradiso 2 ⛅️`
+  (entered with none consumed) after; each place is as last told.
 
 **The rules of a move** [M], from every arrival in the exports with the player's place before it:
 
@@ -496,13 +509,13 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
 
 **`loregame.travel`** carries a player's answer (the one whose `/vai` or `/v` it replies to): `kind`
 (`arrived`, with what entering `consumed`; `here`, with the place's `requirements` and its `exits`;
-`refused`, with the `requirements`, whose `met` is the guardians already made), and `place`.
-**`loregame.requirements`** carries any place's: `place`, `level`, `items`, `guardians` (each a
-place's code). **`loregame.neutral`** carries a ticket used (`neutralized`, its player by the name
-the answer gives) and the owner's neutrality ended (`restored`, heard in private alone): `player`,
-`owner`, `kind`. A guardian made is read from its generator's outcome (§5.13). **Not read yet:** a
-place made (the button's outcome), and where a player thrown out of a neutral place above `N1` lands
-(the state guesses the same step of their faction's ladder).
+`refused`, with the `requirements`, whose `met` is the guardians already made), `place`, and
+`answer`, the answer's message id (its photo, §6.2). **`loregame.requirements`** carries any
+place's: `place`, `level`, `items`, `guardians` (each a place's code). **`loregame.neutral`**
+carries a ticket used (`neutralized`, its player by the name the answer gives) and the owner's
+neutrality ended (`restored`, heard in private alone): `player`, `owner`, `kind`. A guardian made is
+read from its generator's outcome (§5.13). **Not read yet:** where a player thrown out of a neutral
+place above `N1` lands (the state guesses the same step of their faction's ladder).
 
 ### 5.10 Gifts
 
@@ -651,14 +664,18 @@ after the button: `La tua idea si materializza... hai generato <item> [<rarity>]
 `… il guardiano <name> [L<n>]!`, `… la stagione <name> [<code>]!`, `… una nuova storia [<code>]!`;
 `Oggetto reso usabile con successo!` (or `Script installato con successo!`);
 `Il tuo equipaggiamento prende forma... hai assemblato e ottenuto 1x <item>!`;
-`Hai duplicato <item>!`. It may end in a reward, `Hai ottenuto <n>₭!`; a season made ends in
-`Tutti i generatori di stagione de <faction> … sono stati rimossi!`: every season generator of that
-faction's players is gone. The parser pairs an outcome with the confirmation it answers
-(`src/generators.ts`): by the name it repeats (an equipment's or a blueprint's by the name it starts
-with), or, for a story or an item made usable, which name nothing, the oldest of its kind waiting in
-its chat; a confirmation waits 15 minutes. An outcome nothing waits for is no one's. Each generator
-used is one of its kind consumed (`un generatore di oggetti`, `… di storie`, `… di guardiani`,
-`… di stagioni`, `… di utilizzi`, `… di equipaggiabili`, `… di blueprint`).
+`Hai duplicato <item>!`. **A season's and a story's outcome is a photo** [M]: its creation card, the
+image its player gave (the one season and the one story made in the export that holds its photos;
+the story's is the picture its turns then show, §5); whether a guardian's is, no export tells [?]
+(none of the 17 made since the reset is in it). It may end in a reward, `Hai ottenuto <n>₭!`; a
+season made ends in `Tutti i generatori di stagione de <faction> … sono stati rimossi!`: every
+season generator of that faction's players is gone. The parser pairs an outcome with the
+confirmation it answers (`src/generators.ts`): by the name it repeats (an equipment's or a
+blueprint's by the name it starts with), or, for a story or an item made usable, which name nothing,
+the oldest of its kind waiting in its chat; a confirmation waits 15 minutes. An outcome nothing
+waits for is no one's. Each generator used is one of its kind consumed (`un generatore di oggetti`,
+`… di storie`, `… di guardiani`, `… di stagioni`, `… di utilizzi`, `… di equipaggiabili`,
+`… di blueprint`).
 
 **`/usa <item>`** uses an item. Of the game's own, only two are consumed [M]: the neutrality ticket
 (§5.9) and the moving box, `uno scatolone da trasloco 📦`, whose answer names its player and what it
@@ -672,8 +689,9 @@ cancelled), every one paired with its player; and 47 boxes opened, every one rea
 `guardian`, `season`, `utility`, `equipment`, `blueprint`), `name`, `code` (an item's rarity, a
 guardian's level, a season's or a story's code), `gained` (the item it gave: equipment assembled, a
 blueprint's copy; `item`, `rarity`, `tags`, `level`), `reward` and `cost` in coins, and `removed`
-(the faction whose season generators went). **`loregame.used`** carries each box opened: `player`,
-`owner`, `item` and `found` (each `item`, `rarity`, `tags`, `level`).
+(the faction whose season generators went), and `answer`, the outcome's message id (its photo,
+§6.2). **`loregame.used`** carries each box opened: `player`, `owner`, `item` and `found` (each
+`item`, `rarity`, `tags`, `level`).
 
 ### 5.14 The recipes
 
@@ -862,6 +880,7 @@ It is a floor, not the truth, while the turns are all it reads:
   dropped afterwards), 113 in a drop, 16 in an inventory, 8 in a gift, 4 at a place, 4 in the shop,
   3 in a recipe, 1 in a level-up; 8 of them generators. A state that started after the reset holds
   no item of before it.
+- **The pictures** (§6.2): each place's, kept once, at its first sight.
 - **Their profile** (§5.5), and their username (`owner.name`), as with every player's (§6.1).
 - **Items and players are named by players**, anything, `__proto__` included.
 
@@ -945,3 +964,36 @@ player is known by the username the connector gives; one without a username is n
 connector gives `''`). **Their inventory** is kept as the owner's is (their drops, their level-ups,
 their listings: `inventory`, the owner's being the state's own), so that `state.holders({ item })`
 tells who holds an item, and how many.
+
+### 6.2 The pictures
+
+The game shows a picture with much of what the state keeps: a place's creation card, an arrival and
+a `/v` are a photo of the place (§5.9); a turn's answer is its story's, or the enemy met's (§5); a
+story's creation card its story's (§5.13). The state keeps **each place's pictures** (`media` in
+`places`, newest last), so that a plugin wanting one asks the state, not Telegram:
+
+- **Fetched once, at first sight, live:** when the state applies an event that shows a place still
+  wanting a picture (none kept, nor a message found to hold another kind of media) — its creation
+  card (`loregame.generated` of a season), else an arrival or a `/v` (`loregame.travel`), each with
+  its `answer`'s message id — it fetches that message's photo through the account's `photo`
+  (MegaBotTron1999's D151) on its optional input `photo`, one at a time. Live alone: a message may
+  be deleted or edited later, so its first sight may be the only one; the catch-up from the event
+  log at a start fetches nothing. A place pictured is not fetched again, so a picture changed later
+  is seen only in a seed.
+- **An entry** is `{ id, kind, mime?, width?, height?, source: { chat, message, via, at } }`: `id`
+  `sha256:<hex>` of the bytes; `kind` `image` (kept), `other` (the message holds no photo: another
+  kind of media, its source alone), or `unknown` (not fetched: no `photo` edge, or the fetch failed;
+  tried again at the next sight); `via` `creation`, `arrival`, `v`, `export` (a seed), or `turn`
+  (for the stories and enemies to come). Without the edge, the first sight's source is kept, no
+  bytes. A picture that changes is a new entry, the old kept; the same picture seen again is one.
+- **The bytes** are the state node's files (D149), `sha256-<hex>`, one per picture whatever the
+  places showing it; never in `state.json`. `state.media({ id })` answers them as the core's
+  `MediaResult` (D153), `{ ok: true, media: { data, mime, width?, height? } | null }` or
+  `{ ok: false, error }`, as `photo` does; `state.places()` carries the entries.
+- **The stories and the enemies are not kept yet**, so their pictures are not: the entry and its
+  `turn` source are ready for them.
+- **Seeded from the exports** (tools/media-seed): an export made with its photos holds them, by
+  message. Over the owner's exports (one holds photos, 22–26 Oct 2026: 881), `npm run lore-check`
+  counts, since the reset, 8 creation cards of seasons read (1 with its photo), 60 of stories (1),
+  17 guardians made (none), 69 arrivals (1), 155 `/v` (3), 15,127 turns (737): 3 places pictured,
+  each by one picture.

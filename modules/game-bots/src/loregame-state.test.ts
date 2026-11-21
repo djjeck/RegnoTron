@@ -75,6 +75,7 @@ describe('the loregame state', () => {
       'loregame.recipes',
       'loregame.recipe',
       'loregame.recipeMade',
+      'loregame.media',
     ]);
   });
 

@@ -23,17 +23,20 @@ import {
 import {
   GENERATED_EVENT,
   INVENTORY_EVENT,
+  PLAYER_TURN_EVENT,
   PROFILE_EVENT,
   PURCHASE_EVENT,
   RECIPE_EVENT,
   RECIPE_MADE_EVENT,
   RECIPES_EVENT,
   SHOP_EVENT,
+  TRAVEL_EVENT,
   USED_EVENT,
 } from '@regnotron/game-bots/plugins/loregame.ts';
 import { levelForXp } from '@regnotron/game-bots/profile.ts';
 import { LOREGAMEBOT, TURN_COMMANDS } from '@regnotron/game-bots/replies.ts';
 import { GENERATOR_TAG } from '@regnotron/game-bots/shop.ts';
+import { type ExportPhoto } from './photos.ts';
 
 /** One event of the parser, with the state before and after it. */
 export interface Step {
@@ -52,6 +55,8 @@ export interface Run {
   name: (player: string) => string;
   /** The state as the replay left it (`loregame-state`'s whole state). */
   state: unknown;
+  /** The photos the exports hold, by `<chat>\n<message id>` (photos.ts); none: not read. */
+  photos?: ReadonlyMap<string, ExportPhoto>;
 }
 
 /** A check's findings: a line per measure, a label and a value. */
@@ -655,6 +660,99 @@ export const recipes: Check = {
 };
 
 /** Every check, in the report's order: add one here as the parser learns to read more. */
+/**
+ * The pictures (docs/game-bots.md §5.9, §6.2): of the bot's answers that show one (a season's and
+ * a story's creation card, a guardian made, an arrival, a `/v`, a turn, a turn's encounter), how
+ * many the parser read, how many the exports hold a photo of, and how many pictures they are; the
+ * places pictured (as the state takes them: creation cards, arrivals, `/v`), those told by more than
+ * one picture; whether a turn shows its place's picture; and whether each enemy met shows one.
+ */
+export const pictures: Check = {
+  id: 'pictures',
+  run: (r) => {
+    const photos = r.photos;
+    if (photos === undefined || photos.size === 0)
+      return { title: 'Pictures', rows: [['photos in the exports', 'none read']] };
+    const photoOf = (e: BusEvent): ExportPhoto | undefined =>
+      typeof e['answer'] === 'string'
+        ? photos.get(`${String(e['chat'])}\n${e['answer']}`)
+        : undefined;
+    const outcome = (e: BusEvent) =>
+      e['outcome'] as
+        { place?: { code: string }; fight?: { enemy?: { name: string } } } | undefined;
+    const sources: [string, (e: BusEvent) => boolean][] = [
+      [
+        'a season made (its creation card)',
+        (e) => e.type === GENERATED_EVENT && e['kind'] === 'season',
+      ],
+      ['a story made', (e) => e.type === GENERATED_EVENT && e['kind'] === 'story'],
+      ['a guardian made', (e) => e.type === GENERATED_EVENT && e['kind'] === 'guardian'],
+      ['an arrival', (e) => e.type === TRAVEL_EVENT && e['kind'] === 'arrived'],
+      ['a /v', (e) => e.type === TRAVEL_EVENT && e['kind'] === 'here'],
+      [
+        'a turn, no enemy met',
+        (e) =>
+          e.type === PLAYER_TURN_EVENT &&
+          outcome(e)?.place !== undefined &&
+          outcome(e)?.fight === undefined,
+      ],
+      [
+        'a turn, an enemy met',
+        (e) => e.type === PLAYER_TURN_EVENT && outcome(e)?.fight !== undefined,
+      ],
+    ];
+    const events = r.steps.map((s) => s.event);
+    const rows: [string, string][] = [['photos in the exports', String(photos.size)]];
+    for (const [label, is] of sources) {
+      const read = events.filter(is);
+      const shown = read.map(photoOf).filter((p) => p !== undefined);
+      rows.push([
+        label,
+        `${read.length} read, ${shown.length} with a photo, ${new Set(shown.map((p) => p.id)).size} pictures`,
+      ]);
+    }
+    // The places' pictures, as the state takes them, by code.
+    const places = new Map<string, Set<string>>();
+    for (const e of events) {
+      const p = photoOf(e);
+      const code =
+        e.type === TRAVEL_EVENT && e['kind'] !== 'refused'
+          ? (e['place'] as { code: string }).code
+          : e.type === GENERATED_EVENT && e['kind'] === 'season'
+            ? (e['code'] as string | null)
+            : null;
+      if (p === undefined || code === null) continue;
+      places.set(code, (places.get(code) ?? new Set()).add(p.id));
+    }
+    const turns = events.filter((e) => sources[5]?.[1](e) === true && photoOf(e) !== undefined);
+    const atPictured = turns.filter((e) => places.has(outcome(e)?.place?.code ?? ''));
+    const same = atPictured.filter((e) =>
+      places.get(outcome(e)?.place?.code ?? '')?.has((photoOf(e) as ExportPhoto).id)
+    );
+    const enemies = new Map<string, Set<string>>();
+    for (const e of events) {
+      const enemy = outcome(e)?.fight?.enemy?.name;
+      const p = photoOf(e);
+      if (e.type === PLAYER_TURN_EVENT && enemy !== undefined && p !== undefined)
+        enemies.set(enemy, (enemies.get(enemy) ?? new Set()).add(p.id));
+    }
+    rows.push(
+      ['places pictured', String(places.size)],
+      [
+        'of them, told by more than one picture',
+        String([...places.values()].filter((s) => s.size > 1).length),
+      ],
+      ['turns at a place pictured showing its picture', pct(same.length, atPictured.length)],
+      ['enemies met with a photo', String(enemies.size)],
+      [
+        'of them, one picture each',
+        String([...enemies.values()].filter((s) => s.size === 1).length),
+      ]
+    );
+    return { title: 'Pictures', rows };
+  },
+};
+
 export const CHECKS: readonly Check[] = [
   coverage,
   rests,
@@ -668,6 +766,7 @@ export const CHECKS: readonly Check[] = [
   generators,
   recipes,
   catalogue,
+  pictures,
 ];
 
 /** The report's text: each check's title, then its rows. */

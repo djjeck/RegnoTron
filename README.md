@@ -98,7 +98,9 @@ and whether the state agrees with the bot: [tools/lore-check/README.md](tools/lo
 The exports and the report stay local. `npm run market-seed -- <export folders> … --out <file>`
 replays them the same way and writes the market's history, for `loregame-state` to take once:
 [tools/market-seed/README.md](tools/market-seed/README.md); the file stays local, and on the
-instance's volume.
+instance's volume. `npm run media-seed -- <export folders> … --out <file>` writes the places'
+pictures the exports hold, for `loregame-state` to take at its next start:
+[tools/media-seed/README.md](tools/media-seed/README.md); the same.
 
 To take newer shell code, move the submodule to a newer tag of MegaBotTron1999 and commit the new
 pin with the lockfile.

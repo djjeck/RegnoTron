@@ -59,6 +59,13 @@
  *   what it takes and gives) and `state.recipe({ name, player? })` (one, by a part of its name, with
  *   a player's own: how many items they lack, and which). Added, none known, by the migration to
  *   0.44.0.
+ * - **The pictures** (docs/game-bots.md §6.2, src/media.ts): each place's `media`, newest last,
+ *   fetched once, at its first sight heard live (its creation card, else an arrival or a `/v`),
+ *   through `photo`, an optional input bound to the account's `telegram-user` node (members
+ *   `actions.photo`, MegaBotTron1999's D151); without it, each sight's source is kept, no bytes. The
+ *   bytes are the node's files (D149), `sha256-<hex>`, the same picture kept once; `state.media({ id
+ *   })` answers them. A seed of the exports' (tools/media-seed, `media-seed` in its store) is taken
+ *   at the next start. The lists were added, empty, by the migration to 0.45.0.
  * - **Its events:** `loregame-state.banned` (a player's ban set or changed, with its end and
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
@@ -68,7 +75,17 @@
  * It never sends, and announces each change as `loregame-state.changed`, the sections changed; an
  * event its reducer refuses is recorded as `loregame-state.refused`.
  */
-import { type Plugin } from '@megabottron1999/core';
+import {
+  type BusEvent,
+  type EventHandler,
+  type FetchPhoto,
+  type Instance,
+  type MediaResult,
+  mediaResultSchema,
+  type Plugin,
+  type PluginContext,
+  sniffMime,
+} from '@megabottron1999/core';
 import { type ReadinessState } from '@megabottron1999/turns/readiness.ts';
 import { statePlugin } from '@megabottron1999/turns/state-plugin.ts';
 import { z } from 'zod';
@@ -100,6 +117,7 @@ import {
   type LoreState,
   marketHistory,
   marketNow,
+  mediaEntryOf,
   PINS,
   placesOf,
   playerOf,
@@ -112,6 +130,18 @@ import {
   statOf,
 } from '#src/loregame-state.ts';
 import { type Point } from '#src/market.ts';
+import {
+  imageSize,
+  MEDIA_EVENT,
+  type MediaEntry,
+  mediaEntrySchema,
+  mediaFileOf,
+  mediaIdOf,
+  type Sight,
+  sightOf,
+  wantsPicture,
+} from '#src/media.ts';
+import { LOREGAME_PARSER } from '#src/plugins/loregame.ts';
 import { statsOf } from '#src/stats.ts';
 import { tripOf } from '#src/trips.ts';
 
@@ -127,7 +157,7 @@ type Kept = LoreState & Record<string, unknown>;
 const base = statePlugin<Kept>({
   id: LOREGAME_STATE,
   description:
-    "The owner's state at @LoreGameBot: the inventory the turns gained, the accumulo, the players' bans, every player's turns, rest, accumulo, trainings, level and XP, the market and the shop",
+    "The owner's state at @LoreGameBot: the inventory the turns gained, the accumulo, the players' bans, every player's turns, rest, accumulo, trainings, level and XP, the places and their pictures, the market and the shop",
   schema: stateSchema,
   initial: initialState() as Kept,
   consumes: CONSUMES,
@@ -661,6 +691,21 @@ const base = statePlugin<Kept>({
         state: { ...kept.state, players: Object.fromEntries(migrated), recipes: {} },
       });
     },
+    // 0.45.0 keeps each place's pictures: added, none known (from its next sight, or a seed).
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const places = kept?.state?.['places'] as Record<string, Record<string, unknown>> | undefined;
+      if (kept?.state === undefined || places === undefined) return;
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          places: Object.fromEntries(
+            Object.entries(places).map(([code, p]) => [code, { ...p, media: p['media'] ?? [] }])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -713,7 +758,7 @@ const base = statePlugin<Kept>({
       run: (s, input: { player?: string }) => inventoryOfPlayer(s, input.player),
     },
     places: {
-      help: "The game's places, by code: the level and the items entering each takes, one each, and where one can go from it",
+      help: "The game's places, by code: the level and the items entering each takes, one each, where one can go from it, and its pictures (`media`, newest last: each its id, for `media({ id })`, its kind, type and size, and where it was seen)",
       output: z.record(z.string(), z.looseObject({ name: z.string() })),
       run: (s) => placesOf(s),
     },
@@ -830,9 +875,240 @@ const config = (base.manifest.config as Config).extend({
     ),
 });
 
+/** Its input to the account's `photo` (MegaBotTron1999's D151): optional, its edge the leave. */
+export const PHOTO_INPUT = 'photo';
+/** The document a seed of pictures is put in (tools/media-seed), taken at the next start. */
+export const MEDIA_SEED = 'media-seed';
+
+/** What a seed holds: each place's pictures, and each picture's bytes (base64), by id. */
+const seedSchema = z.object({
+  places: z.record(z.string(), z.object({ name: z.string(), media: z.array(mediaEntrySchema) })),
+  files: z.record(z.string(), z.string()),
+});
+export type MediaSeed = z.infer<typeof seedSchema>;
+
+const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/** The account's `photo`, as its input gives it. */
+interface Photos {
+  actions: { photo: FetchPhoto };
+}
+
+/**
+ * The state's pictures, around the shell's state (`base`): it hears the parser's events as the
+ * state does, and, once the state has applied one that shows an entity still wanting its picture
+ * (src/media.ts's `sightOf`, `wantsPicture`), fetches it through `photo`, one at a time, keeps its
+ * bytes in the files, and hands the entry to the state's reducer as a `loregame.media` event, never
+ * published. Live alone: the catch-up from the event log fetches nothing (a message may be gone).
+ */
+async function create(ctx: PluginContext): Promise<Instance> {
+  /** The state's own handler of the parser's events, which applies one. */
+  let deliver: EventHandler | undefined;
+  let live = false;
+  /** The places whose picture is being fetched. */
+  const fetching = new Set<string>();
+  let queue: Promise<void> = Promise.resolve();
+  const bus = Object.create(ctx.bus, {
+    subscribe: {
+      value: (pattern: string, handler: EventHandler) => {
+        if (pattern === LOREGAME_PARSER) deliver = handler;
+        return ctx.bus.subscribe(pattern, (e, at) => {
+          handler(e, at);
+          if (live) sight(e);
+        });
+      },
+    },
+  }) as PluginContext['bus'];
+  const inner = await base.create(Object.create(ctx, { bus: { value: bus } }) as PluginContext);
+  const reads = inner.interface?.state as Record<string, (input?: unknown) => unknown>;
+  const places = (): LoreState['places'] =>
+    (reads['get']?.({ path: 'places' }) ?? {}) as LoreState['places'];
+
+  /** An entry for the entity `s` shows, handed to the state's reducer. */
+  const give = (s: Sight, media: MediaEntry): void => {
+    if (!live) return;
+    const { entity, key, name } = s;
+    deliver?.({ type: MEDIA_EVENT, t: Date.parse(s.at), entity, key, name, media }, undefined);
+  };
+  const sourceOf = (s: Sight): MediaEntry['source'] => ({
+    chat: s.chat,
+    message: s.message,
+    via: s.via,
+    at: s.at,
+  });
+
+  /** Fetches the picture `s` shows, keeps its bytes, and gives its entry. */
+  const fetch = async (s: Sight, photo: Photos, none: boolean): Promise<void> => {
+    const source = sourceOf(s);
+    const unknown = (why: string): void => {
+      ctx.log.warn(`the picture of ${s.entity} ${s.key} (message ${s.message}): ${why}`);
+      if (none) give(s, { id: null, kind: 'unknown', source });
+    };
+    let r: Awaited<ReturnType<FetchPhoto>>;
+    try {
+      r = await photo.actions.photo({ chat: s.chat, message: s.message });
+    } catch (e) {
+      unknown(message(e));
+      return;
+    }
+    if (!r.ok) {
+      unknown(r.error);
+      return;
+    }
+    if (r.media === null) {
+      give(s, { id: null, kind: 'other', source });
+      return;
+    }
+    const { data, mime } = r.media;
+    const id = mediaIdOf(data);
+    const file = mediaFileOf(id) as string;
+    try {
+      if (!ctx.store.files.list().some((f) => f.name === file))
+        ctx.store.files.write(file, data, { type: mime });
+    } catch (e) {
+      unknown(`not kept: ${message(e)}`);
+      return;
+    }
+    const size = imageSize(data);
+    const width = r.media.width ?? size?.width;
+    const height = r.media.height ?? size?.height;
+    give(s, {
+      id,
+      kind: 'image',
+      mime,
+      ...(width === undefined ? {} : { width }),
+      ...(height === undefined ? {} : { height }),
+      source,
+    });
+  };
+
+  /** An event the state has applied: the entity it shows, if it still wants its picture. */
+  const sight = (e: BusEvent): void => {
+    const s = sightOf(e);
+    if (s === undefined || fetching.has(s.key)) return;
+    const all = places();
+    const media = Object.hasOwn(all, s.key) ? (all[s.key]?.media ?? []) : [];
+    if (!wantsPicture(media)) return;
+    const none = media.length === 0;
+    const photo = ctx.useOptional<Photos>(PHOTO_INPUT);
+    if (photo === undefined) {
+      // No edge: where it was seen first, without its bytes.
+      if (none) give(s, { id: null, kind: 'unknown', source: sourceOf(s) });
+      return;
+    }
+    fetching.add(s.key);
+    queue = queue.then(() => fetch(s, photo, none)).finally(() => fetching.delete(s.key));
+  };
+
+  /** A seed of pictures in its store (tools/media-seed): taken, then removed. */
+  const seed = (): void => {
+    const kept = ctx.store.read(MEDIA_SEED);
+    if (kept === undefined) return;
+    const r = seedSchema.safeParse(kept);
+    if (!r.success) {
+      ctx.log.warn(`${MEDIA_SEED} not taken: ${r.error.message}`);
+      return;
+    }
+    const written = new Set(ctx.store.files.list().map((f) => f.name));
+    let files = 0;
+    for (const [id, base64] of Object.entries(r.data.files)) {
+      const data = Uint8Array.from(Buffer.from(base64, 'base64'));
+      const file = mediaFileOf(id);
+      if (file === undefined || mediaIdOf(data) !== id) {
+        ctx.log.warn(`${MEDIA_SEED}: ${id} is not its bytes' id, left out`);
+        continue;
+      }
+      if (written.has(file)) continue;
+      try {
+        ctx.store.files.write(file, data, { type: sniffMime(data) ?? 'application/octet-stream' });
+      } catch (e) {
+        ctx.log.warn(`${MEDIA_SEED}: ${id} not kept: ${message(e)}`);
+        continue;
+      }
+      written.add(file);
+      files += 1;
+    }
+    let entries = 0;
+    for (const [key, place] of Object.entries(r.data.places))
+      for (const m of place.media) {
+        // An image whose bytes it does not hold is left out.
+        if (m.id !== null && !written.has(mediaFileOf(m.id) ?? '')) continue;
+        entries += 1;
+        give({ entity: 'place', key, name: place.name, ...m.source }, m);
+      }
+    // Once the state that took it is kept: its save is a microtask the entries queued before.
+    queueMicrotask(() => ctx.store.remove(MEDIA_SEED));
+    ctx.log.info(`${MEDIA_SEED} taken: ${entries} picture(s) of places, ${files} file(s) new`);
+  };
+
+  /** A picture's bytes, by its id (the core's `Media`, D153): none if not kept; why not, never thrown. */
+  const media = (input: { id: string }): MediaResult => {
+    const file = mediaFileOf(input.id);
+    if (file === undefined) return { ok: false, error: `not a picture's id: ${input.id}` };
+    try {
+      const kept = ctx.store.files.read(file);
+      if (kept === undefined) return { ok: true, media: null };
+      const data = new Uint8Array(kept.buffer, kept.byteOffset, kept.byteLength);
+      const entry = mediaEntryOf({ places: places() } as LoreState, input.id);
+      const size = imageSize(data);
+      const width = entry?.width ?? size?.width;
+      const height = entry?.height ?? size?.height;
+      return {
+        ok: true,
+        media: {
+          data,
+          mime: entry?.mime ?? sniffMime(data) ?? 'application/octet-stream',
+          ...(width === undefined ? {} : { width }),
+          ...(height === undefined ? {} : { height }),
+        },
+      };
+    } catch (e) {
+      return { ok: false, error: message(e) };
+    }
+  };
+
+  return {
+    ...inner,
+    async start() {
+      await inner.start?.();
+      live = true;
+      seed();
+    },
+    async stop() {
+      live = false;
+      await queue;
+      await inner.stop?.();
+    },
+    interface: { ...inner.interface, state: { ...inner.interface?.state, media } },
+  };
+}
+
 export const loregameStatePlugin: Plugin = {
-  ...base,
-  manifest: { ...base.manifest, config },
+  manifest: {
+    ...base.manifest,
+    config,
+    inputs: {
+      ...base.manifest.inputs,
+      [PHOTO_INPUT]: {
+        type: 'interface',
+        members: ['actions.photo'],
+        optional: true,
+        help: "The account's photos (telegram-user, D151): each picture fetched once, at its first sight; without it, where it was seen, no bytes",
+      },
+    },
+    interface: {
+      ...base.manifest.interface,
+      state: {
+        ...base.manifest.interface?.state,
+        media: {
+          help: "A picture's bytes, by its id (sha256:<hex>, as the places' `media` give it): its data, type and size; none if not kept",
+          input: z.object({ id: z.string() }),
+          output: mediaResultSchema,
+        },
+      },
+    },
+  },
+  create,
 };
 
 /** The module's plugin entry (MegaBotTron1999's docs/bot-os-api.md §7.2). */

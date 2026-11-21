@@ -411,6 +411,10 @@ const travelEvent = z
       .array(placeSchema.extend({ locked: z.boolean() }))
       .optional()
       .describe('here: where they can go, each locked to them or not'),
+    answer: z
+      .string()
+      .nullable()
+      .describe("The bot's answer's message id, if known: a photo of the place (§5.9)"),
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("A player's move (/vai) or place (/v), as @LoreGameBot answered it");
@@ -658,6 +662,12 @@ const generatedEvent = z
       .enum(['Bene', 'Male', 'Neutrale'])
       .nullable()
       .describe('A season made: the faction whose season generators were all removed'),
+    answer: z
+      .string()
+      .nullable()
+      .describe(
+        "The outcome's message id, if known: a season's and a story's carry their picture (§5.13)"
+      ),
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("A player's generator used, as @LoreGameBot told its outcome");
@@ -1139,6 +1149,7 @@ export const loregamePlugin: Plugin = {
                 reward: made.reward,
                 cost: made.cost,
                 removed: made.removed,
+                answer: m.id ?? null,
                 ...old,
               },
               m.time
@@ -1216,7 +1227,11 @@ export const loregamePlugin: Plugin = {
         const traveller =
           travel === undefined ? undefined : (to(TRAVEL_COMMAND) ?? to(TRAVEL_ALIAS));
         if (travel !== undefined && traveller !== undefined)
-          ctx.bus.publish(TRAVEL_EVENT, { chat: m.chat, ...traveller, ...travel, ...old }, m.time);
+          ctx.bus.publish(
+            TRAVEL_EVENT,
+            { chat: m.chat, ...traveller, ...travel, answer: m.id ?? null, ...old },
+            m.time
+          );
         const here = travel?.kind === 'here' && travel.requirements !== null ? [travel] : [];
         for (const r of [
           ...here.map((h) => ({ place: h.place, requirements: h.requirements as Requirements })),

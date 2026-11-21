@@ -10,6 +10,7 @@ import { OWNER_ACCOUNT, replay } from '@megabottron1999/telegram-export/replay.t
 import { loregamePlugin } from '@regnotron/game-bots/plugins/loregame.ts';
 import { loregameStatePlugin } from '@regnotron/game-bots/plugins/loregame-state.ts';
 import { type Run, stepsOf } from './checks.ts';
+import { type ExportPhoto } from './photos.ts';
 
 /** The parser's events the state applies, as the run recorded them. */
 const PARSER = /^loregame\./u;
@@ -20,7 +21,11 @@ const PARSER = /^loregame\./u;
  */
 export async function replayLore(
   inbounds: readonly Inbound[],
-  o: { self: string; name?: (player: string) => string }
+  o: {
+    self: string;
+    name?: (player: string) => string;
+    photos?: ReadonlyMap<string, ExportPhoto>;
+  }
 ): Promise<Run> {
   const chats = [...new Set(inbounds.map((m) => m.chat))];
   const run = await replay({
@@ -56,6 +61,7 @@ export async function replayLore(
       drift: { read: drift?.read ?? 0, unread: drift?.unread ?? 0 },
       name: o.name ?? ((p) => p),
       state: run.read('loregame-state', 'get', {}),
+      ...(o.photos === undefined ? {} : { photos: o.photos }),
     };
   } finally {
     await run.stop();
@@ -66,13 +72,10 @@ export async function replayLore(
 const SAME_CHAT_AT = 10;
 
 /**
- * The chats of `inbounds` as one where a group was renamed between two exports: a Telegram Desktop
- * export names a chat by its title when it was made, and gives no id, so the same group exported
- * before and after a rename is two chats, and the messages both exports hold would be replayed
- * twice. Two chats that share messages (the same id, sender and text, `SAME_CHAT_AT` at least) are
- * the same: the later title takes the earlier's name, and each message is kept once.
+ * Each chat's name once renamed groups are one (`mergeRenamedChats`): the earliest chat it shares
+ * its messages with, `SAME_CHAT_AT` at least; its own otherwise.
  */
-export function mergeRenamedChats(inbounds: readonly Inbound[]): Inbound[] {
+export function chatNames(inbounds: readonly Inbound[]): Map<string, string> {
   const key = (m: Inbound): string => `${m.id ?? ''}\n${m.sender}\n${m.text}`;
   const byChat = new Map<string, Set<string>>();
   const first = new Map<string, number>();
@@ -96,6 +99,18 @@ export function mergeRenamedChats(inbounds: readonly Inbound[]): Inbound[] {
     });
     name.set(c, same === undefined ? c : (name.get(same) ?? same));
   }
+  return name;
+}
+
+/**
+ * The chats of `inbounds` as one where a group was renamed between two exports: a Telegram Desktop
+ * export names a chat by its title when it was made, and gives no id, so the same group exported
+ * before and after a rename is two chats, and the messages both exports hold would be replayed
+ * twice. Two chats that share messages (the same id, sender and text, `SAME_CHAT_AT` at least) are
+ * the same: the later title takes the earlier's name, and each message is kept once.
+ */
+export function mergeRenamedChats(inbounds: readonly Inbound[]): Inbound[] {
+  const name = chatNames(inbounds);
   const seen = new Set<string>();
   const out: Inbound[] = [];
   for (const m of inbounds) {

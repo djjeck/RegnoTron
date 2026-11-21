@@ -66,6 +66,13 @@ import { ACCUMULO, ACCUMULO_MAX, ACCUMULO_MECHANICS } from '#src/accumulo.ts';
 import { type Companies, type Company, companyOf, idOf, paged, quoted } from '#src/companies.ts';
 import { GENERATORS } from '#src/generators.ts';
 import { initialSchedule, type Point, scheduled, type Via } from '#src/market.ts';
+import {
+  MEDIA_EVENT,
+  type MediaEntry,
+  mediaEntrySchema,
+  mediaEventSchema,
+  withMedia,
+} from '#src/media.ts';
 import { ladderOf, NEUTRAL_EFFECT, NEUTRAL_MS, NEUTRAL_TICKET } from '#src/places.ts';
 import {
   ACCUMULO_EVENT,
@@ -151,6 +158,8 @@ export const CONSUMES: readonly string[] = [
   RECIPES_EVENT,
   RECIPE_EVENT,
   RECIPE_MADE_EVENT,
+  // A picture fetched: the state's own, handed to its reducer, never published (src/media.ts).
+  MEDIA_EVENT,
 ];
 
 /**
@@ -592,10 +601,15 @@ export const stateSchema = z.object({
           .array(z.object({ name: z.string(), code: z.string() }))
           .describe('Where one can go'),
         as_of: z.string().describe('Told'),
+        media: z
+          .array(mediaEntrySchema)
+          .describe(
+            'Its pictures, newest last: each its id (its bytes in the files), where it was seen'
+          ),
       })
     )
     .describe(
-      "The game's places, by code: what entering each takes, and where one can go from it (as last told)"
+      "The game's places, by code: what entering each takes, where one can go from it (as last told), and their pictures"
     ),
   guardians: z
     .record(z.string(), z.boolean())
@@ -1724,6 +1738,7 @@ const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
   reduceGenerators,
   reduceRecipes,
   reduceCatalogue,
+  reduceMedia,
 ];
 
 export function reduce(state: LoreState, e: BusEvent): LoreState {
@@ -1821,7 +1836,17 @@ type PlaceState = LoreState['places'][string];
 /** A place the state knows, or one it knows nothing of yet, by its name. */
 function placeIn(s: LoreState, place: { name: string; code: string }): PlaceState {
   const was = Object.hasOwn(s.places, place.code) ? s.places[place.code] : undefined;
-  return was ?? { name: place.name, level: null, items: [], guardians: [], exits: [], as_of: '' };
+  return (
+    was ?? {
+      name: place.name,
+      level: null,
+      items: [],
+      guardians: [],
+      exits: [],
+      as_of: '',
+      media: [],
+    }
+  );
 }
 
 /**
@@ -2302,6 +2327,30 @@ function reduceNeutral(state: LoreState, e: BusEvent): LoreState {
     date: at,
   });
   return withInventory(s, whose, { ...inv, items, held: heldOf(items) }, at);
+}
+
+/**
+ * A picture fetched (or recorded without its bytes) for an entity (src/media.ts): added to its list,
+ * newest last; a place it shows is known by its name from then on, if it was not.
+ */
+function reduceMedia(state: LoreState, e: BusEvent): LoreState {
+  if (e.type !== MEDIA_EVENT) return state;
+  const m = mediaEventSchema.safeParse(e);
+  if (!m.success) return state;
+  const { key, name, media } = m.data;
+  const was = placeIn(state, { name, code: key });
+  const next = withMedia(was.media, media);
+  if (next.length === was.media.length) return state;
+  return { ...state, places: { ...state.places, [key]: { ...was, media: next } } };
+}
+
+/** The entry of a picture kept, by its id, of whichever entity: none if no entity has it. */
+export function mediaEntryOf(s: LoreState, id: string): MediaEntry | undefined {
+  for (const p of Object.values(s.places)) {
+    const found = p.media.find((m) => m.id === id);
+    if (found !== undefined) return found;
+  }
+  return undefined;
 }
 
 /** Every place the state knows of, by code. */

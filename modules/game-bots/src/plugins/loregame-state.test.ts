@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { bootState, MIN, T0 } from '#test/state-run.ts';
+import { mediaIdOf } from '#src/media.ts';
+import { bootState, GROUP, MIN, T0 } from '#test/state-run.ts';
 import { loregamePlugin } from './loregame.ts';
 import { loregameStatePlugin, plugins } from './loregame-state.ts';
 
@@ -37,6 +38,8 @@ describe('the loregame-state node', () => {
       events: { type: 'events', namespace: 'loregame' },
       // The parser a shell player's sends are handed to (MegaBotTron1999's D141).
       parser: { type: 'interface', members: ['actions.sent'], bind: { node: 'loregame' } },
+      // The account's photos, for the pictures (D151): optional.
+      photo: { type: 'interface', members: ['actions.photo'], optional: true },
     });
     expect(Object.keys(m.events ?? {})).toEqual([
       'loregame-state.changed',
@@ -78,6 +81,8 @@ describe('the loregame-state node', () => {
       'ready',
       'commands',
       'bot',
+      // A picture's bytes, by its id.
+      'media',
     ]);
     expect(Object.keys(m.interface.actions ?? {})).toEqual(['sent']);
     expect(m.config?.parse({})).toEqual({ pin: ['inventory.held', 'owner.as_of'] });
@@ -2599,6 +2604,236 @@ describe('the catalogue, every item seen in the game (§6)', () => {
     const again = await bootState(dir2, { group: true });
     expect(again.read('recipes')).toEqual({});
     expect(again.read('player', { name: 'bob' })).toMatchObject({ recipes: {} });
+    await again.core.stop();
+  });
+});
+
+// A picture: a JPEG's first bytes, 32 by 16, as invented as the places.
+const jpeg = (n: number): Uint8Array =>
+  Uint8Array.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x10, 0x00, 0x20, 0x03, n]);
+const ARRIVED = (place: string) => `WOOSH! Sei arrivato alla Stagione ${place}!`;
+const HERE = (place: string) =>
+  `Ti trovi nella stagione ${place}\n\nRequisiti d'accesso (oggetti consumati all'arrivo)\n> Livello 1\n\nPuoi andare in:\n> Il Bosco Inventato ⛅️ [B1]`;
+type Media = { id: string | null; kind: string; source: { via: string; message: string } }[];
+const mediaOf = (
+  run: { read: (n: string, i?: Record<string, unknown>) => unknown },
+  code: string
+): Media => (run.read('get', { path: `places.${code}.media` }) ?? []) as Media;
+const filesOf = (d: string): string[] => {
+  const files = path.join(d, 'data', 'instances', 'loregame-state', 'files');
+  return fs.existsSync(files) ? fs.readdirSync(files).filter((f) => !f.startsWith('.')) : [];
+};
+
+describe('the pictures of the places', () => {
+  it('fetches a place’s picture once, at its first sight, and answers its bytes', async () => {
+    const d = path.join(dir, 'pictures');
+    const run = await bootState(d, { photos: true });
+    const asked = await run.group('bob', '/vai bosco');
+    const answer = await run.group('LoreGameBot', ARRIVED('Il Bosco Inventato ⛅️ [B1]'), {
+      replyTo: asked,
+      photo: { data: jpeg(1), mime: 'image/jpeg' },
+    });
+    await run.fetched();
+    const id = mediaIdOf(jpeg(1));
+    expect(mediaOf(run, 'B1')).toEqual([
+      {
+        id,
+        kind: 'image',
+        mime: 'image/jpeg',
+        width: 32,
+        height: 16,
+        source: { chat: GROUP, message: answer, via: 'arrival', at: new Date(T0).toISOString() },
+      },
+    ]);
+    expect(filesOf(d)).toEqual([`sha256-${id.slice(7)}`]);
+    expect(run.read('media', { id })).toEqual({
+      ok: true,
+      media: { data: jpeg(1), mime: 'image/jpeg', width: 32, height: 16 },
+    });
+    expect(run.read('places')).toMatchObject({ B1: { media: [{ id }] } });
+    // Seen again, another picture: not fetched again.
+    const v = await run.group('bob', '/v');
+    await run.group('LoreGameBot', HERE('Il Bosco Inventato ⛅️ [B1]'), {
+      replyTo: v,
+      photo: { data: jpeg(2), mime: 'image/jpeg' },
+    });
+    await run.fetched();
+    expect(mediaOf(run, 'B1')).toHaveLength(1);
+    // A message the account finds no photo in: another kind of media, kept with its source.
+    const go = await run.group('bob', '/vai prato');
+    const plain = await run.group('LoreGameBot', ARRIVED('Il Prato Finto 🌾 [B2]'), {
+      replyTo: go,
+    });
+    await run.fetched();
+    expect(mediaOf(run, 'B2')).toEqual([
+      expect.objectContaining({
+        id: null,
+        kind: 'other',
+        source: expect.objectContaining({ message: plain, via: 'arrival' }),
+      }),
+    ]);
+    // Refused: not fetched, tried again at its next sight.
+    const up = await run.group('bob', '/vai colle');
+    await run.group('LoreGameBot', ARRIVED('Il Colle Finto ⛰ [B3]'), {
+      replyTo: up,
+      photo: 'MESSAGE_ID_INVALID',
+    });
+    await run.fetched();
+    expect(mediaOf(run, 'B3')).toMatchObject([{ id: null, kind: 'unknown' }]);
+    const again = await run.group('bob', '/v');
+    await run.group('LoreGameBot', HERE('Il Colle Finto ⛰ [B3]'), {
+      replyTo: again,
+      photo: { data: jpeg(1), mime: 'image/jpeg' },
+    });
+    await run.fetched();
+    expect(mediaOf(run, 'B3')).toMatchObject([
+      { kind: 'unknown' },
+      { id, kind: 'image', source: { via: 'v' } },
+    ]);
+    // The same picture twice is one file.
+    expect(filesOf(d)).toHaveLength(1);
+    // A refusal to enter shows no place's picture.
+    const no = await run.group('bob', '/vai cima');
+    await run.group(
+      'LoreGameBot',
+      "Non hai accesso a La Cima Finta 🗻 [B4]!\n\nRequisiti d'accesso per La Cima Finta 🗻 [B4] (oggetti consumati all'arrivo)\n> Livello 6",
+      { replyTo: no, photo: { data: jpeg(3), mime: 'image/jpeg' } }
+    );
+    await run.fetched();
+    expect(mediaOf(run, 'B4')).toEqual([]);
+    expect(run.read('media', { id: 'B1' })).toEqual({ ok: false, error: "not a picture's id: B1" });
+    expect(run.read('media', { id: mediaIdOf(jpeg(9)) })).toEqual({ ok: true, media: null });
+    await run.core.stop();
+    // Kept across a restart.
+    const back = await bootState(d, { photos: true });
+    expect(mediaOf(back, 'B1')).toMatchObject([{ id }]);
+    expect(back.read('media', { id })).toMatchObject({ ok: true, media: { data: jpeg(1) } });
+    await back.core.stop();
+  });
+
+  it('takes a season’s picture from its creation card, the earliest sight', async () => {
+    const run = await bootState(path.join(dir, 'creation'), { photos: true });
+    const asked = await run.group('bob', '/generastagione');
+    await run.group('LoreGameBot', 'Stai per generare la stagione La Cima Finta 🗻. Sei sicuro?', {
+      replyTo: asked,
+    });
+    const card = await run.group(
+      'LoreGameBot',
+      'La tua idea si materializza... hai generato la stagione La Cima Finta 🗻 [B9]!',
+      { photo: { data: jpeg(4), mime: 'image/jpeg' } }
+    );
+    await run.fetched();
+    expect(run.of('loregame.generated')).toMatchObject([{ kind: 'season', answer: card }]);
+    expect(run.read('places')).toMatchObject({
+      B9: {
+        name: 'La Cima Finta 🗻',
+        level: null,
+        media: [{ id: mediaIdOf(jpeg(4)), source: { via: 'creation', message: card } }],
+      },
+    });
+    await run.core.stop();
+  });
+
+  it('keeps where a place was first seen, without its bytes, with no photo edge', async () => {
+    const run = await bootState(path.join(dir, 'unwired'), { group: true });
+    for (const place of ['Il Bosco Inventato ⛅️ [B1]', 'Il Bosco Inventato ⛅️ [B1]']) {
+      const asked = await run.group('bob', '/vai bosco');
+      await run.group('LoreGameBot', ARRIVED(place), { replyTo: asked });
+    }
+    await run.fetched();
+    expect(mediaOf(run, 'B1')).toMatchObject([
+      { id: null, kind: 'unknown', source: { via: 'arrival' } },
+    ]);
+    await run.core.stop();
+  });
+
+  it('takes a seed of the exports’ pictures at its next start, once', async () => {
+    const d = path.join(dir, 'seeded');
+    const run = await bootState(d, { photos: true });
+    const asked = await run.group('bob', '/vai bosco');
+    await run.group('LoreGameBot', ARRIVED('Il Bosco Inventato ⛅️ [B1]'), {
+      replyTo: asked,
+      photo: { data: jpeg(1), mime: 'image/jpeg' },
+    });
+    await run.fetched();
+    await run.core.stop();
+    const docs = path.join(d, 'data', 'instances', 'loregame-state');
+    const source = (message: string, at: string) => ({
+      chat: 'Il Gruppo',
+      message,
+      via: 'export',
+      at,
+    });
+    const image = (n: number, message: string, at: string) => ({
+      id: mediaIdOf(jpeg(n)),
+      kind: 'image',
+      mime: 'image/jpeg',
+      source: source(message, at),
+    });
+    const b64 = (n: number) => Buffer.from(jpeg(n)).toString('base64');
+    fs.writeFileSync(
+      path.join(docs, 'media-seed.json'),
+      JSON.stringify({
+        places: {
+          // Older than the live one, another picture; then the same picture as live.
+          B1: {
+            name: 'Il Bosco Inventato ⛅️',
+            media: [
+              image(5, '7', '2026-10-01T00:00:00.000Z'),
+              image(1, '8', '2026-10-02T00:00:00.000Z'),
+            ],
+          },
+          M7: { name: 'Il Fondo Finto 🌋', media: [image(6, '9', '2026-10-03T00:00:00.000Z')] },
+          // A picture whose bytes it was not given.
+          M8: { name: 'Il Pozzo Finto', media: [image(7, '10', '2026-10-03T00:00:00.000Z')] },
+        },
+        files: {
+          [mediaIdOf(jpeg(5))]: b64(5),
+          [mediaIdOf(jpeg(6))]: b64(6),
+          [mediaIdOf(jpeg(8))]: b64(9),
+        },
+      })
+    );
+    const again = await bootState(d, { photos: true });
+    await again.settle();
+    expect(mediaOf(again, 'B1').map((m) => [m.id, m.source.via])).toEqual([
+      [mediaIdOf(jpeg(5)), 'export'],
+      [mediaIdOf(jpeg(1)), 'arrival'],
+    ]);
+    expect(again.read('places')).toMatchObject({
+      M7: { name: 'Il Fondo Finto 🌋', media: [{ id: mediaIdOf(jpeg(6)) }] },
+    });
+    expect(mediaOf(again, 'M8')).toEqual([]);
+    expect(filesOf(d)).toHaveLength(3);
+    expect(again.read('media', { id: mediaIdOf(jpeg(6)) })).toMatchObject({
+      ok: true,
+      media: { data: jpeg(6), mime: 'image/jpeg', width: 32, height: 16 },
+    });
+    expect(fs.existsSync(path.join(docs, 'media-seed.json'))).toBe(false);
+    await again.core.stop();
+    // A seed it cannot read is left where it is.
+    fs.writeFileSync(path.join(docs, 'media-seed.json'), JSON.stringify({ places: [] }));
+    const third = await bootState(d, { photos: true });
+    expect(fs.existsSync(path.join(docs, 'media-seed.json'))).toBe(true);
+    await third.core.stop();
+  });
+
+  it('adds the empty lists to the places kept before 0.45.0', async () => {
+    const d = path.join(dir, 'v20');
+    const run = await bootState(d, { group: true });
+    const asked = await run.group('bob', '/vai bosco');
+    await run.group('LoreGameBot', ARRIVED('Il Bosco Inventato ⛅️ [B1]'), { replyTo: asked });
+    await run.core.stop();
+    const docs = path.join(d, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    delete kept.state.places.B1.media;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 20 }));
+    const again = await bootState(d, { group: true });
+    expect(again.read('places')).toMatchObject({
+      B1: { name: 'Il Bosco Inventato ⛅️', media: [] },
+    });
     await again.core.stop();
   });
 });
