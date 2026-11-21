@@ -67,6 +67,8 @@ describe('the loregame state', () => {
       'loregame.company',
       'loregame.shop',
       'loregame.purchase',
+      'loregame.generated',
+      'loregame.used',
     ]);
   });
 
@@ -954,6 +956,100 @@ describe('a purchase at the shop (§5.12)', () => {
     expect(reduce(initialState(), bought({ player: '', owner: false })).players).toEqual({});
     // The owner unnamed yet: their inventory has it, no player's coins move.
     expect(reduce(initialState(), bought({ player: '', owner: true })).players).toEqual({});
+  });
+});
+
+describe('the generators and the moving box (§5.13)', () => {
+  const T = Date.parse('2026-11-06T12:00:00Z');
+  const at = new Date(T).toISOString();
+  const ev = (type: string, payload: Record<string, unknown>): BusEvent =>
+    ({ type: `loregame.${type}`, t: T, chat: '-1001', ...payload }) as unknown as BusEvent;
+  const buy = (player: string, item: string): BusEvent =>
+    ev('purchase', { player, owner: false, item, rarity: 'X', tags: [], price: 0, qty: 1 });
+  const made = (player: string, payload: Record<string, unknown>): BusEvent =>
+    ev('generated', {
+      player,
+      owner: false,
+      name: null,
+      code: null,
+      gained: null,
+      reward: 0,
+      cost: 0,
+      removed: null,
+      ...payload,
+    });
+  /** `name` standing at `code`, of `faction`, with `coins`. */
+  const placed = (s: LoreState, name: string, code: string, faction: string): LoreState => {
+    const p = playerOf(s, name);
+    if (p === null) throw new Error(name);
+    const stats = {
+      ...p.stats,
+      location: { value: { name: 'Il Posto', code }, exact: true, as_of: at },
+      alignment: { value: faction, exact: true, as_of: at },
+      coins: { value: 1000, exact: true, as_of: at },
+    };
+    return { ...s, players: { ...s.players, [name]: { ...p, stats } } };
+  };
+
+  it('uses up the generator, moves the coins, records a guardian where its player stands', () => {
+    let s = [
+      buy('bob', 'un generatore di guardiani'),
+      buy('bob', 'un generatore di oggetti'),
+    ].reduce(reduce, initialState());
+    s = placed(s, 'bob', 'B3', 'Bene');
+    s = reduce(s, made('bob', { kind: 'guardian', name: 'Gino', code: 'L1', reward: 300 }));
+    const bob = playerOf(s, 'bob');
+    expect(bob?.inventory.items['un generatore di guardiani']).toMatchObject({ qty: 0 });
+    expect(bob?.stats['coins']).toMatchObject({ value: 1300, exact: true });
+    expect(s.guardians['B3']).toBe(true);
+    // An item made is in the inventory and the catalogue; its equipment's cost paid.
+    s = reduce(s, made('bob', { kind: 'item', name: 'una pigna', code: 'B2' }));
+    expect(s.catalogue['una pigna']).toMatchObject({ rarity: 'B2', via: 'generated' });
+    expect(playerOf(s, 'bob')?.inventory.items['un generatore di oggetti']).toMatchObject({
+      qty: 0,
+    });
+    const gained = { item: 'un mestolo', rarity: 'M4', tags: [], level: null };
+    s = reduce(s, made('bob', { kind: 'equipment', name: 'un mestolo', gained, cost: 500 }));
+    expect(playerOf(s, 'bob')?.inventory.items['un mestolo']).toMatchObject({
+      qty: 1,
+      via: 'generated',
+    });
+    expect(playerOf(s, 'bob')?.stats['coins']).toMatchObject({ value: 800 });
+  });
+
+  it('removes a faction’s season generators when a season is made', () => {
+    let s = [
+      buy('bob', 'un generatore di stagioni'),
+      buy('carol', 'un generatore di stagioni'),
+      buy('dave', 'un generatore di stagioni'),
+      buy('dave', 'un generatore di stagioni'),
+    ].reduce(reduce, initialState());
+    s = placed(placed(placed(s, 'bob', 'B1', 'Bene'), 'carol', 'M1', 'Male'), 'dave', 'B2', 'Bene');
+    s = reduce(s, made('bob', { kind: 'season', name: 'Fango', code: 'B4', removed: 'Bene' }));
+    const qty = (p: string) => playerOf(s, p)?.inventory.items['un generatore di stagioni']?.qty;
+    expect([qty('bob'), qty('carol'), qty('dave')]).toEqual([0, 1, 0]);
+  });
+
+  it('uses up the moving box, what it held gained; nothing of a player unnamed', () => {
+    let s = reduce(initialState(), buy('bob', 'uno scatolone da trasloco 📦'));
+    s = reduce(
+      s,
+      ev('used', {
+        player: 'bob',
+        owner: false,
+        item: 'uno scatolone da trasloco 📦',
+        found: [{ item: 'un sasso', rarity: 'B1', tags: [], level: null }],
+      })
+    );
+    expect(playerOf(s, 'bob')?.inventory.items).toMatchObject({
+      'uno scatolone da trasloco 📦': { qty: 0 },
+      'un sasso': { qty: 1, via: 'used' },
+    });
+    expect(s.catalogue['un sasso']).toMatchObject({ via: 'drop' });
+    // A player who held none: theirs from now on, nothing to take.
+    const carol = reduce(initialState(), made('carol', { kind: 'story', code: 'B1', reward: 0 }));
+    expect(playerOf(carol, 'carol')).not.toBeNull();
+    expect(reduce(initialState(), made('', { kind: 'story' })).players).toEqual({});
   });
 });
 

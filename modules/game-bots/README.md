@@ -177,6 +177,13 @@ state keeps one list, the day's, with each player's purchases apart, and every i
 sale; `loregame-state.shopChanged` announces a new day's items, or the day's told otherwise, with
 those never seen on sale before (docs/game-bots.md §5.12, §6).
 
+**The generators.** A generator's confirmation, replying to its player's command, and its outcome, a
+message of its own, are paired by the name it repeats (a story's, or an item made usable, by the
+oldest waiting in its chat), and published as `loregame.generated`: the generator leaves its
+player's inventory, what it made or gave enters it, its reward and cost move their coins, a guardian
+made is recorded at their place, and a season made takes its faction's season generators. The moving
+box opened (`/usa`) is `loregame.used`: the box out, what it held in (docs/game-bots.md §5.13, §6).
+
 **The catalogue.** Every item any of these events names with its rarity (a drop, a level-up, an
 inventory, a gift, a place's requirements, the shop), anyone's, is kept once in the state's
 catalogue, with when and how it was first seen; `loregame-state.itemsDiscovered` announces the new

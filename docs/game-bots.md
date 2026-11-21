@@ -500,9 +500,9 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
 **`loregame.requirements`** carries any place's: `place`, `level`, `items`, `guardians` (each a
 place's code). **`loregame.neutral`** carries a ticket used (`neutralized`, its player by the name
 the answer gives) and the owner's neutrality ended (`restored`, heard in private alone): `player`,
-`owner`, `kind`. **Not read yet:** a guardian or a place made (the button's outcome), and where a
-player thrown out of a neutral place above `N1` lands (the state guesses the same step of their
-faction's ladder).
+`owner`, `kind`. A guardian made is read from its generator's outcome (§5.13). **Not read yet:** a
+place made (the button's outcome), and where a player thrown out of a neutral place above `N1` lands
+(the state guesses the same step of their faction's ladder).
 
 ### 5.10 Gifts
 
@@ -630,6 +630,51 @@ of the exports' 178 listings, over 76 days; the shop sold 35 items in them, 8 of
 first listing names it. **`loregame.purchase`** carries each purchase read: `player`, `owner`,
 `item`, `rarity`, `tags`, `price` and `qty` (1).
 
+### 5.13 Generators and `/usa`
+
+A generator (`[X] [generatore]`, sold at the shop, §5.12) is used by its command, `/generaoggetto`,
+`/generastoria`, `/generaguardiano`, `/generastagione`, `/generautilizzo`, `/assembla`, `/duplica`
+[M], and a conversation of questions; then the bot asks to confirm what it is about to make,
+replying to the player's command (so it is theirs), with a button:
+
+- `Stai per generare l'oggetto <name>[ per la stagione …]. Sei sicuro?`, `… il guardiano <name>. …`,
+  `… la stagione <name>. …`, `Stai per generare una nuova storia che recita: …` (or
+  `una storia [<code>] per <faction> …`, `Stai per aggiungere una storia per la stagione …`);
+- `Stai per rendere usabile l'oggetto <name>. …`;
+- `Stai per assemblare l'equipaggiamento <name>. L'assemblaggio consuma il generatore e <n>₭. …`,
+  the only one that costs coins beside its generator;
+- `Stai per duplicare l'equipaggiamento <item> dal tuo inventario. …` (a blueprint; or
+  `… un equipaggiamento assemblato …`, which names none).
+
+**The outcome** is a message of its own, replying to nothing [M: every one in the exports], seconds
+after the button: `La tua idea si materializza... hai generato <item> [<rarity>]!`,
+`… il guardiano <name> [L<n>]!`, `… la stagione <name> [<code>]!`, `… una nuova storia [<code>]!`;
+`Oggetto reso usabile con successo!` (or `Script installato con successo!`);
+`Il tuo equipaggiamento prende forma... hai assemblato e ottenuto 1x <item>!`;
+`Hai duplicato <item>!`. It may end in a reward, `Hai ottenuto <n>₭!`; a season made ends in
+`Tutti i generatori di stagione de <faction> … sono stati rimossi!`: every season generator of that
+faction's players is gone. The parser pairs an outcome with the confirmation it answers
+(`src/generators.ts`): by the name it repeats (an equipment's or a blueprint's by the name it starts
+with), or, for a story or an item made usable, which name nothing, the oldest of its kind waiting in
+its chat; a confirmation waits 15 minutes. An outcome nothing waits for is no one's. Each generator
+used is one of its kind consumed (`un generatore di oggetti`, `… di storie`, `… di guardiani`,
+`… di stagioni`, `… di utilizzi`, `… di equipaggiabili`, `… di blueprint`).
+
+**`/usa <item>`** uses an item. Of the game's own, only two are consumed [M]: the neutrality ticket
+(§5.9) and the moving box, `uno scatolone da trasloco 📦`, whose answer names its player and what it
+held, an item a line (`bob, apri lo scatolone 📦 e trovi:` then `> <item>`…). An item a player made
+usable (`/generautilizzo`) runs its script and stays, as many times as it is used.
+
+Over the exports, `npm run lore-check` reads 730 confirmations (392 items, 156 stories, 72
+equipment, 56 guardians, 36 made usable, 9 seasons, 9 blueprints) and 641 outcomes (the others
+cancelled), every one paired with its player; and 47 boxes opened, every one read.
+**`loregame.generated`** carries each outcome paired: `player`, `owner`, `kind` (`item`, `story`,
+`guardian`, `season`, `utility`, `equipment`, `blueprint`), `name`, `code` (an item's rarity, a
+guardian's level, a season's or a story's code), `gained` (the item it gave: equipment assembled, a
+blueprint's copy; `item`, `rarity`, `tags`, `level`), `reward` and `cost` in coins, and `removed`
+(the faction whose season generators went). **`loregame.used`** carries each box opened: `player`,
+`owner`, `item` and `found` (each `item`, `rarity`, `tags`, `level`).
+
 ## 6. The owner's state at @LoreGameBot
 
 `loregame-state` (`modules/game-bots/`) keeps what the `loregame` parser reads of the owner's turns.
@@ -643,8 +688,8 @@ It is a floor, not the truth, while the turns are all it reads:
   whole is exact too (none was held). A filtered listing, a page whose buttons are not known (an
   export), a chain whose first page was missed, or one with an item cut between two pages is a part:
   exact for what it lists, no more. An item held exactly that a whole listing says otherwise is a
-  mismatch (`stats_drift`, `inventory`: each count expected and said). The generators, the recipes,
-  `/usa` and the shop change items and are not read yet.
+  mismatch (`stats_drift`, `inventory`: each count expected and said). The shop (§5.12), the
+  generators and `/usa` (§5.13) change items too; the recipes do and are not read yet.
 - **A turn cut off** (§5) may have gained an item the reply lost, so the inventory is marked
   uncertain, not changed.
 - **The bans** (§5.1) of every player the parser heard of, the owner's and the group's: per player,
@@ -677,7 +722,8 @@ It is a floor, not the truth, while the turns are all it reads:
   takes the items entering consumed from their inventory, one each; `/v` sets it too.
 - **The guardians made** (§5.9, `guardians`, `state.guardians()`): by the code of a place a guardian
   is asked from, whether one has been made there, by anyone, as last told: a refusal's (`Hai già:`,
-  or `Ti serve:`), whoever's, and an arrival's (all its place asks, made).
+  or `Ti serve:`), whoever's, an arrival's (all its place asks, made), and a guardian made by a
+  generator, at the place its player stands (§5.13).
 - **The market** (§5.11), the first part of the state that is a series through time, not only a
   value now:
   - **The companies there are** (`market.companies`, `state.market()`), the primary way to follow
@@ -748,18 +794,26 @@ It is a floor, not the truth, while the turns are all it reads:
   sale before (`new`), from live news alone. **A purchase** (§5.12) puts its item in the buyer's
   inventory, as a drop does (`via: purchase`), and takes its price off their `coins` (exact if they
   were); the listing edited back marks it bought for the day.
+- **A generator used** (§5.13) is one of its kind gone from its player's inventory (exact if it
+  was); what it made or gave is in it, as a drop is (`via: generated`: an item made, equipment
+  assembled, a blueprint's copy); its reward and cost move their `coins`; a guardian is recorded as
+  made where its player stands (`guardians`, §5.9); a season made takes every season generator of
+  its faction's players. **The moving box opened** is gone, and what it held is in the inventory
+  (`via: used`).
 - **The catalogue** (`catalogue`, `state.catalogue()`): every item seen in the game, by name, its
   `rarity` and `tags` as last told (an item told without its rarity, a gift's at times, keeps the
   one known), when it was `first` seen and how (`via`: `drop`, anyone's turn; `level-up`;
   `inventory`, anyone's listing; `gift`; `place`, a place's requirements or what an arrival
-  consumed; `shop`). **`loregame-state.itemsDiscovered`** announces the items seen for the first
-  time (`items`, each `item`, `rarity`, `tags`, `via`), from live news alone. The migration to
-  0.39.0 seeded it from the items the state held: every inventory, the places, the shop's history.
-  Replayed (`npm run lore-check`), the owner's exports catalogue 673 items over their whole span,
-  the game before its reset of 17 August 2026 included (§5.9: its items were discarded), and **324
-  since the reset** (`--since 2026-08-17`): 242 first seen in a drop, 46 in an inventory, 19 in a
-  gift, 12 at a place, 4 in the shop, 1 in a level-up; 8 of them generators. A state that started
-  after the reset holds no item of before it.
+  consumed; `shop`; `generated`, an item a generator made or gave).
+  **`loregame-state.itemsDiscovered`** announces the items seen for the first time (`items`, each
+  `item`, `rarity`, `tags`, `via`), from live news alone. The migration to 0.39.0 seeded it from the
+  items the state held: every inventory, the places, the shop's history. Replayed
+  (`npm run lore-check`), the owner's exports catalogue 719 items over their whole span, the game
+  before its reset of 17 August 2026 included (§5.9: its items were discarded), and **361 since the
+  reset** (`--since 2026-08-17`): 212 first seen made by a generator (most items are players' own,
+  dropped afterwards), 114 in a drop, 17 in an inventory, 8 in a gift, 5 at a place, 4 in the shop,
+  1 in a level-up; 8 of them generators. A state that started after the reset holds no item of
+  before it.
 - **Their profile** (§5.5), and their username (`owner.name`), as with every player's (§6.1).
 - **Items and players are named by players**, anything, `__proto__` included.
 

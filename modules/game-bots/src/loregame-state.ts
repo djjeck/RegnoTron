@@ -64,6 +64,7 @@ import { type Announcement, type Mark } from '@megabottron1999/turns/state-plugi
 import { z } from 'zod';
 import { ACCUMULO, ACCUMULO_MAX, ACCUMULO_MECHANICS } from '#src/accumulo.ts';
 import { type Companies, type Company, companyOf, idOf, paged, quoted } from '#src/companies.ts';
+import { GENERATORS } from '#src/generators.ts';
 import { initialSchedule, type Point, scheduled, type Via } from '#src/market.ts';
 import { ladderOf, NEUTRAL_EFFECT, NEUTRAL_MS, NEUTRAL_TICKET } from '#src/places.ts';
 import {
@@ -72,6 +73,7 @@ import {
   CASHOUT_EVENT,
   COMPANY_EVENT,
   EQUIPMENT_EVENT,
+  GENERATED_EVENT,
   GIFT_EVENT,
   INVENTORY_EVENT,
   INVEST_EVENT,
@@ -91,6 +93,7 @@ import {
   TRAINING_EVENT,
   TRAVEL_EVENT,
   UNBAN_EVENT,
+  USED_EVENT,
 } from '#src/plugins/loregame.ts';
 import { levelForXp, xpForLevel } from '#src/profile.ts';
 import { loreRestMs, type Outcome } from '#src/replies.ts';
@@ -140,6 +143,8 @@ export const CONSUMES: readonly string[] = [
   COMPANY_EVENT,
   SHOP_EVENT,
   PURCHASE_EVENT,
+  GENERATED_EVENT,
+  USED_EVENT,
 ];
 
 /**
@@ -270,7 +275,9 @@ const holding = z.object({
   qty: z.number().describe('Count'),
   exact: z.boolean().describe('Exact'),
   date: date.describe('Set'),
-  via: z.enum(['drop', 'level-up', 'listing', 'gift', 'purchase']).describe('By'),
+  via: z
+    .enum(['drop', 'level-up', 'listing', 'gift', 'purchase', 'generated', 'used'])
+    .describe('By'),
   rarity: z.string().nullable().describe('Rarity'),
   tags: z.array(z.string()).describe('Tags'),
   level: z
@@ -495,7 +502,7 @@ const shopItemSchema = z.object({
 });
 
 const discoveredVia = z
-  .enum(['drop', 'level-up', 'inventory', 'gift', 'place', 'shop'])
+  .enum(['drop', 'level-up', 'inventory', 'gift', 'place', 'shop', 'generated'])
   .describe('How it was first seen: a turn, a level-up, an inventory, a gift, a place, the shop');
 const catalogued = z.object({
   rarity: z.string(),
@@ -822,6 +829,19 @@ function gainsOf(e: BusEvent): { whose: Whose; gains: Gain[] } | undefined {
     return {
       whose: b.data.owner ? { owner: true } : { owner: false, player: b.data.player },
       gains: real([{ item, qty, rarity, tags, via: 'purchase' }]),
+    };
+  }
+  if (e.type === GENERATED_EVENT || e.type === USED_EVENT) {
+    const w = whoseOf(e);
+    if (w === undefined) return undefined;
+    const items =
+      e.type === USED_EVENT
+        ? (usedSchema.safeParse(e).data?.found ?? [])
+        : [generatedSchema.safeParse(e).data?.gained].filter((g) => g != null);
+    const via: Gain['via'] = e.type === USED_EVENT ? 'used' : 'generated';
+    return {
+      whose: w,
+      gains: real(items.map(({ item, rarity, tags }) => ({ item, qty: 1, rarity, tags, via }))),
     };
   }
   if (e.type !== TURN_EVENT) return undefined;
@@ -1550,6 +1570,16 @@ function namedIn(e: BusEvent): Named[] {
     const b = purchaseSchema.safeParse(e);
     return b.success ? of([b.data], 'shop') : [];
   }
+  if (e.type === USED_EVENT) return of(usedSchema.safeParse(e).data?.found ?? [], 'drop');
+  if (e.type === GENERATED_EVENT) {
+    const g = generatedSchema.safeParse(e);
+    if (!g.success) return [];
+    const made =
+      g.data.kind === 'item' && g.data.name !== null && g.data.code !== null
+        ? [{ item: g.data.name, rarity: g.data.code, tags: [] }]
+        : [];
+    return of([...made, ...(g.data.gained === null ? [] : [g.data.gained])], 'generated');
+  }
   return [];
 }
 
@@ -1586,7 +1616,7 @@ const sameTags = (a: readonly string[], b: readonly string[]): boolean =>
 export function catalogueOf(s: LoreState, at: string): LoreState['catalogue'] {
   const found: (Named & { t: string })[] = [];
   const via = (v: Holding['via']): Named['via'] =>
-    v === 'listing' ? 'inventory' : v === 'purchase' ? 'shop' : v;
+    v === 'listing' ? 'inventory' : v === 'purchase' ? 'shop' : v === 'used' ? 'drop' : v;
   const inventories = [s.inventory, ...Object.values(s.players).map((p) => p.inventory)];
   for (const inv of inventories)
     for (const [item, h] of Object.entries(inv.items))
@@ -1628,6 +1658,7 @@ const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
   reduceMarket,
   reduceShop,
   reducePurchase,
+  reduceGenerators,
   reduceCatalogue,
 ];
 
@@ -2489,6 +2520,103 @@ const sameItems = (a: LoreState['shop']['items'], b: LoreState['shop']['items'])
  * player has bought that day, apart; and every item seen on sale. A listing of a day before the
  * one kept (told late) changes nothing.
  */
+const listedSchema = z.object({
+  item: z.string(),
+  rarity: z.string(),
+  tags: z.array(z.string()),
+  level: z.object({ low: z.number(), high: z.number() }).nullable(),
+});
+/** What a generator's event says (the parser's `loregame.generated`). */
+const generatedSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  kind: z.enum(['item', 'story', 'guardian', 'season', 'utility', 'equipment', 'blueprint']),
+  name: z.string().nullable(),
+  code: z.string().nullable(),
+  gained: listedSchema.nullable(),
+  reward: z.number(),
+  cost: z.number(),
+  removed: z.enum(['Bene', 'Male', 'Neutrale']).nullable(),
+});
+/** What an item used up says (the parser's `loregame.used`). */
+const usedSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  item: z.string(),
+  found: z.array(listedSchema),
+});
+
+/** Whose a player's event is: the owner's, or a player's by name; none for one unnamed. */
+function whoseOf(e: BusEvent): Whose | undefined {
+  const player = e['player'];
+  if (e['owner'] === true) return { owner: true };
+  return typeof player === 'string' && player !== '' ? { owner: false, player } : undefined;
+}
+
+/** `item` one less in `whose`'s inventory, at `at`, if they hold it: exact while it was, one held. */
+function used(s: LoreState, whose: Whose, item: string, at: string): LoreState {
+  const inv = inventoryOf(s, whose);
+  const h = inv === undefined ? undefined : own(inv.items, item);
+  if (inv === undefined || h === undefined) return s;
+  const items = withItem(inv.items, item, {
+    ...h,
+    qty: Math.max(0, h.qty - 1),
+    exact: h.exact && h.qty >= 1,
+    date: at,
+  });
+  return withInventory(s, whose, { ...inv, items, held: heldOf(items) }, at);
+}
+
+/**
+ * A generator used (§5.13): one of its kind gone from its player's inventory, the coins it gave
+ * and cost moved, a guardian made recorded at the place they are; a season made, every season
+ * generator of its faction's players gone. An item `/usa` used up (the moving box): one gone. What
+ * either gave reaches the inventory as a drop does (`reduce`).
+ */
+function reduceGenerators(state: LoreState, e: BusEvent): LoreState {
+  if (e.type !== GENERATED_EVENT && e.type !== USED_EVENT) return state;
+  const whose = whoseOf(e);
+  if (whose === undefined) return state;
+  const at = asIso(e.t);
+  const name = whose.owner ? state.owner.name : whose.player;
+  let s = state;
+  if (!whose.owner && playerOf(s, whose.player) === null)
+    s = { ...s, players: withKey(s.players, whose.player, initialPlayer(at)) };
+  if (e.type === USED_EVENT) {
+    const u = usedSchema.safeParse(e);
+    return u.success ? used(s, whose, u.data.item, at) : state;
+  }
+  const g = generatedSchema.safeParse(e);
+  if (!g.success) return state;
+  s = used(s, whose, GENERATORS[g.data.kind], at);
+  const p = name === null ? null : playerOf(s, name);
+  if (p !== null && name !== null) {
+    const coins = g.data.reward - g.data.cost;
+    const stats =
+      coins === 0 ? p.stats : move(p.stats, 'coins', (v) => Number(v) + coins, true, at);
+    s = { ...s, players: withKey(s.players, name, { ...p, as_of: at, stats }) };
+    // A guardian is made where its player stands (§5.9): one made there now.
+    const here = Object.hasOwn(p.stats, 'location')
+      ? (p.stats['location']?.value as { code?: unknown } | null)
+      : null;
+    if (g.data.kind === 'guardian' && typeof here?.code === 'string')
+      s = { ...s, guardians: withKey(s.guardians, here.code, true) };
+  }
+  const removed = g.data.removed;
+  if (removed !== null)
+    for (const [player, q] of Object.entries(s.players)) {
+      const faction = Object.hasOwn(q.stats, 'alignment') ? q.stats['alignment']?.value : undefined;
+      if (faction !== removed) continue;
+      const w: Whose = player === s.owner.name ? { owner: true } : { owner: false, player };
+      const inv = inventoryOf(s, w);
+      const h = inv === undefined ? undefined : own(inv.items, GENERATORS.season);
+      if (inv === undefined || h === undefined || h.qty === 0) continue;
+      const items = withItem(inv.items, GENERATORS.season, { ...h, qty: 0, date: at });
+      s = withInventory(s, w, { ...inv, items, held: heldOf(items) }, at);
+    }
+  return s;
+}
+
 /** What a purchase event says (the parser's `loregame.purchase`). */
 const purchaseSchema = z.looseObject({
   player: z.string(),

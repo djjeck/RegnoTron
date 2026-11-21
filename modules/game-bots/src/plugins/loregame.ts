@@ -86,6 +86,7 @@ import {
 } from '#src/accumulo.ts';
 import { BanWatch } from '#src/bans.ts';
 import { parseEquip } from '#src/equipment.ts';
+import { BOX, GenerationWatch, parseBox } from '#src/generators.ts';
 import { GiftWatch } from '#src/gifts.ts';
 import { pageOf, parseInventory } from '#src/inventory.ts';
 import {
@@ -178,6 +179,9 @@ export const CASHOUT_EVENT = `${LOREGAME_PARSER}.cashout`;
 export const COMPANY_EVENT = `${LOREGAME_PARSER}.company`;
 /** The event of every shop listing (§5.12), whoever asked. */
 export const SHOP_EVENT = `${LOREGAME_PARSER}.shop`;
+/** The event of every generator used (§5.13), and of an item `/usa` consumed (the box). */
+export const GENERATED_EVENT = `${LOREGAME_PARSER}.generated`;
+export const USED_EVENT = `${LOREGAME_PARSER}.used`;
 /** The event of every purchase at the shop (§5.12), as its listing's edits tell it. */
 export const PURCHASE_EVENT = `${LOREGAME_PARSER}.purchase`;
 /** The store's document of the bans it knows. */
@@ -623,6 +627,46 @@ const purchaseEvent = z
   })
   .describe("A player's purchase at the shop, confirmed with its listing's buttons");
 
+const listedItem = z.object({
+  item: z.string(),
+  rarity: z.string(),
+  tags: z.array(z.string()),
+  level: z.object({ low: z.number(), high: z.number() }).nullable(),
+});
+const generatedEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    kind: z
+      .enum(['item', 'story', 'guardian', 'season', 'utility', 'equipment', 'blueprint'])
+      .describe('What its generator made: one of its kind consumed'),
+    name: z.string().nullable().describe('What it named; none for a story or an item made usable'),
+    code: z
+      .string()
+      .nullable()
+      .describe("An item's rarity, a guardian's level, a season's or a story's place"),
+    gained: listedItem.nullable().describe('The item it gave (equipment assembled, a copy)'),
+    reward: z.number().describe('Coins it gave'),
+    cost: z.number().describe('Coins it cost beside its generator'),
+    removed: z
+      .enum(['Bene', 'Male', 'Neutrale'])
+      .nullable()
+      .describe('A season made: the faction whose season generators were all removed'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("A player's generator used, as @LoreGameBot told its outcome");
+const usedEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    item: z.string().describe('The item used up'),
+    found: z.array(listedItem).describe('What it gave'),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("An item a player's /usa consumed (the moving box), and what it gave");
+
 const playerTurnEvent = z
   .object({
     chat: z.string(),
@@ -711,6 +755,8 @@ export const loregamePlugin: Plugin = {
       [COMPANY_EVENT]: companyEvent,
       [SHOP_EVENT]: shopEvent,
       [PURCHASE_EVENT]: purchaseEvent,
+      [GENERATED_EVENT]: generatedEvent,
+      [USED_EVENT]: usedEvent,
     },
     // The ban comes first: any other outcome of a turn is an `ok`.
     answers: [
@@ -789,6 +835,7 @@ export const loregamePlugin: Plugin = {
       return isPrivate(m) ? { player: self ?? '', owner: true } : undefined;
     };
     const purchases = new PurchaseWatch();
+    const generations = new GenerationWatch();
     /**
      * A shop listing (§5.12), published for the player it names, at `t`; and the purchase its edit
      * back from a confirmation tells, the item `✅`.
@@ -1019,6 +1066,51 @@ export const loregamePlugin: Plugin = {
           ctx.bus.publish(EQUIPMENT_EVENT, { chat: m.chat, ...equipOf, ...equip, ...old }, m.time);
         listed(m, self);
         shop(m, self, m.time);
+        // A generator's confirmation, the player's whose command it replies to (in private, the
+        // owner's); its outcome, paired with it (§5.13).
+        const asker =
+          m.replyTo === undefined
+            ? isPrivate(m)
+              ? { player: self ?? '', owner: true }
+              : undefined
+            : (players.whose(m.chat, m.replyTo, self) ??
+              (isPrivate(m) ? { player: self ?? '', owner: true } : undefined));
+        if (asker === undefined || !generations.asked(m, asker, m.time)) {
+          const made = generations.answer(m, m.time);
+          if (made !== undefined && (made.owner || made.player !== ''))
+            ctx.bus.publish(
+              GENERATED_EVENT,
+              {
+                chat: m.chat,
+                player: made.player,
+                owner: made.owner,
+                kind: made.kind,
+                name: made.name,
+                code: made.code,
+                gained: made.gained,
+                reward: made.reward,
+                cost: made.cost,
+                removed: made.removed,
+                ...old,
+              },
+              m.time
+            );
+        }
+        // The moving box opened: it names its player.
+        const box = parseBox(m.text);
+        if (box !== undefined)
+          ctx.bus.publish(
+            USED_EVENT,
+            {
+              chat: m.chat,
+              player: box.player,
+              owner: self !== undefined && box.player.toLowerCase() === self.toLowerCase(),
+              item: BOX,
+              found: box.found,
+              ...old,
+            },
+            m.time
+          );
         // Neutrality (§5.9): a ticket's answer names its player; its end is told the owner alone, in
         // private.
         const neutral = parseNeutrality(m.text);

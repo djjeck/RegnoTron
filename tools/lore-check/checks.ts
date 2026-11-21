@@ -10,6 +10,7 @@
  */
 import { type BusEvent, type Inbound } from '@megabottron1999/core';
 import { isTurnCommand } from '@megabottron1999/turns/turn-parser.ts';
+import { parseGenerated, parseGenerationAsked } from '@regnotron/game-bots/generators.ts';
 import {
   initialState,
   type LoreState,
@@ -18,9 +19,11 @@ import {
   reduce,
 } from '@regnotron/game-bots/loregame-state.ts';
 import {
+  GENERATED_EVENT,
   PROFILE_EVENT,
   PURCHASE_EVENT,
   SHOP_EVENT,
+  USED_EVENT,
 } from '@regnotron/game-bots/plugins/loregame.ts';
 import { levelForXp } from '@regnotron/game-bots/profile.ts';
 import { LOREGAMEBOT, TURN_COMMANDS } from '@regnotron/game-bots/replies.ts';
@@ -557,6 +560,35 @@ export const catalogue: Check = {
   },
 };
 
+/**
+ * The generators (docs/game-bots.md §5.13): the bot's confirmations and outcomes, those the parser
+ * paired with a player, by kind; the moving boxes opened, and those read.
+ */
+export const generators: Check = {
+  id: 'generators',
+  run: (r) => {
+    const said = r.inbounds.filter(isBot);
+    const asked = said.map((m) => parseGenerationAsked(m.text)).filter((a) => a !== undefined);
+    const outcomes = said.map((m) => parseGenerated(m.text)).filter((g) => g !== undefined);
+    const paired = r.steps.filter((s) => s.event.type === GENERATED_EVENT);
+    const boxes = said.filter((m) => m.text.includes('apri lo scatolone 📦'));
+    const used = r.steps.filter((s) => s.event.type === USED_EVENT);
+    return {
+      title: 'Generators',
+      rows: [
+        ['confirmations of the bot’s', `${asked.length} (${tally(asked.map((a) => a.kind))})`],
+        ['outcomes read', `${outcomes.length} (${tally(outcomes.map((g) => g.kind))})`],
+        [
+          'outcomes paired with a player',
+          `${pct(paired.length, outcomes.length)} (${tally(paired.map((s) => String(s.event['kind'])))})`,
+        ],
+        ['moving boxes opened', String(boxes.length)],
+        ['read', pct(used.length, boxes.length)],
+      ],
+    };
+  },
+};
+
 /** Every check, in the report's order: add one here as the parser learns to read more. */
 export const CHECKS: readonly Check[] = [
   coverage,
@@ -568,6 +600,7 @@ export const CHECKS: readonly Check[] = [
   players,
   whereabouts,
   shop,
+  generators,
   catalogue,
 ];
 

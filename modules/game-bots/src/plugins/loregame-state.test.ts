@@ -371,6 +371,8 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.company',
       'loregame.shop',
       'loregame.purchase',
+      'loregame.generated',
+      'loregame.used',
     ]);
   });
 
@@ -2401,6 +2403,37 @@ describe('the shop, the same for every player (§5.12)', () => {
       exact: true,
     });
     expect(shopNow(run, 'bob').items.map((i) => i.bought)).toEqual([false, true]);
+    await run.core.stop();
+  });
+
+  it('reads a generator used, paired with its confirmation, and the moving box opened', async () => {
+    const run = await bootState(path.join(dir, 'generators'), { group: true });
+    const asked = await run.group('bob', '/generaoggetto');
+    await run.group('LoreGameBot', "Stai per generare l'oggetto una pigna. Sei sicuro?", {
+      replyTo: asked,
+    });
+    // Another player's confirmation between, and an outcome no one waits for.
+    const other = await run.group('carol', '/generaguardiano');
+    await run.group('LoreGameBot', 'Stai per generare il guardiano Gino. Sei sicuro?', {
+      replyTo: other,
+    });
+    await run.group('LoreGameBot', 'La tua idea si materializza... hai generato un sasso [B1]!');
+    run.clock.advance(MIN);
+    await run.group(
+      'LoreGameBot',
+      'La tua idea si materializza... hai generato una pigna [B2]!\n\nHai ottenuto 100₭!'
+    );
+    expect(run.of('loregame.generated')).toMatchObject([
+      { player: 'bob', owner: false, kind: 'item', name: 'una pigna', code: 'B2', reward: 100 },
+    ]);
+    expect(run.read('catalogue')).toMatchObject({ 'una pigna': { via: 'generated' } });
+    await run.group('LoreGameBot', 'bob, apri lo scatolone 📦 e trovi:\n> un mestolo [M4]');
+    expect(run.of('loregame.used')).toMatchObject([
+      { player: 'bob', item: 'uno scatolone da trasloco 📦', found: [{ item: 'un mestolo' }] },
+    ]);
+    expect(run.read('inventory', { player: 'bob' })).toMatchObject({
+      items: { 'un mestolo': { qty: 1, via: 'used' } },
+    });
     await run.core.stop();
   });
 

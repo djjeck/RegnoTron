@@ -293,6 +293,27 @@ describe('the lore check', () => {
     expect(of('by rarity')).toBe('B1 ×1, X ×1, B2 ×1');
   });
 
+  it('counts the generators’ confirmations and outcomes, those paired, and the boxes read', async () => {
+    const run = await replayLore(
+      [
+        ...asked(0, 'bob', '/generaoggetto', "Stai per generare l'oggetto una pigna. Sei sicuro?"),
+        say(1, 'LoreGameBot', 'La tua idea si materializza... hai generato una pigna [B1]!'),
+        // An outcome no confirmation waits for: read, no one's.
+        say(2, 'LoreGameBot', 'La tua idea si materializza... hai generato un sasso [B1]!'),
+        ...asked(3, 'carol', '/usa', 'carol, apri lo scatolone 📦 e trovi:\n> un mestolo [M4]'),
+        ...asked(4, 'carol', '/usa', 'carol, apri lo scatolone 📦 e trovi:\nniente'),
+      ],
+      { self: 'alice' }
+    );
+    const f = CHECKS.find((c) => c.id === 'generators')?.run(run);
+    const row = (label: string) => f?.rows.find(([k]) => k === label)?.[1];
+    expect(row('confirmations of the bot’s')).toBe('1 (item ×1)');
+    expect(row('outcomes read')).toBe('2 (item ×2)');
+    expect(row('outcomes paired with a player')).toBe('1 of 2 (50.0%) (item ×1)');
+    expect(row('moving boxes opened')).toBe('2');
+    expect(row('read')).toBe('1 of 2 (50.0%)');
+  });
+
   it('checks each purchase’s coins against the buyer’s next profile', async () => {
     const PROFILE = (coins: string) =>
       [

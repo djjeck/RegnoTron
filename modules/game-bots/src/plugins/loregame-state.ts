@@ -748,7 +748,7 @@ const base = statePlugin<Kept>({
       run: (s) => s.shop.seen,
     },
     catalogue: {
-      help: 'Every item seen in the game, by name: its rarity and tags as last told, and when and how it was first seen (drop, level-up, inventory, gift, place, shop)',
+      help: 'Every item seen in the game, by name: its rarity and tags as last told, and when and how it was first seen (drop, level-up, inventory, gift, place, shop, generated)',
       output: z.record(z.string(), z.looseObject({ rarity: z.string(), first: z.string() })),
       run: (s) => s.catalogue,
     },
