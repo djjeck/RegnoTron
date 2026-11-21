@@ -102,3 +102,62 @@ const DAY = new Intl.DateTimeFormat('en-CA', {
 
 /** The shop's day at `t` (ms): the date in Italy, `YYYY-MM-DD`. */
 export const shopDayOf = (t: number): string => DAY.format(new Date(t));
+
+/** A purchase the shop's buttons asked to confirm, or made. */
+export interface Purchase {
+  player: string;
+  item: string;
+  rarity: string;
+  tags: string[];
+  /** Its price, in coins (₭). */
+  price: number;
+}
+
+const CONFIRM =
+  /^(.+?), sei sicuro di voler comprare (.+?) \[([A-Z]+\d*\+?)\]((?: ?\[[a-z][^\]\n]*\])*) per ([\d.]+) ₭\?$/su;
+
+/** The confirmation a listing's buy button edits it into, if `raw` is one (§5.12). */
+export function parseConfirm(raw: string): Purchase | undefined {
+  const m = CONFIRM.exec(raw.normalize('NFC').trim());
+  if (m === null) return undefined;
+  return {
+    player: m[1] as string,
+    item: m[2] as string,
+    rarity: m[3] as string,
+    tags: [...(m[4] as string).matchAll(/\[([a-z][^\]\n]*)\]/gu)].map((t) => t[1] as string),
+    price: Number((m[5] as string).replaceAll('.', '')),
+  };
+}
+
+/** The confirmations waiting, at most, the oldest forgotten first. */
+const KEPT_CONFIRMS = 100;
+
+/**
+ * The purchases made with a listing's buttons (§5.12), as its edits tell them: the buy button edits
+ * the listing into a confirmation ("<player>, sei sicuro di voler comprare <item> per <price> ₭?"),
+ * and the answer to it edits the same message back into the player's listing, the item `✅` if it
+ * was bought (`🛒` if not: cancelled). The purchase itself sends no message.
+ */
+export class PurchaseWatch {
+  private readonly waiting = new Map<string, Purchase>();
+
+  /** A message of the bot's, or an edit of one: the purchase it ends, if one. */
+  hear(m: { chat: string; id?: string | undefined; text: string }): Purchase | undefined {
+    if (m.id === undefined) return undefined;
+    const key = `${m.chat}\n${m.id}`;
+    const confirm = parseConfirm(m.text);
+    if (confirm !== undefined) {
+      this.waiting.delete(key);
+      this.waiting.set(key, confirm);
+      if (this.waiting.size > KEPT_CONFIRMS)
+        this.waiting.delete(this.waiting.keys().next().value as string);
+      return undefined;
+    }
+    const asked = this.waiting.get(key);
+    if (asked === undefined) return undefined;
+    this.waiting.delete(key);
+    const listing = parseShop(m.text);
+    const item = listing?.items.find((i) => i.item === asked.item && i.rarity === asked.rarity);
+    return listing?.player === asked.player && item?.bought === true ? asked : undefined;
+  }
+}

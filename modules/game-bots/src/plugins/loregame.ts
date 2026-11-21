@@ -107,7 +107,7 @@ import {
   splitLevelUp,
   TURN_COMMANDS,
 } from '#src/replies.ts';
-import { parseShop, type ShopListing } from '#src/shop.ts';
+import { parseShop, PurchaseWatch, type ShopListing } from '#src/shop.ts';
 import { parseSkillMenu } from '#src/skills.ts';
 import {
   parseTraining,
@@ -178,6 +178,8 @@ export const CASHOUT_EVENT = `${LOREGAME_PARSER}.cashout`;
 export const COMPANY_EVENT = `${LOREGAME_PARSER}.company`;
 /** The event of every shop listing (§5.12), whoever asked. */
 export const SHOP_EVENT = `${LOREGAME_PARSER}.shop`;
+/** The event of every purchase at the shop (§5.12), as its listing's edits tell it. */
+export const PURCHASE_EVENT = `${LOREGAME_PARSER}.purchase`;
 /** The store's document of the bans it knows. */
 const BANS_DOC = 'bans';
 
@@ -607,6 +609,20 @@ const shopEvent = z
   })
   .describe("What @LoreGameBot's shop sells today (/negozio, /shop), as listed to a player");
 
+const purchaseEvent = z
+  .object({
+    chat: z.string(),
+    player,
+    owner: z.boolean().describe('The player is the owner of the account'),
+    item: z.string(),
+    rarity: z.string(),
+    tags: z.array(z.string()),
+    price: z.number().describe('In coins (₭)'),
+    qty: z.number(),
+    playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
+  })
+  .describe("A player's purchase at the shop, confirmed with its listing's buttons");
+
 const playerTurnEvent = z
   .object({
     chat: z.string(),
@@ -694,6 +710,7 @@ export const loregamePlugin: Plugin = {
       [CASHOUT_EVENT]: cashoutEvent,
       [COMPANY_EVENT]: companyEvent,
       [SHOP_EVENT]: shopEvent,
+      [PURCHASE_EVENT]: purchaseEvent,
     },
     // The ban comes first: any other outcome of a turn is an `ok`.
     answers: [
@@ -771,8 +788,25 @@ export const loregamePlugin: Plugin = {
         return w.word === word ? { player: w.player, owner: w.owner } : undefined;
       return isPrivate(m) ? { player: self ?? '', owner: true } : undefined;
     };
-    /** A shop listing (§5.12), published for the player it names, at `t`. */
+    const purchases = new PurchaseWatch();
+    /**
+     * A shop listing (§5.12), published for the player it names, at `t`; and the purchase its edit
+     * back from a confirmation tells, the item `✅`.
+     */
     const shop = (m: Inbound, self: string | undefined, t: number): void => {
+      const bought = purchases.hear(m);
+      if (bought !== undefined)
+        ctx.bus.publish(
+          PURCHASE_EVENT,
+          {
+            chat: m.chat,
+            ...bought,
+            owner: self !== undefined && bought.player.toLowerCase() === self.toLowerCase(),
+            qty: 1,
+            ...(m.playback ? { playback: true as const } : {}),
+          },
+          t
+        );
       const listing: ShopListing | undefined = parseShop(m.text);
       if (listing === undefined) return;
       ctx.bus.publish(

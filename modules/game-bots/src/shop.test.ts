@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseShop, shopDayOf } from './shop.ts';
+import { parseConfirm, parseShop, PurchaseWatch, shopDayOf } from './shop.ts';
 
 // Invented items; the bot's own words are the game's.
 const ORDINARY = [
@@ -67,5 +67,52 @@ describe('the shop', () => {
     // 23:30 and 00:30 in Rome (UTC+1 in November).
     expect(shopDayOf(Date.parse('2026-11-06T22:30:00Z'))).toBe('2026-11-06');
     expect(shopDayOf(Date.parse('2026-11-06T23:30:00Z'))).toBe('2026-11-07');
+  });
+});
+
+describe('a purchase, with the listing’s buttons', () => {
+  // Invented items; the bot's own words are the game's.
+  const LISTING = (mark: string) =>
+    `bob, oggi nel negozio:\n- ${mark} una pigna [B1] 200₭\n- 🛒 un mestolo [M4] [equipaggiabile 🗡] 1.000₭`;
+  const CONFIRM =
+    'bob, sei sicuro di voler comprare un mestolo [M4] [equipaggiabile 🗡] per 1.000 ₭?';
+
+  it('reads the confirmation: its player, its item and its price', () => {
+    expect(parseConfirm(CONFIRM)).toEqual({
+      player: 'bob',
+      item: 'un mestolo',
+      rarity: 'M4',
+      tags: ['equipaggiabile 🗡'],
+      price: 1000,
+    });
+    expect(parseConfirm('bob, oggi nel negozio:')).toBeUndefined();
+  });
+
+  it('takes a confirmation edited back into the listing, its item bought, as the purchase', () => {
+    const w = new PurchaseWatch();
+    const at = (text: string, id = '7') => ({ chat: '-1001', id, text });
+    expect(w.hear(at(LISTING('🛒')))).toBeUndefined();
+    expect(w.hear(at(CONFIRM))).toBeUndefined();
+    expect(w.hear(at(LISTING('🛒').replace('🛒 un mestolo', '✅ un mestolo')))).toMatchObject({
+      player: 'bob',
+      item: 'un mestolo',
+      price: 1000,
+    });
+    // Once: the same listing again buys nothing more.
+    expect(w.hear(at(LISTING('🛒').replace('🛒 un mestolo', '✅ un mestolo')))).toBeUndefined();
+    // Edited back with the item not bought: cancelled; another message's listing is none of it.
+    w.hear(at(CONFIRM));
+    expect(w.hear(at(LISTING('🛒')))).toBeUndefined();
+    w.hear(at(CONFIRM, '8'));
+    expect(w.hear(at(LISTING('✅'), '9'))).toBeUndefined();
+    expect(w.hear({ chat: '-1001', text: CONFIRM })).toBeUndefined();
+    // A hundred confirmations waiting at most: the oldest forgotten.
+    for (let i = 0; i < 101; i++) w.hear(at(CONFIRM, `c${i}`));
+    expect(
+      w.hear(at(LISTING('🛒').replace('🛒 un mestolo', '✅ un mestolo'), 'c0'))
+    ).toBeUndefined();
+    expect(
+      w.hear(at(LISTING('🛒').replace('🛒 un mestolo', '✅ un mestolo'), 'c100'))
+    ).toBeDefined();
   });
 });

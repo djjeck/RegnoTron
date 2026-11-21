@@ -616,14 +616,19 @@ bob, oggi nel negozio:
 - **Buying** is done with the listing's buttons [M]: the bot edits the listing into
   `bob, sei sicuro di voler comprare <item> per <price> ₭?` (7 listings were last seen so in the
   exports, which show each message as it was last edited), and the purchase itself sends no message.
-  Not read: a listing edited back is read again, its `✅` telling what was bought.
+  **A purchase is read from the listing's edits** (MegaBotTron1999's D144), live: a confirmation
+  (the player, the item with its rarity and tags, the price), then the same message edited back into
+  that player's listing, the item `✅` (`🛒`: cancelled, nothing bought). An export, which keeps
+  each message as it was last edited, holds none of them. `/buy` is another bot's (a fishing game's,
+  whose `Hai acquistato con successo …!` the exports hold once), not @LoreGameBot's.
 
 **`loregame.shop`** carries every listing the parser reads, in any chat, whoever asked: `player` (as
 the listing names them), `owner`, `sagra` (none on an ordinary day), `items` (each `item`, `rarity`,
 `tags`, `price` in coins, and `bought`, the `✅`) and `edited`. `npm run lore-check` reads every one
 of the exports' 178 listings, over 76 days; the shop sold 35 items in them, 8 of them generators
 (`[generatore]`). The sagra announced in the group (`È arrivata la sagra …!`) is not read: the day's
-first listing names it.
+first listing names it. **`loregame.purchase`** carries each purchase read: `player`, `owner`,
+`item`, `rarity`, `tags`, `price` and `qty` (1).
 
 ## 6. The owner's state at @LoreGameBot
 
@@ -740,7 +745,9 @@ It is a floor, not the truth, while the turns are all it reads:
   player (the owner unless named; none when their listing of the day was not read), and whether its
   day is `today`'s; `state.shopSeen()` every item seen. **`loregame-state.shopChanged`** announces a
   new day's items, or the day's told otherwise (`day`, `sagra`, `items`), with those never seen on
-  sale before (`new`), from live news alone. A purchase's coins and item are not read yet.
+  sale before (`new`), from live news alone. **A purchase** (§5.12) puts its item in the buyer's
+  inventory, as a drop does (`via: purchase`), and takes its price off their `coins` (exact if they
+  were); the listing edited back marks it bought for the day.
 - **The catalogue** (`catalogue`, `state.catalogue()`): every item seen in the game, by name, its
   `rarity` and `tags` as last told (an item told without its rarity, a gift's at times, keeps the
   one known), when it was `first` seen and how (`via`: `drop`, anyone's turn; `level-up`;

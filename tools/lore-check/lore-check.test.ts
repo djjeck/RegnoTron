@@ -1,6 +1,6 @@
 import { type Inbound } from '@megabottron1999/core';
 import { describe, expect, it } from 'vitest';
-import { CHECKS, report } from './checks.ts';
+import { CHECKS, report, stepsOf } from './checks.ts';
 import { parseArgs, standIns, USAGE } from './cli.ts';
 import { mergeRenamedChats, replayLore } from './run.ts';
 
@@ -291,6 +291,56 @@ describe('the lore check', () => {
     expect(of('generators')).toBe('1');
     expect(of('first seen by')).toBe('shop ×3');
     expect(of('by rarity')).toBe('B1 ×1, X ×1, B2 ×1');
+  });
+
+  it('checks each purchase’s coins against the buyer’s next profile', async () => {
+    const PROFILE = (coins: string) =>
+      [
+        '👤 bob',
+        '',
+        '👥 Nessuna azienda',
+        '',
+        'Livello 1 (5 ⚔️)',
+        '',
+        'Il Bene 😇',
+        'Episodio 3',
+        `${coins} ₭`,
+      ].join('\n');
+    const run = await replayLore(
+      [
+        ...asked(0, 'bob', '/me', PROFILE('1.000')),
+        ...asked(10, 'bob', '/me', PROFILE('800')),
+        ...asked(20, 'bob', '/me', PROFILE('800')),
+      ],
+      { self: 'alice' }
+    );
+    // A replay feeds no edits: the purchases, between the profiles, as the parser would publish them.
+    const bought = (min: number, price: number) =>
+      ({
+        type: 'loregame.purchase',
+        t: T0 + min * MIN,
+        chat: GROUP,
+        player: 'bob',
+        owner: false,
+        item: 'una pigna',
+        rarity: 'B1',
+        tags: [],
+        price,
+        qty: 1,
+      }) as never;
+    const events = run.steps.map((s) => s.event);
+    const steps = stepsOf([
+      events[0],
+      bought(5, 200),
+      events[1],
+      bought(15, 100),
+      events[2],
+    ] as never);
+    const shop = CHECKS.find((c) => c.id === 'shop')?.run({ ...run, steps });
+    const row = (label: string) => shop?.rows.find(([k]) => k.startsWith(label))?.[1];
+    expect(row('purchases read')).toBe('2');
+    // 1.000 less 200 is the 800 the next profile says; 800 less 100 is not.
+    expect(row('their coins agreeing')).toBe('1 of 2 (50.0%)');
   });
 
   it('takes a group renamed between two exports as one chat, each message once', () => {

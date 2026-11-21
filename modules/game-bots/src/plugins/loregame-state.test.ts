@@ -370,6 +370,7 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.cashout',
       'loregame.company',
       'loregame.shop',
+      'loregame.purchase',
     ]);
   });
 
@@ -2350,6 +2351,56 @@ describe('the shop, the same for every player (§5.12)', () => {
       'un sasso': { rarity: 'B2', first: '2026-11-07', days: 1 },
       'un generatore di oggetti': { tags: ['generatore'], last: '2026-11-06', days: 1 },
     });
+    await run.core.stop();
+  });
+
+  it('reads a purchase from its listing’s edits: the item in, its price out of the coins', async () => {
+    const run = await bootState(path.join(dir, 'purchase'), { group: true });
+    const PROFILE = [
+      '👤 bob',
+      '',
+      '👥 Nessuna azienda',
+      '',
+      'Livello 4 (500 ⚔️)',
+      '▓░░░░░░░░░ 6.20%',
+      '',
+      'Il Bene 😇',
+      'Episodio 100',
+      '0 Ricette completate',
+      '1.500 ₭',
+      '',
+      'Armatura 🛡 - (vuoto)',
+      'Amuleto 🩺 - (vuoto)',
+      'Arma 🗡 - (vuoto)',
+    ].join('\n');
+    await run.group('LoreGameBot', PROFILE);
+    const asked = await run.group('bob', '/negozio');
+    const listing = await run.group('LoreGameBot', SHOP('bob', PIGNA, MESTOLO), {
+      replyTo: asked,
+    });
+    const time = run.clock.now();
+    run.clock.advance(MIN);
+    await run.edit(
+      listing,
+      'bob, sei sicuro di voler comprare un mestolo [M4] [equipaggiabile 🗡] per 1.000 ₭?',
+      { replyTo: asked, time }
+    );
+    run.clock.advance(MIN);
+    await run.edit(listing, SHOP('bob', PIGNA, MESTOLO.replace('🛒', '✅')), {
+      replyTo: asked,
+      time,
+    });
+    expect(run.of('loregame.purchase')).toMatchObject([
+      { player: 'bob', owner: false, item: 'un mestolo', rarity: 'M4', price: 1000, qty: 1 },
+    ]);
+    expect(run.read('inventory', { player: 'bob' })).toMatchObject({
+      items: { 'un mestolo': { qty: 1, via: 'purchase', rarity: 'M4' } },
+    });
+    expect(run.read('stat', { player: 'bob', stat: 'coins' })).toMatchObject({
+      value: 500,
+      exact: true,
+    });
+    expect(shopNow(run, 'bob').items.map((i) => i.bought)).toEqual([false, true]);
     await run.core.stop();
   });
 

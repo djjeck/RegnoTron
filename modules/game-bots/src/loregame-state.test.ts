@@ -66,6 +66,7 @@ describe('the loregame state', () => {
       'loregame.cashout',
       'loregame.company',
       'loregame.shop',
+      'loregame.purchase',
     ]);
   });
 
@@ -921,6 +922,38 @@ describe('the players', () => {
     expect(Object.keys(s.players)).toEqual(['__proto__', 'constructor']);
     expect(playerOf(s, '__proto__')?.turns).toBe(1);
     expect(playerOf(s, 'toString')).toBeNull();
+  });
+});
+
+describe('a purchase at the shop (§5.12)', () => {
+  const T = Date.parse('2026-11-06T12:00:00Z');
+  const bought = (o: { player: string; owner: boolean }): BusEvent =>
+    ({
+      type: 'loregame.purchase',
+      t: T,
+      chat: '-1001',
+      ...o,
+      item: 'una pigna',
+      rarity: 'B1',
+      tags: [],
+      price: 200,
+      qty: 1,
+    }) as unknown as BusEvent;
+
+  it('puts the item in the buyer’s inventory, the owner’s or a player’s, and in the catalogue', () => {
+    const s = [bought({ player: 'bob', owner: false })].reduce(reduce, initialState());
+    expect(playerOf(s, 'bob')?.inventory.items['una pigna']).toMatchObject({
+      qty: 1,
+      via: 'purchase',
+    });
+    expect(s.catalogue['una pigna']).toMatchObject({ rarity: 'B1', via: 'shop' });
+    // The owner's, once their name is known; nothing of a player unnamed.
+    const owner = { ...initialState(), owner: { as_of: null, name: 'alice' } };
+    const mine = reduce(owner, bought({ player: 'alice', owner: true }));
+    expect(mine.inventory.items['una pigna']).toMatchObject({ qty: 1, via: 'purchase' });
+    expect(reduce(initialState(), bought({ player: '', owner: false })).players).toEqual({});
+    // The owner unnamed yet: their inventory has it, no player's coins move.
+    expect(reduce(initialState(), bought({ player: '', owner: true })).players).toEqual({});
   });
 });
 

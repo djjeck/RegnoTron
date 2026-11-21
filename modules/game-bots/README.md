@@ -169,11 +169,13 @@ be seeded once from the exports (`tools/market-seed`).
 
 **The shop.** Every listing of the shop (`/negozio`, `/shop`), in any chat, is published as
 `loregame.shop` for the player it names: the day's items (each its rarity, tags and price, and `✅`,
-bought by that player) and the day's sagra; a listing its buttons edit back into one is read again.
-The shop is the same for every player and changes at midnight Italian time, so the state keeps one
-list, the day's, with each player's purchases apart, and every item ever seen on sale;
-`loregame-state.shopChanged` announces a new day's items, or the day's told otherwise, with those
-never seen on sale before (docs/game-bots.md §5.12, §6).
+bought by that player) and the day's sagra; a listing its buttons edit back into one is read again,
+and a purchase its buttons confirm (the confirmation, then the listing edited back with the item
+`✅`) is published as `loregame.purchase`: the item reaches the buyer's inventory, its price leaves
+their coins. The shop is the same for every player and changes at midnight Italian time, so the
+state keeps one list, the day's, with each player's purchases apart, and every item ever seen on
+sale; `loregame-state.shopChanged` announces a new day's items, or the day's told otherwise, with
+those never seen on sale before (docs/game-bots.md §5.12, §6).
 
 **The catalogue.** Every item any of these events names with its rarity (a drop, a level-up, an
 inventory, a gift, a place's requirements, the shop), anyone's, is kept once in the state's

@@ -17,7 +17,11 @@ import {
   playerOf,
   reduce,
 } from '@regnotron/game-bots/loregame-state.ts';
-import { PROFILE_EVENT, SHOP_EVENT } from '@regnotron/game-bots/plugins/loregame.ts';
+import {
+  PROFILE_EVENT,
+  PURCHASE_EVENT,
+  SHOP_EVENT,
+} from '@regnotron/game-bots/plugins/loregame.ts';
 import { levelForXp } from '@regnotron/game-bots/profile.ts';
 import { LOREGAMEBOT, TURN_COMMANDS } from '@regnotron/game-bots/replies.ts';
 import { GENERATOR_TAG } from '@regnotron/game-bots/shop.ts';
@@ -483,6 +487,29 @@ export const shop: Check = {
     const last = r.steps.at(-1)?.after ?? initialState();
     const seen = Object.values(last.shop.seen);
     const generators = seen.filter((i) => i.tags.includes(GENERATOR_TAG)).length;
+    // Each purchase's coins against the buyer's next profile, when the state held them exactly.
+    const bought = r.steps.filter((s) => s.event.type === PURCHASE_EVENT);
+    let checked = 0;
+    let agreed = 0;
+    for (const b of bought) {
+      const name = String(b.event['player']);
+      const next = r.steps.find(
+        (s) =>
+          s.event.type === PROFILE_EVENT &&
+          s.event.t >= b.event.t &&
+          String(s.event['player']).toLowerCase() === name.toLowerCase()
+      );
+      const held = next === undefined ? null : playerOf(next.before, name);
+      const coins =
+        held === null || !Object.hasOwn(held.stats, 'coins') ? undefined : held.stats['coins'];
+      if (next === undefined || coins?.exact !== true) continue;
+      checked++;
+      const at = new Date(next.event.t).toISOString();
+      const drifted = (playerOf(next.after, name)?.stats_drift ?? []).some(
+        (d) => d.stat === 'coins' && d.at === at
+      );
+      if (!drifted) agreed++;
+    }
     return {
       title: 'Shop',
       rows: [
@@ -505,6 +532,8 @@ export const shop: Check = {
           'players whose purchases were told',
           String(new Set(read.map((s) => String(s.event['player']))).size),
         ],
+        ['purchases read (a listing edited back from its confirmation)', String(bought.length)],
+        ['their coins agreeing with the buyer’s next profile', pct(agreed, checked)],
       ],
     };
   },

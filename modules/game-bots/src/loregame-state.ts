@@ -84,6 +84,7 @@ import {
   PLAYER_ACCUMULO_EVENT,
   PLAYER_TURN_EVENT,
   PROFILE_EVENT,
+  PURCHASE_EVENT,
   REQUIREMENTS_EVENT,
   SHOP_EVENT,
   SKILLS_EVENT,
@@ -138,6 +139,7 @@ export const CONSUMES: readonly string[] = [
   CASHOUT_EVENT,
   COMPANY_EVENT,
   SHOP_EVENT,
+  PURCHASE_EVENT,
 ];
 
 /**
@@ -268,7 +270,7 @@ const holding = z.object({
   qty: z.number().describe('Count'),
   exact: z.boolean().describe('Exact'),
   date: date.describe('Set'),
-  via: z.enum(['drop', 'level-up', 'listing', 'gift']).describe('By'),
+  via: z.enum(['drop', 'level-up', 'listing', 'gift', 'purchase']).describe('By'),
   rarity: z.string().nullable().describe('Rarity'),
   tags: z.array(z.string()).describe('Tags'),
   level: z
@@ -812,6 +814,15 @@ function gainsOf(e: BusEvent): { whose: Whose; gains: Gain[] } | undefined {
     if (e['owner'] === true || typeof player !== 'string' || player === '') return undefined;
     const gains = turnGains(e);
     return gains.length === 0 ? undefined : { whose: { owner: false, player }, gains };
+  }
+  if (e.type === PURCHASE_EVENT) {
+    const b = purchaseSchema.safeParse(e);
+    if (!b.success || (!b.data.owner && b.data.player === '')) return undefined;
+    const { item, qty, rarity, tags } = b.data;
+    return {
+      whose: b.data.owner ? { owner: true } : { owner: false, player: b.data.player },
+      gains: real([{ item, qty, rarity, tags, via: 'purchase' }]),
+    };
   }
   if (e.type !== TURN_EVENT) return undefined;
   const gains = turnGains(e);
@@ -1535,6 +1546,10 @@ function namedIn(e: BusEvent): Named[] {
     const l = shopListingSchema.safeParse(e);
     return l.success ? of(l.data.items, 'shop') : [];
   }
+  if (e.type === PURCHASE_EVENT) {
+    const b = purchaseSchema.safeParse(e);
+    return b.success ? of([b.data], 'shop') : [];
+  }
   return [];
 }
 
@@ -1570,7 +1585,8 @@ const sameTags = (a: readonly string[], b: readonly string[]): boolean =>
  */
 export function catalogueOf(s: LoreState, at: string): LoreState['catalogue'] {
   const found: (Named & { t: string })[] = [];
-  const via = (v: Holding['via']): Named['via'] => (v === 'listing' ? 'inventory' : v);
+  const via = (v: Holding['via']): Named['via'] =>
+    v === 'listing' ? 'inventory' : v === 'purchase' ? 'shop' : v;
   const inventories = [s.inventory, ...Object.values(s.players).map((p) => p.inventory)];
   for (const inv of inventories)
     for (const [item, h] of Object.entries(inv.items))
@@ -1611,6 +1627,7 @@ const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
   reduceNeutral,
   reduceMarket,
   reduceShop,
+  reducePurchase,
   reduceCatalogue,
 ];
 
@@ -2472,6 +2489,37 @@ const sameItems = (a: LoreState['shop']['items'], b: LoreState['shop']['items'])
  * player has bought that day, apart; and every item seen on sale. A listing of a day before the
  * one kept (told late) changes nothing.
  */
+/** What a purchase event says (the parser's `loregame.purchase`). */
+const purchaseSchema = z.looseObject({
+  player: z.string(),
+  owner: z.boolean(),
+  item: z.string(),
+  rarity: z.string(),
+  tags: z.array(z.string()),
+  price: z.number(),
+  qty: z.number(),
+});
+
+/**
+ * A purchase at the shop (§5.12), as its listing's edits tell it: its price off the buyer's `coins`
+ * (exact if they were). The item reaches their inventory as a drop does (`reduce`, `via:
+ * 'purchase'`), and their listing, edited back, marks it bought for the day.
+ */
+function reducePurchase(state: LoreState, e: BusEvent): LoreState {
+  if (e.type !== PURCHASE_EVENT) return state;
+  const b = purchaseSchema.safeParse(e);
+  if (!b.success || (!b.data.owner && b.data.player === '')) return state;
+  const key = b.data.owner
+    ? state.owner.name
+    : (Object.keys(state.players).find((k) => k.toLowerCase() === b.data.player.toLowerCase()) ??
+      b.data.player);
+  if (key === null) return state;
+  const at = asIso(e.t);
+  const p = playerOf(state, key) ?? initialPlayer(at);
+  const stats = move(p.stats, 'coins', (v) => Number(v) - b.data.price * b.data.qty, true, at);
+  return { ...state, players: withKey(state.players, key, { ...p, as_of: at, stats }) };
+}
+
 function reduceShop(state: LoreState, e: BusEvent): LoreState {
   if (e.type !== SHOP_EVENT) return state;
   const parsed = shopListingSchema.safeParse(e);
