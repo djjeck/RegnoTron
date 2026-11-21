@@ -802,8 +802,21 @@ describe('the players', () => {
     } as unknown as BusEvent;
     const stats = (...events: BusEvent[]) => playerOf(run(...events), 'bob')?.stats ?? {};
     const known = profile(T);
-    // Before a profile, nothing to move.
-    expect(stats(turnOf('bob', T))).toEqual({});
+    // Before a profile, nothing to move but where they are, and their faction from its ladder.
+    expect(stats(turnOf('bob', T))).toEqual({
+      location: {
+        value: { name: 'Il Bosco Inventato', code: 'B1' },
+        exact: true,
+        as_of: new Date(T).toISOString(),
+      },
+      alignment: { value: 'Bene', exact: false, as_of: new Date(T).toISOString() },
+    });
+    const on = (code: string) => turnOf('bob', T + 5 * MIN, { place: { name: 'Altrove', code } });
+    // A neutral place tells no faction; the other ladder's place, the other's.
+    expect(stats(on('N1'))).not.toHaveProperty('alignment');
+    expect(stats(on('M3'))['alignment']).toMatchObject({ value: 'Male', exact: false });
+    // A profile's word is not replaced by a ladder's guess.
+    expect(stats(known, on('N1'), on('B2'))['alignment']).toMatchObject({ exact: true });
     // A turn 1, a win 1 and its "+N", a loss 1 less, a training its "+N" and not its extra; an
     // episode each turn; the place of the last.
     const moved = stats(

@@ -97,6 +97,7 @@ import { shopDayOf } from '#src/shop.ts';
 import {
   mismatches,
   move,
+  placed,
   set,
   skillsBought,
   type StatDrift,
@@ -1109,7 +1110,7 @@ function afterTurnStats(stats: Stats, o: z.infer<typeof outcomeSchema>, at: stri
   next = move(next, 'episode', (v) => Number(v) + 1, true, at);
   const place = o.place as { name?: unknown; code?: unknown } | undefined;
   if (typeof place?.name === 'string' && typeof place.code === 'string')
-    next = set(next, 'location', { name: place.name, code: place.code }, true, at);
+    next = placed(next, { name: place.name, code: place.code }, at);
   return levelled(next, at);
 }
 
@@ -1799,7 +1800,7 @@ function reducePlaces(state: LoreState, e: BusEvent): LoreState {
       [d.player]: {
         ...p,
         as_of: at,
-        stats: set(p.stats, 'location', { name: d.place.name, code: d.place.code }, true, at),
+        stats: placed(p.stats, { name: d.place.name, code: d.place.code }, at),
       },
     },
   };

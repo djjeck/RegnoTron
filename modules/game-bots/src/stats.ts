@@ -71,6 +71,24 @@ export function move(
   return { ...stats, [stat]: { value: f(was.value), exact: was.exact && known, as_of: at } };
 }
 
+/**
+ * Where a player is, from a turn of theirs, an arrival or `/v` (docs/game-bots.md §6.1), with or
+ * without a profile before: `location`, exact; and, when no profile told it, their faction, from
+ * the ladder the place is on (a place of `B<n>` is `Il Bene`'s, `M<n>` `Il Male`'s: a faction's
+ * player is not seen on the other's [M]; a neutral place tells nothing), not exact, the next
+ * profile's word replacing it.
+ */
+export function placed(stats: Stats, place: { name: string; code: string }, at: string): Stats {
+  const next: Stats = { ...stats, location: { value: place, exact: true, as_of: at } };
+  const ladder = /^([BM])\d+$/u.exec(place.code)?.[1];
+  const was = Object.hasOwn(stats, 'alignment') ? stats['alignment'] : undefined;
+  if (ladder === undefined || was?.exact === true) return next;
+  return {
+    ...next,
+    alignment: { value: ladder === 'B' ? 'Bene' : 'Male', exact: false, as_of: at },
+  };
+}
+
 /** `stat` set to `value` (as the bot said, exact), or left inexact with it. */
 export function set(stats: Stats, stat: string, value: unknown, exact: boolean, at: string): Stats {
   if (!Object.hasOwn(stats, stat)) return stats;

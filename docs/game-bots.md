@@ -795,9 +795,12 @@ or a training answer as it does the owner's (§5.2, §5.3, §5.4). Per player:
   sets `level`, adds its coins to `coins`, and raises `xp` to its threshold if short (not exact). A
   stat stops being exact when a change to it is not known whole: a turn told of by a "too soon"
   alone (`xp`, `episode`, `location`, `level`), a draw, a turn cut off. A stat no command read moves
-  (the equipment, the skills, the company, …) stays as the profile said, exact. Before a profile
-  there are none. `state.stat({ player?, stat })` answers one, by its dotted path, with its `exact`
-  and `as_of`;
+  (the equipment, the skills, the company, …) stays as the profile said, exact. **Before a profile**
+  there are none but where they are and their faction: a turn, an arrival or `/v` sets `location`,
+  exact, with or without a profile; and, while no profile told it, `alignment` from the place's
+  ladder (`B<n>`, `Il Bene`; `M<n>`, `Il Male`: a faction's player is not seen on the other's [M]; a
+  neutral place tells nothing), not exact, until a profile says it. `state.stat({ player?, stat })`
+  answers one, by its dotted path, with its `exact` and `as_of`;
 - **their skills and gear** (§5.6, §5.7): the skills menu is a part of a profile, checked and
   seeding `skills` and `skill_points` (the points left, which the profile does not show and keeps);
   a level-up adds its points; a purchase the account did not hear (the menu's buttons) is no

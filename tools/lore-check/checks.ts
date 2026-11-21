@@ -17,7 +17,7 @@ import {
   playerOf,
   reduce,
 } from '@regnotron/game-bots/loregame-state.ts';
-import { SHOP_EVENT } from '@regnotron/game-bots/plugins/loregame.ts';
+import { PROFILE_EVENT, SHOP_EVENT } from '@regnotron/game-bots/plugins/loregame.ts';
 import { levelForXp } from '@regnotron/game-bots/profile.ts';
 import { LOREGAMEBOT, TURN_COMMANDS } from '@regnotron/game-bots/replies.ts';
 import { GENERATOR_TAG } from '@regnotron/game-bots/shop.ts';
@@ -410,6 +410,64 @@ export const players: Check = {
 };
 
 /**
+ * Where the players are without a profile (docs/game-bots.md §6.1): those whose place their turns
+ * tell, and whose faction its ladder does, no profile of theirs read; and, at each player's first
+ * profile, how often it agrees with what their turns told.
+ */
+export const whereabouts: Check = {
+  id: 'whereabouts',
+  run: (r) => {
+    const last = r.steps.at(-1)?.after ?? initialState();
+    const unprofiled = Object.values(last.players).filter((p) => p.profile === null);
+    const stat = (p: Player | null, s: string) =>
+      p === null || !Object.hasOwn(p.stats, s) ? undefined : p.stats[s];
+    let places = 0;
+    let placesAgree = 0;
+    let factions = 0;
+    let factionsAgree = 0;
+    for (const s of r.steps) {
+      if (s.event.type !== PROFILE_EVENT) continue;
+      const name = String(s.event['player']);
+      const was = playerOf(s.before, name);
+      if (was === null || was.profile !== null) continue;
+      const place = stat(was, 'location')?.value as { code?: string } | null | undefined;
+      const said = s.event['location'] as { code?: string } | null | undefined;
+      if (place?.code !== undefined && said?.code !== undefined) {
+        places++;
+        if (place.code === said.code) placesAgree++;
+      }
+      const faction = stat(was, 'alignment')?.value;
+      if (faction !== undefined) {
+        factions++;
+        if (faction === s.event['alignment']) factionsAgree++;
+      }
+    }
+    return {
+      title: 'Whereabouts',
+      rows: [
+        ['players with no profile read', String(unprofiled.length)],
+        [
+          'of them, with a place',
+          pct(
+            unprofiled.filter((p) => stat(p, 'location') !== undefined).length,
+            unprofiled.length
+          ),
+        ],
+        [
+          'of them, with a faction (from the ladder)',
+          pct(
+            unprofiled.filter((p) => stat(p, 'alignment') !== undefined).length,
+            unprofiled.length
+          ),
+        ],
+        ['first profiles agreeing with the place the turns told', pct(placesAgree, places)],
+        ['first profiles agreeing with the faction the ladder told', pct(factionsAgree, factions)],
+      ],
+    };
+  },
+};
+
+/**
  * The shop (docs/game-bots.md §5.12): of the bot's listings, those read; the days they cover, and
  * how often the day's items changed within a day (the shop changes at midnight); the items seen on
  * sale, the generators apart.
@@ -479,6 +537,7 @@ export const CHECKS: readonly Check[] = [
   levels,
   profiles,
   players,
+  whereabouts,
   shop,
   catalogue,
 ];

@@ -225,6 +225,42 @@ describe('the lore check', () => {
     expect(row('with every turn seen')).toBe('1 of 1 (100.0%)');
   });
 
+  it('places a player by their turns without a profile, and checks it at their first', async () => {
+    const PROFILE = (player: string, faction: string, place: string) =>
+      [
+        `👤 ${player}`,
+        '',
+        '👥 Nessuna azienda',
+        '',
+        'Livello 1 (5 ⚔️)',
+        '',
+        faction,
+        'Episodio 3',
+        '0 ₭',
+        '',
+        `Attualmente in ${place}`,
+      ].join('\n');
+    const MALE = TURN.replace('Il Bosco Inventato ⛅️ [B1]', 'La Valle Finta 🌄 [M3]');
+    const run = await replayLore(
+      [
+        ...asked(0, 'bob', '/lore', TURN),
+        ...asked(1, 'carol', '/lore', MALE),
+        ...asked(2, 'dave', '/lore', TURN),
+        // Bob as his turn told; carol elsewhere since, and of another faction than the ladder's.
+        ...asked(3, 'bob', '/me', PROFILE('bob', 'Il Bene 😇', 'Il Bosco Inventato ⛅️ [B1]')),
+        ...asked(4, 'carol', '/me', PROFILE('carol', 'Il Bene 😇', 'Il Limbo 🕑 [N1]')),
+      ],
+      { self: 'alice' }
+    );
+    const f = CHECKS.find((c) => c.id === 'whereabouts')?.run(run);
+    const row = (label: string) => f?.rows.find(([k]) => k.startsWith(label))?.[1];
+    expect(row('players with no profile read')).toBe('1');
+    expect(row('of them, with a place')).toBe('1 of 1 (100.0%)');
+    expect(row('of them, with a faction')).toBe('1 of 1 (100.0%)');
+    expect(row('first profiles agreeing with the place')).toBe('1 of 2 (50.0%)');
+    expect(row('first profiles agreeing with the faction')).toBe('1 of 2 (50.0%)');
+  });
+
   it('reads every shop listing, and tells the days and the items they sold', async () => {
     const SHOP = (player: string, ...items: string[]) =>
       [`${player}, oggi nel negozio:`, ...items].join('\n');
