@@ -442,20 +442,22 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
   requirements). `/requisiti` matches a place by a part of its name, not its code; any other query
   is `Elemento non trovato o utente non registrato!` (5 of the 9 in that export, `/req` one of
   them), which tells nothing and is not read. A place that asks no item lists its level alone
-  (`> Livello <n>`). An item's name may run over several lines. A requirement may be a condition,
-  not an item: `> Almeno un guardiano [generato da] [<code>]` (57 in the exports): **a guardian made
-  at that place, by anyone**, with `/generaguardiano` and a `generatore di guardiani`, standing
-  there. It is listed under `Hai già:` for every player once one is: the owner's refusals listed it
-  so from their third day in the game, who never made one, and another player's months before their
-  first; the first one made at a place turns `Ti serve:` into `Hai già:` for the next refused (a
-  refusal for one from `N2`, one made at `N2`, the place entered two minutes later). Entering does
-  not consume it. **A neutral place does not ask it of a faction's player**, there with a ticket:
-  their refusals for `N2` listed its item alone, a guardian from `N1` made days before
-  (`Il Neutrale`'s player was asked it). The guardians made are the enemies the players meet in
-  their turns: in the bot's help, one turn in 10 meets an enemy, "generalmente un guardiano della
-  fazione rivale", and a fight won gives two items and combat strength, a draw nothing, a fight lost
-  doubles the next turn's wait (the skill Ricercato: "Probabilità di incontrare guardiani"). The
-  making is confirmed by a button (`Stai per generare il guardiano <name>. Sei sicuro?`), then
+  (`> Livello <n>`). The parser names `/requisiti` among its bot's commands and the state declares
+  it `interactive` (it needs a place's name): a shell `player` never plays it unless the owner ticks
+  it. An item's name may run over several lines. A requirement may be a condition, not an item:
+  `> Almeno un guardiano [generato da] [<code>]` (57 in the exports): **a guardian made at that
+  place, by anyone**, with `/generaguardiano` and a `generatore di guardiani`, standing there. It is
+  listed under `Hai già:` for every player once one is: the owner's refusals listed it so from their
+  third day in the game, who never made one, and another player's months before their first; the
+  first one made at a place turns `Ti serve:` into `Hai già:` for the next refused (a refusal for
+  one from `N2`, one made at `N2`, the place entered two minutes later). Entering does not consume
+  it. **A neutral place does not ask it of a faction's player**, there with a ticket: their refusals
+  for `N2` listed its item alone, a guardian from `N1` made days before (`Il Neutrale`'s player was
+  asked it). The guardians made are the enemies the players meet in their turns: in the bot's help,
+  one turn in 10 meets an enemy, "generalmente un guardiano della fazione rivale", and a fight won
+  gives two items and combat strength, a draw nothing, a fight lost doubles the next turn's wait
+  (the skill Ricercato: "Probabilità di incontrare guardiani"). The making is confirmed by a button
+  (`Stai per generare il guardiano <name>. Sei sicuro?`), then
   `La tua idea si materializza... hai generato il guardiano <name> [L<n>]!`, which replies to no
   command: not read. Every answer and block in the exports is read: 714 answers, 280 blocks, 859
   items.

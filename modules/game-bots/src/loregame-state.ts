@@ -73,7 +73,13 @@ import {
   mediaEventSchema,
   withMedia,
 } from '#src/media.ts';
-import { ladderOf, NEUTRAL_EFFECT, NEUTRAL_MS, NEUTRAL_TICKET } from '#src/places.ts';
+import {
+  ladderOf,
+  NEUTRAL_EFFECT,
+  NEUTRAL_MS,
+  NEUTRAL_TICKET,
+  REQUIREMENTS_COMMANDS,
+} from '#src/places.ts';
 import {
   ACCUMULO_EVENT,
   BAN_EVENT,
@@ -185,7 +191,12 @@ export class LoreReadinessModel extends ReadinessModel {
 
 export const LORE_READINESS = new LoreReadinessModel({
   parser: { id: LOREGAME_PARSER, ...LOREGAME_VOCABULARY },
-  mechanics: { [ACCUMULO]: ACCUMULO_MECHANICS, [TRAINING]: TRAINING_MECHANICS },
+  mechanics: {
+    [ACCUMULO]: ACCUMULO_MECHANICS,
+    [TRAINING]: TRAINING_MECHANICS,
+    // It asks a place's name, the person's to choose: a player never plays it by default.
+    [REQUIREMENTS_COMMANDS[0] as string]: { interactive: true },
+  },
 });
 
 /**

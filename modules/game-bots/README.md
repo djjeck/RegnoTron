@@ -206,16 +206,16 @@ player's (docs/game-bots.md §5.10).
 **The places.** `/vai` and `/v` are published as `loregame.travel` (an arrival with what it
 consumed, where one is, a refusal), each the player's whose command it replies to, and any place's
 requirements as `loregame.requirements`, wherever the bot states them: a refusal, and the answer to
-`/requisiti <name>` (alias `/req`, among the spec's `commands`, no mechanics), whoever asked. The
-state keeps the places (`state.places()`), each place's requirements as last told
-(`requirements_as_of`: a statement, or an arrival, which tells what the place takes now; one older
-than those held is not taken), sets a player's `location`, and takes what an arrival consumed from
-their inventory. Entering a place takes its items whichever way one comes; a guardian a place asks
-is one made there by anyone, and the state keeps which have been (`state.guardians()`), as refusals,
-`/requisiti` and arrivals tell; a neutralizing ticket (`loregame.neutral`) opens the neutral ladder
-for 10 hours a ticket (a player of `Il Neutrale` needs none, and a ticket's player is asked no
-guardian there). `state.trip({ to })` plans a trip before it is made: the way, and what each step
-takes of the player (docs/game-bots.md §5.9, §6).
+`/requisiti <name>` (alias `/req`, among the spec's `commands`), whoever asked. The state keeps the
+places (`state.places()`), each place's requirements as last told (`requirements_as_of`: a
+statement, or an arrival, which tells what the place takes now; one older than those held is not
+taken), sets a player's `location`, and takes what an arrival consumed from their inventory.
+Entering a place takes its items whichever way one comes; a guardian a place asks is one made there
+by anyone, and the state keeps which have been (`state.guardians()`), as refusals, `/requisiti` and
+arrivals tell; a neutralizing ticket (`loregame.neutral`) opens the neutral ladder for 10 hours a
+ticket (a player of `Il Neutrale` needs none, and a ticket's player is asked no guardian there).
+`state.trip({ to })` plans a trip before it is made: the way, and what each step takes of the player
+(docs/game-bots.md §5.9, §6).
 
 **The pictures.** An arrival, a `/v` and a season's creation card (its generator's outcome) are a
 photo of the place; `loregame.travel` and `loregame.generated` carry the answer's message id
@@ -268,9 +268,10 @@ exports hold, and each place's requirements as last told in them, can be seeded
 (`tools/media-seed`): the file put in its store is taken at its next start, the requirements of a
 place only where those it holds are older, or none.
 
-**`/requisiti`** (`/req`) is among the bot's commands the parser names (its spec's `commands`), so a
-shell `player` bound to the state lists it, with no mechanics: what to ask, and when, is the
-owner's.
+**`/requisiti`** (`/req`) is among the bot's commands the parser names (its spec's `commands`), and
+the state declares it `interactive` (it asks a place's name, the person's to choose): a shell
+`player` bound to the state lists it, unticked by default, and never plays it unless the owner ticks
+it.
 
 It also keeps the **owner's readiness** at @LoreGameBot (the section `readiness`): when each of the
 bot's commands may be played, reduced by the shell from the parser's events, with the owner's ban,

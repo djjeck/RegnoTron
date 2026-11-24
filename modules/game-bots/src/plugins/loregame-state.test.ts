@@ -536,8 +536,9 @@ describe('the accumulo, for a shell player', () => {
       },
       // The training, its cooldown of a day.
       { command: '/allenati', cooldownMin: 1440 },
-      // A place's requirements, asked at any time: no mechanics.
-      { command: '/requisiti', aliases: ['/req'] },
+      // A place's requirements: it asks a place's name, so it is the person's, never played by
+      // default.
+      { command: '/requisiti', aliases: ['/req'], interactive: true },
     ]);
   });
 
