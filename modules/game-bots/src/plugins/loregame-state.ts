@@ -38,8 +38,9 @@
  *   (every player's items, and who holds one); `state.places()` (each place's level, items and
  *   guardians asked, when those were told, and its exits; a seed's, tools/media-seed, taken at
  *   the next start where those held are older, or none), `state.guardians()` (the places a guardian has been made at,
- *   by anyone, as told) and `state.trip({ to, player?, at? })` (a trip planned before it is made:
- *   its way, and what each step takes of the player, src/trips.ts).
+ *   by anyone, as told), `state.trip({ to, player?, at? })` (a trip planned before it is made:
+ *   its way, and what each step takes of the player, src/trips.ts) and `state.reach({ player? })`
+ *   (how far a player can climb now, src/reach.ts).
  * - **The market** (docs/game-bots.md §5.11): `state.market()` (the companies there are, by id, each
  *   its name and latest value; and the bot's updates' schedule as their times teach it, the next
  *   due, those missed), `state.marketHistory({ company?, since?, until? })` (each company's values
@@ -143,6 +144,7 @@ import {
   wantsPicture,
 } from '#src/media.ts';
 import { LOREGAME_PARSER, REQUIREMENTS_EVENT } from '#src/plugins/loregame.ts';
+import { reachOf } from '#src/reach.ts';
 import { statsOf } from '#src/stats.ts';
 import { tripOf } from '#src/trips.ts';
 
@@ -867,6 +869,22 @@ const base = statePlugin<Kept>({
           input.at === undefined ? Date.now() : Date.parse(input.at),
           input.player
         ),
+    },
+    reach: {
+      help: "How far a player (the owner unless named) can climb now: from where they are (back to their faction's ladder first, if on the neutral one), up it a step at a time, each step's level (unchecked when theirs or its is unknown), guardians made and items taken from a copy of their inventory. `reached` is K, the highest step of their ladder they can be at; `next` the step they stopped at, with what they would lack; `top` when no place above is known; `unknown` why the walk could not be told (player, alignment, location, way back, requirements, guardian)",
+      input: z.object({ player: z.string().optional() }),
+      output: z.looseObject({
+        player: z.string().nullable(),
+        ladder: z.string().nullable(),
+        from: z.string().nullable(),
+        level: z.number().nullable(),
+        path: z.array(z.string()),
+        reached: z.object({ code: z.string(), step: z.number() }).nullable(),
+        next: z.looseObject({ code: z.string() }).nullable(),
+        top: z.boolean(),
+        unknown: z.string().nullable(),
+      }),
+      run: (s, input: { player?: string }) => reachOf(s, input.player),
     },
     holders: {
       help: 'Who holds an item, by its exact name: each player the state knows of (the owner too), with how many and whether it is exact, most first',

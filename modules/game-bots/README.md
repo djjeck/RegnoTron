@@ -216,7 +216,11 @@ Entering a place takes its items whichever way one comes; a guardian a place ask
 by anyone, and the state keeps which have been (`state.guardians()`), as refusals, `/requisiti` and
 arrivals tell; a neutralizing ticket (`loregame.neutral`) opens the neutral ladder for 10 hours a
 ticket (a player of `Il Neutrale` needs none, and a ticket's player is asked no guardian there).
-`state.trip({ to })` plans a trip before it is made: the way, and what each step takes of the player
+`state.trip({ to })` plans a trip before it is made: the way, and what each step takes of the
+player; `state.reach({ player? })` tells how far a player can climb now: from where they are (back
+from the neutral ladder first), up their faction's ladder, each step's level, guardians and items
+taken from a copy of their inventory, re-entered steps paid again; K (`reached`), the step they stop
+at (`next`, with what they would lack), `top`, or why it cannot be told (`unknown`)
 (docs/game-bots.md §5.9, §6).
 
 **The pictures.** An arrival, a `/v` and a season's creation card (its generator's outcome) are a
@@ -294,33 +298,34 @@ not read yet, so a count only rises and `exact` stays false. A turn cut off at T
 have gained what the reply lost: it changes no count, and marks the inventory `uncertain` in
 `state.freshness`.
 
-| Interface                                                  | Answers                                                                                                                                 |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `state.get({ path? })`                                     | The state, or the value at a dotted path (`inventory.items`)                                                                            |
-| `state.freshness`                                          | How fresh each section is: its last snapshot, the deltas since                                                                          |
-| `state.count({ name })`                                    | How many of an item the owner holds, as the state estimates it                                                                          |
-| `state.held()`                                             | Every item held, with its count                                                                                                         |
-| `state.inventory({ player? })`                             | A player's inventory (the owner's unless named), and when it was listed whole                                                           |
-| `state.places()`                                           | The game's places: what entering each takes, where one can go from it, their pictures (`media`)                                         |
-| `state.media({ id })`                                      | A picture's bytes, by its id (`sha256:<hex>`): `{ ok, media: { data, mime, width?, height? } \| null }` or `{ ok: false, error }`       |
-| `state.guardians()`                                        | The places a guardian has been made at (by anyone), or not, as last told                                                                |
-| `state.market()`                                           | The market now: the companies there are, by id, each its name and latest value; the updates' interval, the next due, those missed       |
-| `state.marketHistory({ company?, since?, until?, gone? })` | Each company's values through time, by id: those there are (those gone too with `gone`; one by its id or any name it had), oldest first |
-| `state.investments({ player? })`                           | A player's open investments (the owner's unless named), by company id, each worth now                                                   |
-| `state.shop({ player?, at? })`                             | The shop's items for its day, each bought or not by the player (the owner unless named), and whether its day is today's                 |
-| `state.shopSeen()`                                         | Every item seen on sale: its rarity, tags, first and latest day, and on how many days                                                   |
-| `state.catalogue()`                                        | Every item seen in the game: its rarity and tags, when and how it was first seen                                                        |
-| `state.trip({ to, player?, at? })`                         | A trip planned: its way, each step's level, items and guardians (made or not), and whether it is open                                   |
-| `state.holders({ item })`                                  | Who holds an item, by its exact name, with how many                                                                                     |
-| `state.ban({ player? })`                                   | A player's ban (the owner's unless named): `{ until, since }`                                                                           |
-| `state.bans()`                                             | Every banned player, with their ban                                                                                                     |
-| `state.accumulo()`                                         | The owner's accumulo: the count, the bot's word, the drift                                                                              |
-| `state.player({ name })`                                   | A player by username: level, turns, rest, accumulo, training, XP                                                                        |
-| `state.profile({ player?, stat? })`                        | A player's last profile (the owner's unless named), or one stat by dotted path                                                          |
-| `state.stat({ player?, stat })`                            | A player's stat now (`xp`, `coins`, `location.code`, …): `{ value, exact, as_of }`                                                      |
-| `state.ready()`                                            | Each of the bot's commands' readiness, for a shell player (D141)                                                                        |
-| `state.commands()`                                         | The bot's commands with their aliases and mechanics                                                                                     |
-| `state.bot()`                                              | The bot's username, `LoreGameBot`                                                                                                       |
+| Interface                                                  | Answers                                                                                                                                  |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `state.get({ path? })`                                     | The state, or the value at a dotted path (`inventory.items`)                                                                             |
+| `state.freshness`                                          | How fresh each section is: its last snapshot, the deltas since                                                                           |
+| `state.count({ name })`                                    | How many of an item the owner holds, as the state estimates it                                                                           |
+| `state.held()`                                             | Every item held, with its count                                                                                                          |
+| `state.inventory({ player? })`                             | A player's inventory (the owner's unless named), and when it was listed whole                                                            |
+| `state.places()`                                           | The game's places: what entering each takes, where one can go from it, their pictures (`media`)                                          |
+| `state.media({ id })`                                      | A picture's bytes, by its id (`sha256:<hex>`): `{ ok, media: { data, mime, width?, height? } \| null }` or `{ ok: false, error }`        |
+| `state.guardians()`                                        | The places a guardian has been made at (by anyone), or not, as last told                                                                 |
+| `state.market()`                                           | The market now: the companies there are, by id, each its name and latest value; the updates' interval, the next due, those missed        |
+| `state.marketHistory({ company?, since?, until?, gone? })` | Each company's values through time, by id: those there are (those gone too with `gone`; one by its id or any name it had), oldest first  |
+| `state.investments({ player? })`                           | A player's open investments (the owner's unless named), by company id, each worth now                                                    |
+| `state.shop({ player?, at? })`                             | The shop's items for its day, each bought or not by the player (the owner unless named), and whether its day is today's                  |
+| `state.shopSeen()`                                         | Every item seen on sale: its rarity, tags, first and latest day, and on how many days                                                    |
+| `state.catalogue()`                                        | Every item seen in the game: its rarity and tags, when and how it was first seen                                                         |
+| `state.trip({ to, player?, at? })`                         | A trip planned: its way, each step's level, items and guardians (made or not), and whether it is open                                    |
+| `state.reach({ player? })`                                 | How far a player can climb now: K (`reached`), the step they stop at (`next`, what they would lack), `top`, or why not known (`unknown`) |
+| `state.holders({ item })`                                  | Who holds an item, by its exact name, with how many                                                                                      |
+| `state.ban({ player? })`                                   | A player's ban (the owner's unless named): `{ until, since }`                                                                            |
+| `state.bans()`                                             | Every banned player, with their ban                                                                                                      |
+| `state.accumulo()`                                         | The owner's accumulo: the count, the bot's word, the drift                                                                               |
+| `state.player({ name })`                                   | A player by username: level, turns, rest, accumulo, training, XP                                                                         |
+| `state.profile({ player?, stat? })`                        | A player's last profile (the owner's unless named), or one stat by dotted path                                                           |
+| `state.stat({ player?, stat })`                            | A player's stat now (`xp`, `coins`, `location.code`, …): `{ value, exact, as_of }`                                                       |
+| `state.ready()`                                            | Each of the bot's commands' readiness, for a shell player (D141)                                                                         |
+| `state.commands()`                                         | The bot's commands with their aliases and mechanics                                                                                      |
+| `state.bot()`                                              | The bot's username, `LoreGameBot`                                                                                                        |
 
 A ban is kept with when it ends, as the bot states it (Rome's clock; a date alone: the end of the
 day), and is over when the bot serves the player again, which it does early at times, or when its

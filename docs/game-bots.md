@@ -869,6 +869,26 @@ It is a floor, not the truth, while the turns are all it reads:
   (not one of `Il Neutrale`), whether `Neutralizzato` holds; `ok` is true, false (something known
   lacking), or none (a step it cannot tell: a place whose requirements were never told, a guardian
   not known, an inventory not listed).
+- **How far a player can climb** (`state.reach({ player? })`, `src/reach.ts`): from where a player
+  is (the owner unless named), up their faction's ladder (`Bene` `B`, `Male` `M`, `Neutrale` `N`,
+  from their `alignment`), a step at a time. A player below the highest place they reached (gone
+  down to play a lower place's turns) walks up from where they are, **each step entered again taking
+  its items again**, so one who spent them is stuck lower; a faction's player on the neutral ladder
+  walks back first, the shortest way through the exits told and the ladders' steps (`N1` to `B1`,
+  `N2` to `B2`, `N3` through `N2`), each place on the way entered as any other (a neutral one asks
+  no guardian of them; neutrality is not checked, as its end throws them out to their own ladder
+  anyway). Each step needs its level (**not checked where the player's is unknown**: few profiles
+  are read, and where they stand bounds it; a place whose level was never told asks its step's, as
+  every place told does [M: 8 of 8 in the owner's export of October–November 2026]), each guardian
+  it asks made, and its items, one each, from a copy of their inventory. The answer: `player`,
+  `ladder`, `from`, `level`, `path` (the places entered), `reached` (K: `{ code, step }`, the
+  highest step of their ladder they can be at now; none if they cannot get back to it), `next`
+  (where the walk stopped: `code`, `name`, `level` (`level_told` false when its step's), `level_ok`,
+  `lacking`, the items it takes they would lack after the walk, `unsure`, those of them the state
+  cannot be sure of, `guardians`, those known not made), `top` (no place known above K), `unknown`
+  (why it could not be told: `player`, `alignment`, `location`, `way back`, `requirements`, a step
+  never told, or `guardian`, one not known made) and `unsure` (the items taken whose count is not
+  exact).
 - **The shop** (§5.12, `shop`): its `day` (the date in Italy, when it changes), its `sagra` and its
   `items` (each `item`, `rarity`, `tags`, `price`), as the day's latest listing told, whoever's (one
   for every player); the items each player has bought that day, apart (`bought`, by player, as their

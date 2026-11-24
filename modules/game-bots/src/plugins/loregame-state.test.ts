@@ -74,6 +74,7 @@ describe('the loregame-state node', () => {
       'recipes',
       'recipe',
       'trip',
+      'reach',
       'holders',
       'count',
       'held',
@@ -1680,6 +1681,19 @@ describe('the places, as /vai and /v answer', () => {
       replyTo: id,
     });
     expect(run.read('guardians')).toEqual({ B2: true });
+    // How far alice can climb: B2 takes her stone, and B3 nothing now (carol's arrival consumed
+    // none); no place known above it.
+    expect(run.read('reach')).toMatchObject({
+      player: 'alice',
+      ladder: 'B',
+      from: 'B1',
+      path: ['B2', 'B3'],
+      reached: { code: 'B3', step: 3 },
+      next: null,
+      top: true,
+      unknown: null,
+    });
+    expect(run.read('reach', { player: 'dave' })).toMatchObject({ unknown: 'alignment' });
     // A neutral place: open only while "Neutralizzato" lasts; and what N1 takes is not known.
     expect(run.read('trip', { to: 'N1', at })).toMatchObject({
       steps: [{ code: 'N1', neutral: true, neutral_ok: false, as_of: null }],
