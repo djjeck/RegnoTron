@@ -85,8 +85,8 @@ formatting. Address every error before marking a sub-task complete.
 - **Coverage stays at or above 90%** on statements, branches, functions and lines, for the whole and
   for each module's `src/` on its own (`vitest.config.ts` sets a threshold per module).
 - **Dependencies:** the root has dev dependencies only, as few as possible, each justified in the
-  commit that adds it, pinned to exact versions at least two weeks old, with `package-lock.json`
-  committed; the same for the GitHub Actions the workflow uses.
+  commit that adds it, pinned to exact versions, with `package-lock.json` committed; the same for
+  the GitHub Actions the workflow uses.
 - **People** are referred to as they/them.
 
 ## Conventions
