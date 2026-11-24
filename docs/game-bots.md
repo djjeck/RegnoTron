@@ -1,6 +1,6 @@
 # The game bots RegnoTron reads
 
-Documented as of 21 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
+Documented as of 24 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
 has other game bots, each with its own game played one turn at a time. RegnoTron reads the turns of
 two of them, @LoreGameBot and @EpicLorelecBot, in `modules/game-bots/`: their reply grammars
 (`src/replies.ts`) and their parser plugins in `src/plugins/`. @InventoryBot's parser, the plugin
@@ -425,29 +425,37 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
   one is at is none of them): any other is `Stagione non trovata!`, which changes nothing.
 - **`/v`** says where one is: `Ti trovi nella stagione <place> [<code>]`, its requirements, then
   where one can go (`Puoi andare in:`, each place, `🔒` if locked to them) or
-  `Nessuna stagione disponibile!`.
+  `Nessuna stagione disponibile!`. The requirements
+  (`Requisiti d'accesso (oggetti consumati all'arrivo)`, the level and the items) are read if there:
+  no card in the owner's export of October–November 2026 carries them (every one goes straight to
+  `Puoi andare in:`).
 - **An arrival and a `/v` are a photo of the place** [M], their text its caption: the arrival and
   the three `/v` the exports hold photos of (two places) showed the place's picture, the arrival the
   same as the place's creation card (below).
 - **A place's requirements**
   (`Requisiti d'accesso per <place> [<code>] (oggetti consumati all'arrivo)`, then `> Livello <n>`
   and the items, under `Ti serve:` and `Hai già:` in a refusal) are read wherever the bot states
-  them: a refusal, and an answer that changed them
-  (`La modalità d'accesso alla stagione [<code>] è cambiata!`, a generator's). An item's name may
-  run over several lines. A requirement may be a condition, not an item:
-  `> Almeno un guardiano [generato da] [<code>]` (57 in the exports): **a guardian made at that
-  place, by anyone**, with `/generaguardiano` and a `generatore di guardiani`, standing there. It is
-  listed under `Hai già:` for every player once one is: the owner's refusals listed it so from their
-  third day in the game, who never made one, and another player's months before their first; the
-  first one made at a place turns `Ti serve:` into `Hai già:` for the next refused (a refusal for
-  one from `N2`, one made at `N2`, the place entered two minutes later). Entering does not consume
-  it. **A neutral place does not ask it of a faction's player**, there with a ticket: their refusals
-  for `N2` listed its item alone, a guardian from `N1` made days before (`Il Neutrale`'s player was
-  asked it). The guardians made are the enemies the players meet in their turns: in the bot's help,
-  one turn in 10 meets an enemy, "generalmente un guardiano della fazione rivale", and a fight won
-  gives two items and combat strength, a draw nothing, a fight lost doubles the next turn's wait
-  (the skill Ricercato: "Probabilità di incontrare guardiani"). The making is confirmed by a button
-  (`Stai per generare il guardiano <name>. Sei sicuro?`), then
+  them: a refusal, an answer that changed them
+  (`La modalità d'accesso alla stagione [<code>] è cambiata!`, a generator's; none in the owner's
+  export of October–November 2026), and **the answer to `/requisiti <name>`** (alias `/req`), the
+  block alone, split by what the asking player holds as a refusal's is (both lists are the place's
+  requirements). `/requisiti` matches a place by a part of its name, not its code; any other query
+  is `Elemento non trovato o utente non registrato!` (5 of the 9 in that export, `/req` one of
+  them), which tells nothing and is not read. A place that asks no item lists its level alone
+  (`> Livello <n>`). An item's name may run over several lines. A requirement may be a condition,
+  not an item: `> Almeno un guardiano [generato da] [<code>]` (57 in the exports): **a guardian made
+  at that place, by anyone**, with `/generaguardiano` and a `generatore di guardiani`, standing
+  there. It is listed under `Hai già:` for every player once one is: the owner's refusals listed it
+  so from their third day in the game, who never made one, and another player's months before their
+  first; the first one made at a place turns `Ti serve:` into `Hai già:` for the next refused (a
+  refusal for one from `N2`, one made at `N2`, the place entered two minutes later). Entering does
+  not consume it. **A neutral place does not ask it of a faction's player**, there with a ticket:
+  their refusals for `N2` listed its item alone, a guardian from `N1` made days before
+  (`Il Neutrale`'s player was asked it). The guardians made are the enemies the players meet in
+  their turns: in the bot's help, one turn in 10 meets an enemy, "generalmente un guardiano della
+  fazione rivale", and a fight won gives two items and combat strength, a draw nothing, a fight lost
+  doubles the next turn's wait (the skill Ricercato: "Probabilità di incontrare guardiani"). The
+  making is confirmed by a button (`Stai per generare il guardiano <name>. Sei sicuro?`), then
   `La tua idea si materializza... hai generato il guardiano <name> [L<n>]!`, which replies to no
   command: not read. Every answer and block in the exports is read: 714 answers, 280 blocks, 859
   items.
@@ -461,6 +469,19 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
   on 17 August 2026** (`Stai per resettare TUTTO...`, its second season): every place since is new,
   and `M7` was `Il laboratorio segreto di Kia 🧪` (asking 6 items) before it and `Il Paradiso 2 ⛅️`
   (entered with none consumed) after; each place is as last told.
+- **Requirements change unannounced** [M]: the game's help says that generated items may become a
+  place's requirements as it goes on
+  (`Le meccaniche di gioco cambiano automaticamente col tempo. Alcuni oggetti generati potrebbero diventare requisiti di accesso a una stagione specifica (luogo), …`),
+  and nothing tells when one does: a generator's confirmation names the place an item is made for
+  (`Stai per generare l'oggetto <name> per la stagione <place> [<code>]. Sei sicuro?`), not that it
+  is asked there, and no message of the bot's in that export announces a change. A change is seen
+  only in the next statement: a place's refusal listed a guardian alone, another four minutes later
+  its item too; another's arrival consumed nothing, and its refusal the next day asked an item. So
+  the state takes each statement, and each arrival, as the place's requirements now, the newer
+  replacing the older; an item's name that speaks of a place, or what players write, is never taken
+  for one. In that export, every place's requirements but `B1`'s and `N2`'s are told (a refusal, a
+  `/requisiti` or an arrival); the evil ladder's `M3`–`M8` and `N1` only by arrivals, which tell no
+  level.
 
 **The rules of a move** [M], from every arrival in the exports with the player's place before it:
 
@@ -511,11 +532,12 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
 (`arrived`, with what entering `consumed`; `here`, with the place's `requirements` and its `exits`;
 `refused`, with the `requirements`, whose `met` is the guardians already made), `place`, and
 `answer`, the answer's message id (its photo, §6.2). **`loregame.requirements`** carries any
-place's: `place`, `level`, `items`, `guardians` (each a place's code). **`loregame.neutral`**
-carries a ticket used (`neutralized`, its player by the name the answer gives) and the owner's
-neutrality ended (`restored`, heard in private alone): `player`, `owner`, `kind`. A guardian made is
-read from its generator's outcome (§5.13). **Not read yet:** where a player thrown out of a neutral
-place above `N1` lands (the state guesses the same step of their faction's ladder).
+place's: `place`, `level`, `items`, `guardians` (each a place's code) and `met` (the guardians
+already made, where the block is split; the same for every player). **`loregame.neutral`** carries a
+ticket used (`neutralized`, its player by the name the answer gives) and the owner's neutrality
+ended (`restored`, heard in private alone): `player`, `owner`, `kind`. A guardian made is read from
+its generator's outcome (§5.13). **Not read yet:** where a player thrown out of a neutral place
+above `N1` lands (the state guesses the same step of their faction's ladder).
 
 ### 5.10 Gifts
 
@@ -772,12 +794,17 @@ It is a floor, not the truth, while the turns are all it reads:
   opens the accumulo when it reaches its level.
 - **The places** (§5.9, `places`): each place's level, the items entering it takes, the guardians it
   asks, and where one can go from it, the game's, from any player's answers, each as last told
-  (`as_of`); an arrival tells what its place takes now. An arrival sets a player's `location`, and
+  (`as_of`); an arrival tells what its place takes now. `requirements_as_of` is when its
+  requirements were last told (a statement or an arrival; none if never, and a trip then knows
+  nothing of the step): a statement older than it is not taken. The migration to 0.46.0 dated those
+  held by the place's `as_of`, a place with none told none. **Seeded from the exports**
+  (tools/media-seed): each place's requirements as a replay of the exports ends with them, taken at
+  the next start where those held are older, or none. An arrival sets a player's `location`, and
   takes the items entering consumed from their inventory, one each; `/v` sets it too.
 - **The guardians made** (§5.9, `guardians`, `state.guardians()`): by the code of a place a guardian
-  is asked from, whether one has been made there, by anyone, as last told: a refusal's (`Hai già:`,
-  or `Ti serve:`), whoever's, an arrival's (all its place asks, made), and a guardian made by a
-  generator, at the place its player stands (§5.13).
+  is asked from, whether one has been made there, by anyone, as last told: a refusal's or a
+  `/requisiti`'s (`Hai già:`, or `Ti serve:`), whoever's, an arrival's (all its place asks, made),
+  and a guardian made by a generator, at the place its player stands (§5.13).
 - **The market** (§5.11), the first part of the state that is a series through time, not only a
   value now:
   - **The companies there are** (`market.companies`, `state.market()`), the primary way to follow

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ladderOf, parseNeutrality, parseTravel, placeRequirements } from './places.ts';
+import {
+  ladderOf,
+  parseNeutrality,
+  parseTravel,
+  placeRequirements,
+  REQUIREMENTS_COMMANDS,
+} from './places.ts';
 
 // Invented places and items; the bot's own words are the game's.
 describe('/vai and /v', () => {
@@ -116,6 +122,49 @@ describe('/vai and /v', () => {
         },
       },
     ]);
+  });
+
+  it('reads the answer to /requisiti: the block alone, whichever list an item is under', () => {
+    expect(REQUIREMENTS_COMMANDS).toEqual(['/requisiti', '/req']);
+    const answer = [
+      "Requisiti d'accesso per La Rocca Inventata 🏰 [B7] (oggetti consumati all'arrivo)",
+      '> Livello 7',
+      'Ti serve:',
+      '> una chiave finta 🗝 [B7]',
+      '> una gemma di vetro 🟦 [L1]',
+      'Hai già:',
+      '> un sasso [N1]',
+      '> Almeno un guardiano generato da [B6]',
+    ].join('\n');
+    expect(parseTravel(answer)).toBeUndefined();
+    expect(placeRequirements(answer)).toEqual([
+      {
+        place: { name: 'La Rocca Inventata 🏰', code: 'B7' },
+        requirements: {
+          level: 7,
+          items: [
+            { item: 'una chiave finta 🗝', rarity: 'B7', tags: [], level: null },
+            { item: 'una gemma di vetro 🟦', rarity: 'L1', tags: [], level: null },
+            { item: 'un sasso', rarity: 'N1', tags: [], level: null },
+          ],
+          guardians: ['B6'],
+          met: ['B6'],
+        },
+      },
+    ]);
+    // A place that asks no item: its level alone, unsplit.
+    expect(
+      placeRequirements(
+        "Requisiti d'accesso per Il Limbo Finto 2.0 🕚 [N5] (oggetti consumati all'arrivo)\n> Livello 5"
+      )
+    ).toEqual([
+      {
+        place: { name: 'Il Limbo Finto 2.0 🕚', code: 'N5' },
+        requirements: { level: 5, items: [], guardians: [], met: null },
+      },
+    ]);
+    // No place matched: nothing said of one.
+    expect(placeRequirements('Elemento non trovato o utente non registrato!')).toEqual([]);
   });
 });
 

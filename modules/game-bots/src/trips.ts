@@ -132,7 +132,7 @@ export function tripOf(s: LoreState, to: string, now: number, player?: string): 
   let prev = from;
   const steps = (way ?? [to]).map((code): TripStep => {
     const place = Object.hasOwn(places, code) ? places[code] : undefined;
-    const known = place !== undefined && place.as_of !== '' ? place : undefined;
+    const known = place?.requirements_as_of == null ? undefined : place;
     const takes = known?.items ?? [];
     const missing: TripItem[] = [];
     const unsure: TripItem[] = [];
@@ -154,7 +154,7 @@ export function tripOf(s: LoreState, to: string, now: number, player?: string): 
     return {
       code,
       name: place?.name ?? null,
-      as_of: known?.as_of ?? null,
+      as_of: known?.requirements_as_of ?? null,
       level: asks,
       level_ok: asks === null || typeof level !== 'number' ? null : level >= asks,
       takes,

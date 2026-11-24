@@ -536,6 +536,8 @@ describe('the accumulo, for a shell player', () => {
       },
       // The training, its cooldown of a day.
       { command: '/allenati', cooldownMin: 1440 },
+      // A place's requirements, asked at any time: no mechanics.
+      { command: '/requisiti', aliases: ['/req'] },
     ]);
   });
 
@@ -1628,13 +1630,13 @@ describe('the places, as /vai and /v answer', () => {
       '/v',
       "Ti trovi nella stagione Il Bosco Inventato ⛅️ [B1]\n\nRequisiti d'accesso (oggetti consumati all'arrivo)\n> Livello 1\n\nPuoi andare in:\n> 🔒 Il Prato Finto 🌾 [B2]\n> 🔒 Il Limbo Inventato 🕑 [N1]"
     );
-    // B2 and B3 told by refusals; B3 asks a guardian as well.
+    // B2 told by a refusal, B3 by /requisiti; B3 asks a guardian as well, not made yet.
     await play(
       '/vai prato',
       "Non hai accesso a Il Prato Finto 🌾 [B2]!\n\nRequisiti d'accesso per Il Prato Finto 🌾 [B2] (oggetti consumati all'arrivo)\n> Livello 2\nTi serve:\n> un sasso [B2]"
     );
-    await run.group(
-      'LoreGameBot',
+    await play(
+      '/requisiti colle',
       "Requisiti d'accesso per Il Colle Finto ⛰ [B3] (oggetti consumati all'arrivo)\n> Livello 3\nTi serve:\n> una pigna [B3]\n> un sasso [B2]\n> Almeno un guardiano generato da [B2]"
     );
     const at = new Date(run.clock.now()).toISOString();
@@ -1646,13 +1648,13 @@ describe('the places, as /vai and /v answer', () => {
       ok: true,
       steps: [{ code: 'B2', level_ok: true, takes: [{ item: 'un sasso' }], missing: [] }],
     });
-    // Two steps: the stone B2 takes is not there for B3 too; a guardian made at B2 is not known.
+    // Two steps: the stone B2 takes is not there for B3 too; no guardian made at B2 yet.
     expect(run.read('trip', { to: 'B3', at })).toMatchObject({
       route: ['B2', 'B3'],
       ok: false,
       steps: [
         { missing: [] },
-        { missing: [{ item: 'un sasso' }], guardians: ['B2'], guardians_ok: null },
+        { missing: [{ item: 'un sasso' }], guardians: ['B2'], guardians_ok: false },
       ],
     });
     // Refusals tell whether one has been made, by anyone: not yet ("Ti serve:"), then yes ("Hai
@@ -2816,6 +2818,120 @@ describe('the pictures of the places', () => {
     const third = await bootState(d, { photos: true });
     expect(fs.existsSync(path.join(docs, 'media-seed.json'))).toBe(true);
     await third.core.stop();
+  });
+
+  it('takes a seed’s requirements of places, older than none it holds', async () => {
+    const d = path.join(dir, 'seeded-requirements');
+    const run = await bootState(d, { group: true });
+    const play = async (player: string, command: string, answer: string) => {
+      const id = await run.group(player, command);
+      await run.group('LoreGameBot', answer, { replyTo: id });
+    };
+    // B2 told live; M4 seen by /v alone, what it takes not told.
+    await play(
+      'bob',
+      '/vai prato',
+      "Non hai accesso a Il Prato Finto 🌾 [B2]!\n\nRequisiti d'accesso per Il Prato Finto 🌾 [B2] (oggetti consumati all'arrivo)\n> Livello 2\nTi serve:\n> un sasso [B2]"
+    );
+    await play(
+      'bob',
+      '/v',
+      'Ti trovi nella stagione Il Lago Finto 🌊 [M4]\nPuoi andare in:\n> Il Fosso Finto [M3]'
+    );
+    const live = new Date(run.clock.now()).toISOString();
+    expect(run.read('places')).toMatchObject({
+      B2: { requirements_as_of: live },
+      M4: { requirements_as_of: null, exits: [{ code: 'M3' }] },
+    });
+    await run.core.stop();
+    const docs = path.join(d, 'data', 'instances', 'loregame-state');
+    const day = (n: number) => new Date(T0 + n * 24 * 60 * MIN).toISOString();
+    const item = (name: string, rarity: string) => ({ item: name, rarity, tags: [], level: null });
+    fs.writeFileSync(
+      path.join(docs, 'media-seed.json'),
+      JSON.stringify({
+        places: {},
+        files: {},
+        requirements: {
+          // Older than the live one: kept as told live.
+          B2: {
+            name: 'Il Prato Finto 🌾',
+            level: 2,
+            items: [item('una pigna', 'B2')],
+            guardians: [],
+            as_of: day(-1),
+          },
+          M4: {
+            name: 'Il Lago Finto 🌊',
+            level: 4,
+            items: [item('una conchiglia 🐚', 'M4')],
+            guardians: ['M3'],
+            as_of: day(-2),
+          },
+          N3: { name: 'Il Limbo Finto 🕚', level: 3, items: [], guardians: [], as_of: day(-3) },
+        },
+      })
+    );
+    const again = await bootState(d, { group: true, at: T0 + 60 * MIN });
+    await again.settle();
+    expect(again.read('places')).toMatchObject({
+      B2: { level: 2, items: [{ item: 'un sasso' }], requirements_as_of: live },
+      M4: {
+        name: 'Il Lago Finto 🌊',
+        level: 4,
+        items: [{ item: 'una conchiglia 🐚' }],
+        guardians: ['M3'],
+        exits: [{ code: 'M3' }],
+        as_of: live,
+        requirements_as_of: day(-2),
+      },
+      N3: { level: 3, items: [], exits: [], as_of: day(-3), requirements_as_of: day(-3) },
+    });
+    expect(fs.existsSync(path.join(docs, 'media-seed.json'))).toBe(false);
+    // Told anew: the newer statement replaces the seed's.
+    const id = await again.group('carol', '/req lago');
+    await again.group(
+      'LoreGameBot',
+      "Requisiti d'accesso per Il Lago Finto 🌊 [M4] (oggetti consumati all'arrivo)\n> Livello 4\nTi serve:\n> un remo [M4]\nHai già:\n> Almeno un guardiano generato da [M3]",
+      { replyTo: id }
+    );
+    expect(again.read('places')).toMatchObject({
+      M4: {
+        items: [{ item: 'un remo' }],
+        requirements_as_of: new Date(T0 + 60 * MIN).toISOString(),
+      },
+    });
+    expect(again.read('guardians')).toEqual({ M3: true });
+    await again.core.stop();
+  });
+
+  it('dates the requirements the places kept before 0.46.0 told, none if never', async () => {
+    const d = path.join(dir, 'v21');
+    const run = await bootState(d, { group: true });
+    const asked = await run.group('bob', '/vai bosco');
+    await run.group('LoreGameBot', ARRIVED('Il Bosco Inventato ⛅️ [B1]'), { replyTo: asked });
+    const v = await run.group('bob', '/v');
+    await run.group(
+      'LoreGameBot',
+      'Ti trovi nella stagione Il Bosco Inventato ⛅️ [B1]\nPuoi andare in:\n> Il Prato Finto 🌾 [B2]',
+      { replyTo: v }
+    );
+    await run.core.stop();
+    const docs = path.join(d, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    for (const p of Object.values(kept.state.places) as Record<string, unknown>[])
+      delete p['requirements_as_of'];
+    kept.state.places.B2 = { ...kept.state.places.B1, name: 'Il Prato Finto 🌾', level: 2 };
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: 21 }));
+    const again = await bootState(d, { group: true });
+    const at = new Date(T0).toISOString();
+    expect(again.read('places')).toMatchObject({
+      B1: { requirements_as_of: null },
+      B2: { level: 2, requirements_as_of: at },
+    });
+    await again.core.stop();
   });
 
   it('adds the empty lists to the places kept before 0.45.0', async () => {

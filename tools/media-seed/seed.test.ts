@@ -1,7 +1,7 @@
 import { mediaIdOf } from '@regnotron/game-bots/media.ts';
 import { GENERATED_EVENT, TRAVEL_EVENT } from '@regnotron/game-bots/plugins/loregame.ts';
 import { describe, expect, it } from 'vitest';
-import { mediaSeedOf } from './seed.ts';
+import { mediaSeedOf, requirementsSeedOf } from './seed.ts';
 
 import { type ExportPhoto } from '#tools/lore-check/photos.ts';
 
@@ -90,5 +90,31 @@ describe('the pictures’ seed', () => {
       [mediaIdOf(bytes(1))]: Buffer.from(bytes(1)).toString('base64'),
       [mediaIdOf(bytes(2))]: Buffer.from(bytes(2)).toString('base64'),
     });
+  });
+});
+
+describe('the requirements’ seed', () => {
+  it('carries each place’s requirements the replay ends with, those told alone', () => {
+    const at = new Date(T).toISOString();
+    const place = (code: string, told: string | null) => ({
+      name: `Il Posto ${code}`,
+      level: told === null ? null : 3,
+      items: told === null ? [] : [{ item: 'una pigna', rarity: code, tags: [], level: null }],
+      guardians: told === null ? [] : ['B2'],
+      exits: [{ name: 'Il Posto B2', code: 'B2' }],
+      as_of: at,
+      requirements_as_of: told,
+      media: [],
+    });
+    expect(requirementsSeedOf({ places: { B3: place('B3', at), B4: place('B4', null) } })).toEqual({
+      B3: {
+        name: 'Il Posto B3',
+        level: 3,
+        items: [{ item: 'una pigna', rarity: 'B3', tags: [], level: null }],
+        guardians: ['B2'],
+        as_of: at,
+      },
+    });
+    expect(requirementsSeedOf(undefined)).toEqual({});
   });
 });

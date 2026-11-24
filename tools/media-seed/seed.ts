@@ -1,10 +1,13 @@
 /**
- * The places' pictures, from a replay of the exports (tools/media-seed/README.md): each sight the
- * state takes live (a season's creation card, an arrival, a `/v`: src/media.ts's `sightOf`) whose
- * message the exports hold a photo of, as the seed `loregame-state` takes at its next start
- * (`media-seed` in its store): each place's list, `via: "export"`, and each picture's bytes once.
+ * The places' pictures and requirements, from a replay of the exports
+ * (tools/media-seed/README.md), as the seed `loregame-state` takes at its next start (`media-seed`
+ * in its store): each sight the state takes live (a season's creation card, an arrival, a `/v`:
+ * src/media.ts's `sightOf`) whose message the exports hold a photo of, each place's list, `via:
+ * "export"`, and each picture's bytes once; and each place's requirements as the replayed state
+ * holds them at its end, with when they were told.
  */
 import { type BusEvent, mediaKind } from '@megabottron1999/core';
+import { type LoreState } from '@regnotron/game-bots/loregame-state.ts';
 import { sightOf, withMedia } from '@regnotron/game-bots/media.ts';
 import { type MediaSeed } from '@regnotron/game-bots/plugins/loregame-state.ts';
 
@@ -43,4 +46,30 @@ export function mediaSeedOf(
       seed.files[photo.id] = Buffer.from(read(photo.file)).toString('base64');
   }
   return seed;
+}
+
+/**
+ * Each place's requirements in `state` (a replay's, at its end: `loregame-state`'s), those told
+ * alone, as a seed carries them: its level, items and guardians, and when they were told.
+ */
+export function requirementsSeedOf(state: unknown): NonNullable<MediaSeed['requirements']> {
+  const places = ((state as Partial<LoreState> | undefined)?.places ?? {}) as LoreState['places'];
+  return Object.fromEntries(
+    Object.entries(places).flatMap(([code, p]) =>
+      p.requirements_as_of == null
+        ? []
+        : [
+            [
+              code,
+              {
+                name: p.name,
+                level: p.level,
+                items: p.items,
+                guardians: p.guardians,
+                as_of: p.requirements_as_of,
+              },
+            ],
+          ]
+    )
+  );
 }

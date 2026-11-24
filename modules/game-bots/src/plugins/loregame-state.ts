@@ -36,7 +36,8 @@
  *   profile that says otherwise of a stat held exactly is announced as `loregame-state.statsDrift`.
  * - **Inventories and places:** `state.inventory({ player? })` and `state.holders({ item })`
  *   (every player's items, and who holds one); `state.places()` (each place's level, items and
- *   guardians asked, and its exits), `state.guardians()` (the places a guardian has been made at,
+ *   guardians asked, when those were told, and its exits; a seed's, tools/media-seed, taken at
+ *   the next start where those held are older, or none), `state.guardians()` (the places a guardian has been made at,
  *   by anyone, as told) and `state.trip({ to, player?, at? })` (a trip planned before it is made:
  *   its way, and what each step takes of the player, src/trips.ts).
  * - **The market** (docs/game-bots.md §5.11): `state.market()` (the companies there are, by id, each
@@ -141,7 +142,7 @@ import {
   sightOf,
   wantsPicture,
 } from '#src/media.ts';
-import { LOREGAME_PARSER } from '#src/plugins/loregame.ts';
+import { LOREGAME_PARSER, REQUIREMENTS_EVENT } from '#src/plugins/loregame.ts';
 import { statsOf } from '#src/stats.ts';
 import { tripOf } from '#src/trips.ts';
 
@@ -706,6 +707,32 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.46.0 keeps when each place's requirements were told, apart from its exits: those it holds
+    // as of its latest change, a place none were told of none (a seed's then taken).
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const places = kept?.state?.['places'] as Record<string, Record<string, unknown>> | undefined;
+      if (kept?.state === undefined || places === undefined) return;
+      const told = (p: Record<string, unknown>): boolean =>
+        (p['level'] ?? null) !== null ||
+        ((p['items'] as unknown[] | undefined) ?? []).length > 0 ||
+        ((p['guardians'] as unknown[] | undefined) ?? []).length > 0;
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          places: Object.fromEntries(
+            Object.entries(places).map(([code, p]) => [
+              code,
+              {
+                ...p,
+                requirements_as_of: p['requirements_as_of'] ?? (told(p) ? p['as_of'] : null),
+              },
+            ])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -877,13 +904,31 @@ const config = (base.manifest.config as Config).extend({
 
 /** Its input to the account's `photo` (MegaBotTron1999's D151): optional, its edge the leave. */
 export const PHOTO_INPUT = 'photo';
-/** The document a seed of pictures is put in (tools/media-seed), taken at the next start. */
+/**
+ * The document a seed of the exports is put in (tools/media-seed): the places' pictures and their
+ * requirements, taken at the next start.
+ */
 export const MEDIA_SEED = 'media-seed';
 
-/** What a seed holds: each place's pictures, and each picture's bytes (base64), by id. */
+/**
+ * What a seed holds: each place's pictures, and each picture's bytes (base64), by id; and each
+ * place's requirements as last told in the exports (`as_of`), if any (0.46.0's seeds).
+ */
 const seedSchema = z.object({
   places: z.record(z.string(), z.object({ name: z.string(), media: z.array(mediaEntrySchema) })),
   files: z.record(z.string(), z.string()),
+  requirements: z
+    .record(
+      z.string(),
+      z.object({
+        name: z.string(),
+        level: z.number().nullable(),
+        items: stateSchema.shape.places.valueType.shape.items,
+        guardians: z.array(z.string()),
+        as_of: z.iso.datetime(),
+      })
+    )
+    .optional(),
 });
 export type MediaSeed = z.infer<typeof seedSchema>;
 
@@ -1036,9 +1081,32 @@ async function create(ctx: PluginContext): Promise<Instance> {
         entries += 1;
         give({ entity: 'place', key, name: place.name, ...m.source }, m);
       }
+    // Each place's requirements, as of when told: the state keeps those told since, if any.
+    const told = Object.entries(r.data.requirements ?? {});
+    const before = places();
+    for (const [code, q] of told)
+      deliver?.(
+        {
+          type: REQUIREMENTS_EVENT,
+          t: Date.parse(q.as_of),
+          chat: '',
+          place: { name: q.name, code },
+          level: q.level,
+          items: q.items,
+          guardians: q.guardians,
+          met: null,
+        },
+        undefined
+      );
+    const after = places();
+    const taken = told.filter(
+      ([code]) => (Object.hasOwn(before, code) ? before[code] : undefined) !== after[code]
+    ).length;
     // Once the state that took it is kept: its save is a microtask the entries queued before.
     queueMicrotask(() => ctx.store.remove(MEDIA_SEED));
-    ctx.log.info(`${MEDIA_SEED} taken: ${entries} picture(s) of places, ${files} file(s) new`);
+    ctx.log.info(
+      `${MEDIA_SEED} taken: ${entries} picture(s) of places, ${files} file(s) new, ${taken} of ${told.length} place(s)' requirements`
+    );
   };
 
   /** A picture's bytes, by its id (the core's `Media`, D153): none if not kept; why not, never thrown. */

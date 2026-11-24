@@ -12,7 +12,10 @@
  *   d'accesso per <place> [<code>] (oggetti consumati all'arrivo)", the level, then the items, under
  *   "Ti serve:" and "Hai già:"). The same block tells a place's requirements anywhere the bot
  *   writes it: an answer that changed them ("La modalità d'accesso alla stagione [<code>] è
- *   cambiata!").
+ *   cambiata!"), and the answer to `/requisiti <name>` (`/req`), the block alone, split by what
+ *   the asking player holds as a refusal's is. `/requisiti` matches a place by a part of its name
+ *   (not its code); any other is "Elemento non trovato o utente non registrato!", which says
+ *   nothing of a place and is not read. A place that asks no item lists its level alone.
  * - **A name not among the exits** (`/vai <name>` matches only those, by any part of the name or
  *   code; the place one is at is none): "Stagione non trovata!". It changes nothing, and is not read.
  *
@@ -50,6 +53,9 @@ export interface Requirements {
   guardians: string[];
   met: string[] | null;
 }
+
+/** `/requisiti`, a place's requirements, then its aliases (the bot takes `/req` the same). */
+export const REQUIREMENTS_COMMANDS: readonly string[] = ['/requisiti', '/req'];
 
 /** What an answer to `/vai` or `/v` says. */
 export type Travel =

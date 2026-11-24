@@ -40,7 +40,8 @@
  *
  * **The inventory and the places** (docs/game-bots.md §5.8, §5.9): `/zaino` and `/i`, a page at a
  * time (its pages are its edits, its buttons tell which), as `loregame.inventory`; `/vai` and `/v`,
- * as `loregame.travel`; and any place's requirements the bot states, as `loregame.requirements`. A
+ * as `loregame.travel`; and any place's requirements the bot states (a refusal, `/requisiti`), as
+ * `loregame.requirements`, with the guardians made where it tells them. A
  * neutralizing ticket used (its answer names its player) and, in private, the owner's neutrality
  * ended, as `loregame.neutral`.
  * A gift (`/give`, `/dai`, §5.10), paired with its giver as the accumulo's answers are, as
@@ -97,7 +98,13 @@ import {
   MarketWatch,
   parseMarket,
 } from '#src/market.ts';
-import { parseNeutrality, parseTravel, placeRequirements, type Requirements } from '#src/places.ts';
+import {
+  parseNeutrality,
+  parseTravel,
+  placeRequirements,
+  type Requirements,
+  REQUIREMENTS_COMMANDS,
+} from '#src/places.ts';
 import { PlayerWatch } from '#src/players.ts';
 import { parseProfile } from '#src/profile.ts';
 import { parseRecipeMade, parseRecipeNeeds, parseRecipes } from '#src/recipes.ts';
@@ -123,7 +130,8 @@ export const LOREGAME_PARSER = 'loregame';
 /**
  * @LoreGameBot's vocabulary (MegaBotTron1999's D140, D141): its turn, by its own command first and
  * its aliases after; the accumulo, by its full name, with `/acc` its alias, as the bot takes
- * both; and the training. The parser's, and given to `loregame-state`'s readiness too.
+ * both; the training; and `/requisiti` (`/req`), a place's requirements, which any player may ask
+ * at any time. The parser's, and given to `loregame-state`'s readiness too.
  */
 export const LOREGAME_VOCABULARY = {
   bot: LOREGAMEBOT,
@@ -131,6 +139,7 @@ export const LOREGAME_VOCABULARY = {
   commands: {
     [ACCUMULO]: { aliases: ACCUMULO_COMMANDS.slice(1) },
     [TRAINING]: { aliases: TRAINING_COMMANDS.slice(1) },
+    [REQUIREMENTS_COMMANDS[0] as string]: { aliases: REQUIREMENTS_COMMANDS.slice(1) },
   },
 };
 /** Every form of `names` a player may send (D139, D140): each bare, then addressed to the bot. */
@@ -428,6 +437,12 @@ const requirementsEvent = z
       .array(z.string())
       .describe(
         '"Almeno un guardiano [generato da] [<code>]": one made there by anyone, consumed by none'
+      ),
+    met: z
+      .array(z.string())
+      .nullable()
+      .describe(
+        'Of `guardians`, those already made, by anyone ("Hai già:", the same for every player); none if the block is not split'
       ),
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
@@ -1237,11 +1252,11 @@ export const loregamePlugin: Plugin = {
           ...here.map((h) => ({ place: h.place, requirements: h.requirements as Requirements })),
           ...placeRequirements(m.text),
         ]) {
-          // What the player has of them is theirs, on the move: the place's are the game's.
-          const { met: _, ...requirements } = r.requirements;
+          // The items the player holds are theirs, on the move: the place's are the game's, and so
+          // are the guardians made (listed as made for every player once one is).
           ctx.bus.publish(
             REQUIREMENTS_EVENT,
-            { chat: m.chat, place: r.place, ...requirements, ...old },
+            { chat: m.chat, place: r.place, ...r.requirements, ...old },
             m.time
           );
         }

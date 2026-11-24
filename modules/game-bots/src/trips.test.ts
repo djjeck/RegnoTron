@@ -19,6 +19,7 @@ const place = (
   guardians,
   exits: exits.map((code) => ({ name: code, code })),
   as_of: AT,
+  requirements_as_of: AT,
   media: [],
 });
 const stat = (value: unknown, exact = true) => ({ value, exact, as_of: AT });

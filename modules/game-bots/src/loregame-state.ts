@@ -601,6 +601,12 @@ export const stateSchema = z.object({
           .array(z.object({ name: z.string(), code: z.string() }))
           .describe('Where one can go'),
         as_of: z.string().describe('Told'),
+        requirements_as_of: z
+          .string()
+          .nullable()
+          .describe(
+            'When its level, items and guardians were last told (a statement, an arrival): none if never'
+          ),
         media: z
           .array(mediaEntrySchema)
           .describe(
@@ -1828,6 +1834,7 @@ const requirementsSchema = z.looseObject({
   level: z.number().nullable(),
   items: z.array(placeItem),
   guardians: z.array(z.string()).optional(),
+  met: z.array(z.string()).nullable().optional(),
 });
 
 /** A place as the state keeps it. */
@@ -1844,6 +1851,7 @@ function placeIn(s: LoreState, place: { name: string; code: string }): PlaceStat
       guardians: [],
       exits: [],
       as_of: '',
+      requirements_as_of: null,
       media: [],
     }
   );
@@ -1856,15 +1864,19 @@ function placeIn(s: LoreState, place: { name: string; code: string }): PlaceStat
  * states them, and where one can go from it, are the game's (`places`). Entering takes the place's
  * items whichever way one comes, up or down [M]: what an arrival consumed is what the place takes
  * now, none if it consumed none. A guardian a place asks is one made at another, by anyone
- * (`guardians`): a refusal tells which are made, an arrival that all were.
+ * (`guardians`): a refusal or a `/requisiti` tells which are made, an arrival that all were. A
+ * statement of requirements older than those held (`requirements_as_of`: a seed's, from the
+ * exports) is not taken.
  */
 function reducePlaces(state: LoreState, e: BusEvent): LoreState {
   const at = asIso(e.t);
   if (e.type === REQUIREMENTS_EVENT) {
     const r = requirementsSchema.safeParse(e);
     if (!r.success) return state;
-    const { place, level, items, guardians } = r.data;
+    const { place, level, items, guardians, met } = r.data;
     const was = placeIn(state, place);
+    if (was.requirements_as_of !== null && was.requirements_as_of > at) return state;
+    const asked = guardians ?? [];
     return {
       ...state,
       places: {
@@ -1874,10 +1886,20 @@ function reducePlaces(state: LoreState, e: BusEvent): LoreState {
           name: place.name,
           level,
           items,
-          guardians: guardians ?? [],
-          as_of: at,
+          guardians: asked,
+          as_of: was.as_of > at ? was.as_of : at,
+          requirements_as_of: at,
         },
       },
+      // The guardians made, by anyone [M], where the block is split: codes, no key of Object's.
+      ...(met === null || met === undefined || asked.length === 0
+        ? {}
+        : {
+            guardians: {
+              ...state.guardians,
+              ...Object.fromEntries(asked.map((g) => [g, met.includes(g)])),
+            },
+          }),
     };
   }
   if (e.type !== TRAVEL_EVENT) return state;
@@ -1925,7 +1947,13 @@ function reducePlaces(state: LoreState, e: BusEvent): LoreState {
       ...s,
       places: {
         ...s.places,
-        [d.place.code]: { ...was, name: d.place.name, items: d.consumed ?? [], as_of: at },
+        [d.place.code]: {
+          ...was,
+          name: d.place.name,
+          items: d.consumed ?? [],
+          as_of: at,
+          requirements_as_of: at,
+        },
       },
     };
   }
