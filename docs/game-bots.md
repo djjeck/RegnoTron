@@ -730,10 +730,14 @@ nothing [M: none of the exports' does]:
 Scrivi /ricetta <nome ricetta> per vedere quali oggetti ti mancano per una certa ricetta!
 ```
 
-- **`/ricetta`** lists the recipes a player can make (or `Nessuna ricetta creata finora.`): each
-  one's level, `[L<n>]`, and `[manca <n>]`, how many items they lack, the lines its answer lists as
-  lacking [M: 34 of 34]; or `[*]`, which the bot does not explain [?] (4 times in the exports, on
-  one recipe, for players seen making it).
+- **`/ricetta`** lists the game's recipes (or `Nessuna ricetta creata finora.`), **the whole
+  catalogue, the same for every player** [M: every list of the owner's export of October–November
+  2026 names every recipe there was then, 11 at its end]: each one's level, `[L<n>]`, and
+  `[manca <n>]`, how many items they lack, the lines its answer lists as lacking [M: 34 of 34]; or
+  **`[*]`, a recipe they have made already** [M], listed after the others, in place of how many they
+  lack (24 in that export: every player seen making a recipe had it starred in their next list, 5 of
+  5, and none seen making one lacked the mark after; `[manca 0]`, all held, is not it). The profile
+  counts the recipes made (`<n> Ricette completate`), not which.
 - **`/ricetta <name>`** (any part of a name) answers what a recipe lacking something lacks, then
   what is held of what it takes, each with the player's whole count (`Mentre hai già:`, absent when
   nothing is), an item a line as in an inventory (§5.8):
@@ -888,13 +892,17 @@ It is a floor, not the truth, while the turns are all it reads:
   an item lacking, which its player holds none of; none if not known) and what it gives (`made`,
   once seen made), as any player's list and answers last told; and each player's (`recipes` in their
   record), as their list and answers last told: `level`, `lacking` (how many items) and `items`
-  (which, from an answer, while as many lack), `starred` (`[*]`). A list is the player's whole: the
+  (which, from an answer, while as many lack), `starred` (made already: `[*]` in their list, or a
+  make of theirs seen since; a later list is the authority). A list is the player's whole: the
   recipes it does not name are gone. **An answer is evidence of the inventory:** each item held,
   exactly so many; each lacking, none. **A recipe made** takes its items out (exact while they
   were), puts what it gives in, as a drop (`via: recipe`), and adds one to the player's `recipes`
   (exact if it was); which recipe it was is told by the items it took, or what it gave, when one
-  recipe alone fits. `state.recipe({ name, player? })` answers one, by its name or a part of it as
-  `/ricetta` does, with a player's own (the owner's unless named).
+  recipe alone fits, and marks it made for the player (`starred`). **What a recipe gives is the
+  game's secret** until made: `made` is kept for choosing (which recipes lead to a place's
+  requirement); a consumer must never show it to players, nor to anything that writes to them.
+  `state.recipe({ name, player? })` answers one, by its name or a part of it as `/ricetta` does,
+  with a player's own (the owner's unless named).
 - **The catalogue** (`catalogue`, `state.catalogue()`): every item seen in the game, by name, its
   `rarity` and `tags` as last told (an item told without its rarity, a gift's at times, keeps the
   one known), when it was `first` seen and how (`via`: `drop`, anyone's turn; `level-up`;

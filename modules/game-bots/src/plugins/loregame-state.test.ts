@@ -2579,12 +2579,29 @@ describe('the catalogue, every item seen in the game (§6)', () => {
       name: 'La zuppa',
       level: 1,
       made: { item: 'il brodo' },
-      player: { lacking: null },
+      // Made: marked as their list will mark it.
+      player: { lacking: null, starred: true },
     });
     expect(run.read('inventory', { player: 'bob' })).toMatchObject({
       items: { 'una pentola': { qty: 1, exact: true }, 'il brodo': { qty: 1, via: 'recipe' } },
     });
     expect(Object.keys(run.read('recipes') as object)).toEqual(['La zuppa']);
+    // Another player's make, with no list of theirs: made all the same.
+    await run.group(
+      'LoreGameBot',
+      '@carol, prendi in mano:\n- una pentola [B2] x1\n- una rapa [B1] x1\n\ne mescoli.\n\nOttieni: il brodo [L1]!'
+    );
+    expect(run.read('recipe', { name: 'zuppa', player: 'carol' })).toMatchObject({
+      player: { level: 1, lacking: null, items: null, starred: true },
+    });
+    // A list is the authority: one without the mark says it is not.
+    await run.group(
+      'LoreGameBot',
+      '@bob, ecco le ricette a tua disposizione:\n- La zuppa [L1] [manca 2]'
+    );
+    expect(run.read('recipe', { name: 'zuppa', player: 'bob' })).toMatchObject({
+      player: { lacking: 2, starred: false },
+    });
     await run.core.stop();
   });
 

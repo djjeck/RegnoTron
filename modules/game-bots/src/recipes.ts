@@ -6,8 +6,9 @@
  *
  * - **`/ricetta`**, the recipes a player can make: "@<p>, ecco le ricette a tua disposizione:", then
  *   "- <name> [L<n>] [manca <n>]" a line, `[manca <n>]` the lines its answer lists as lacking [M: 34
- *   of 34], or `[*]` [?]; or "Nessuna ricetta creata finora.". It ends in "Scrivi /ricetta <nome
- *   ricetta> per …".
+ *   of 34], or `[*]`, one they have made already [M], listed after the others; or "Nessuna ricetta
+ *   creata finora.". It ends in "Scrivi /ricetta <nome ricetta> per …". Every player is listed
+ *   every recipe of the game's [M].
  * - **`/ricetta <name>`** (any part of a name), a recipe lacking something: "@<p>, per fare la
  *   ricetta <name> ti mancano:", the items lacking ("- <item> [<rarity>][ [<tag>]…] x<n>"), then,
  *   if any is held, "Mentre hai già:" and the items held, each with the player's whole count. An
@@ -29,7 +30,7 @@ export interface RecipeListed {
   level: number;
   /** How many items they lack for it (`[manca <n>]`); none for `[*]`. */
   lacking: number | null;
-  /** `[*]` [?]: seen on recipes the player had made. */
+  /** `[*]`: one they have made already [M], listed last, in place of `[manca <n>]`. */
   starred: boolean;
 }
 

@@ -339,7 +339,9 @@ const playerRecipe = z.object({
     .array(z.string())
     .nullable()
     .describe('The items they lack, as its answer named them; none if not known'),
-  starred: z.boolean().describe('Marked [*] in their list (not explained by the bot)'),
+  starred: z
+    .boolean()
+    .describe('Made by them already: marked [*] in their list, or a make of theirs seen since'),
   as_of: z.string().describe('Told'),
 });
 
@@ -2958,11 +2960,17 @@ function reduceRecipes(state: LoreState, e: BusEvent): LoreState {
   }
   theirs(
     (r) => {
-      const was = which === undefined ? undefined : ownOf(r, which);
-      // What they lack now is not known: what it took may have been all they held.
-      return which === undefined || was === undefined
-        ? r
-        : withKey(r, which, { ...was, lacking: null, items: null, as_of: at });
+      if (which === undefined) return r;
+      const was = ownOf(r, which);
+      // Made: their list marks it `[*]` from now on (§5.14), until a list says otherwise. What
+      // they lack now is not known: what it took may have been all they held.
+      return withKey(r, which, {
+        level: was?.level ?? recipe?.level ?? null,
+        lacking: null,
+        items: null,
+        starred: true,
+        as_of: at,
+      });
     },
     (st) =>
       Object.hasOwn(st, 'recipes') ? move(st, 'recipes', (v) => Number(v) + 1, true, at) : st

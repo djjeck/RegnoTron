@@ -191,8 +191,10 @@ they lack, and what they hold of what it takes) and a recipe made are published 
 `loregame.recipes`, `loregame.recipe` and `loregame.recipeMade`, each for the player it names. The
 state keeps the game's recipes (each one's level, what it takes and gives) and each player's (how
 many items they lack, and which); an answer sets the inventory of the items it names, exactly; a
-recipe made takes its items out, puts what it gives in, and adds one to the player's `recipes`
-(docs/game-bots.md §5.14, §6).
+recipe made takes its items out, puts what it gives in, adds one to the player's `recipes`, and
+marks it made for them (`starred`, as their list's `[*]` does; a later list is the authority). What
+a recipe gives (`made`) is the game's secret: use it to choose, never show it to players or to what
+writes to them (docs/game-bots.md §5.14, §6).
 
 **The catalogue.** Every item any of these events names with its rarity (a drop, a level-up, an
 inventory, a gift, a place's requirements, the shop), anyone's, is kept once in the state's
