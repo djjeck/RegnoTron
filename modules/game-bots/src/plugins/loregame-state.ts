@@ -22,6 +22,9 @@
  *   item the owner holds), `state.held()` (every item held, with its count), `state.ban({ player? })`
  *   (a player's ban, the owner's unless named; `bannedUntil` in `src/bans.ts` is the actor's
  *   helper over it) and `state.bans()` (every banned player).
+ * - **The bot's health** (`state.health()`, docs/game-bots.md §5.16): whether it is answering now,
+ *   as the parser's `loregame.health` tells each change, with its latest outages; and the probe,
+ *   `/info`, offered to a player once per suspicion (`foldReadiness`).
  * - **The accumulo** (`state.accumulo()`, `accumuloReady` in `src/accumulo.ts` is the actor's
  *   check): the turns counted since it was last emptied, the bot's word that it is full (`ready`),
  *   and the `drift` between the two. `loregame-state.accumuloReady`, `accumuloUsed` and
@@ -105,6 +108,7 @@ import {
   held,
   holdersOf,
   initialAccumulo,
+  initialHealth,
   initialInventory,
   initialMarket,
   initialPlayer,
@@ -735,6 +739,12 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.50.0 keeps the bot's health: added, answering as far as it knows.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined || kept.state['health'] !== undefined) return;
+      store.write('state', { ...kept, state: { ...kept.state, health: initialHealth() } });
+    },
   ],
   queries: {
     ban: {
@@ -900,6 +910,11 @@ const base = statePlugin<Kept>({
         const all = held(s);
         return Object.hasOwn(all, input.name) ? (all[input.name] as number) : 0;
       },
+    },
+    health: {
+      help: "Whether @LoreGameBot is answering now (docs/game-bots.md §5.16): up, slow (held up where commands wait, alive in private), suspect, down, or catching-up (replaying what it missed); since when, why, its last reply's latency, and its latest outages",
+      output: z.looseObject({ state: z.string(), since: z.string().nullable() }),
+      run: (s) => s.health,
     },
     held: {
       help: 'Every item the owner holds, with its count',

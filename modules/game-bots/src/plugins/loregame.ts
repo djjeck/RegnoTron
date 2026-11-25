@@ -89,6 +89,13 @@ import { BanWatch } from '#src/bans.ts';
 import { parseEquip } from '#src/equipment.ts';
 import { BOX, GenerationWatch, parseBox } from '#src/generators.ts';
 import { GiftWatch } from '#src/gifts.ts';
+import {
+  type Health,
+  HEALTH_STATES,
+  type HealthKept,
+  HealthWatch,
+  PROBE_COMMAND,
+} from '#src/health.ts';
 import { pageOf, parseInventory } from '#src/inventory.ts';
 import {
   CASHOUT_COMMANDS,
@@ -130,8 +137,8 @@ export const LOREGAME_PARSER = 'loregame';
 /**
  * @LoreGameBot's vocabulary (MegaBotTron1999's D140, D141): its turn, by its own command first and
  * its aliases after; the accumulo, by its full name, with `/acc` its alias, as the bot takes
- * both; the training; and `/requisiti` (`/req`), a place's requirements, which any player may ask
- * at any time. The parser's, and given to `loregame-state`'s readiness too.
+ * both; the training; `/requisiti` (`/req`), a place's requirements, which any player may ask
+ * at any time; and `/info`, the profile, which is the health's probe (src/health.ts). The parser's, and given to `loregame-state`'s readiness too.
  */
 export const LOREGAME_VOCABULARY = {
   bot: LOREGAMEBOT,
@@ -140,6 +147,9 @@ export const LOREGAME_VOCABULARY = {
     [ACCUMULO]: { aliases: ACCUMULO_COMMANDS.slice(1) },
     [TRAINING]: { aliases: TRAINING_COMMANDS.slice(1) },
     [REQUIREMENTS_COMMANDS[0] as string]: { aliases: REQUIREMENTS_COMMANDS.slice(1) },
+    // The owner's profile, and the health's probe (src/health.ts): `loregame-state` offers it once
+    // per suspicion, to a player whose config names it.
+    [PROBE_COMMAND]: {},
   },
 };
 /** Every form of `names` a player may send (D139, D140): each bare, then addressed to the bot. */
@@ -196,6 +206,10 @@ export const USED_EVENT = `${LOREGAME_PARSER}.used`;
 export const RECIPES_EVENT = `${LOREGAME_PARSER}.recipes`;
 export const RECIPE_EVENT = `${LOREGAME_PARSER}.recipe`;
 export const RECIPE_MADE_EVENT = `${LOREGAME_PARSER}.recipeMade`;
+/** The event of each change of the bot's health (§5.16, src/health.ts). */
+export const HEALTH_EVENT = `${LOREGAME_PARSER}.health`;
+/** The store's document of the health, kept across a restart. */
+const HEALTH_DOC = 'health';
 /** The event of every purchase at the shop (§5.12), as its listing's edits tell it. */
 export const PURCHASE_EVENT = `${LOREGAME_PARSER}.purchase`;
 /** The store's document of the bans it knows. */
@@ -225,6 +239,13 @@ const parser: Plugin = turnParserPlugin({
       const outcome = parseLoreGameBot(m.text);
       // Banned: nothing spent; the ban holds every command (`loregame-state`'s readiness).
       return outcome.kind === 'banned' ? bannedReading(outcome.until) : { unread: true };
+    }
+    if (m.command === PROBE_COMMAND) {
+      // The profile: the probe answered, a success, read in full by the profile's watch.
+      if (parseProfile(m.text) !== undefined)
+        return { outcome: { bot: LOREGAMEBOT, kind: 'profile' } as unknown as TurnOutcome };
+      const said = parseLoreGameBot(m.text);
+      return said.kind === 'banned' ? bannedReading(said.until) : { unread: true };
     }
     if (!m.answers && !(m.private && m.replies)) return undefined;
     const outcome = parseLoreGameBot(m.text);
@@ -279,6 +300,16 @@ const unbanEvent = z
   .describe(
     'A banned player served again by @LoreGameBot: their ban is over (it lifts them early)'
   );
+
+const healthEvent = z
+  .object({
+    state: z
+      .enum(HEALTH_STATES)
+      .describe('Answering, slow in a chat, silent, gone, or replaying what it missed'),
+    reason: z.string().describe('What moved it'),
+    latency: z.number().optional().describe("The bot's last reply's latency, if known (ms)"),
+  })
+  .describe("The bot's health changed: whether it is answering now (docs/game-bots.md §5.16)");
 
 const accumuloEvent = z
   .object({
@@ -829,6 +860,7 @@ export const loregamePlugin: Plugin = {
       [BAN_EVENT]: banEvent,
       [UNBAN_EVENT]: unbanEvent,
       [ACCUMULO_EVENT]: accumuloEvent,
+      [HEALTH_EVENT]: healthEvent,
       [TRAINING_EVENT]: trainingEvent,
       [LEVEL_UP_EVENT]: levelUpEvent,
       [PROFILE_EVENT]: profileEvent,
@@ -877,6 +909,30 @@ export const loregamePlugin: Plugin = {
     );
     const asked = new AccumuloWatch(LOREGAMEBOT);
     const players = new PlayerWatch(LOREGAMEBOT);
+    // The bot's health (§5.16): fed what is heard live and the sends, ticked while a silence may
+    // move it, kept across a restart, each change published.
+    const health = new HealthWatch(
+      LOREGAMEBOT,
+      ctx.store.read<HealthKept>(HEALTH_DOC),
+      ctx.clock.now()
+    );
+    let tick: ReturnType<typeof ctx.clock.setTimeout> | undefined;
+    const changed = (h: Health | undefined): void => {
+      if (h !== undefined) {
+        ctx.store.write(HEALTH_DOC, health.kept());
+        ctx.log.info(`the bot is ${h.state}: ${h.reason}`);
+        const { since, ...rest } = h;
+        ctx.bus.publish(HEALTH_EVENT, rest, since);
+      }
+      ctx.clock.clearTimeout(tick);
+      tick = undefined;
+      const due = health.due();
+      if (due === undefined) return;
+      tick = ctx.clock.setTimeout(
+        () => changed(health.tick(ctx.clock.now())),
+        due - ctx.clock.now()
+      );
+    };
     /** Whose each inventory listing is, by its message, as its first page named them. */
     const listings = new Map<string, string>();
     /**
@@ -1056,6 +1112,7 @@ export const loregamePlugin: Plugin = {
     };
     chat.onMessage((m) => {
       const old = m.playback ? { playback: true as const } : {};
+      if (!m.playback) changed(health.hear(m));
       // While an owner's /accumulo or /allenati waits for its answer, each message of the bot's in
       // that chat is logged (its id, a reply or not, never its text), with what the watch made of
       // it: an answer the parser does not pair shows whether it arrived at all.
@@ -1333,12 +1390,17 @@ export const loregamePlugin: Plugin = {
     const turns = instance.interface as TurnParserInterface;
     return {
       ...instance,
+      stop: async () => {
+        ctx.clock.clearTimeout(tick);
+        await instance.stop?.();
+      },
       interface: {
         actions: {
           // The account never hears its own sends: the watches learn of the player's here, as the
           // parser does, to pair their answers.
           sent: (sent: SentCommand) => {
             turns.actions.sent(sent);
+            changed(health.sent(sent));
             asked.sent(sent);
             trained.sent(sent);
             gifts.sent(sent);

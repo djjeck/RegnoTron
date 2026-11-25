@@ -65,6 +65,7 @@ import { z } from 'zod';
 import { ACCUMULO, ACCUMULO_MAX, ACCUMULO_MECHANICS } from '#src/accumulo.ts';
 import { type Companies, type Company, companyOf, idOf, paged, quoted } from '#src/companies.ts';
 import { GENERATORS } from '#src/generators.ts';
+import { HEALTH_STATES, PROBE_COMMAND } from '#src/health.ts';
 import { initialSchedule, type Point, scheduled, type Via } from '#src/market.ts';
 import {
   MEDIA_EVENT,
@@ -88,6 +89,7 @@ import {
   EQUIPMENT_EVENT,
   GENERATED_EVENT,
   GIFT_EVENT,
+  HEALTH_EVENT,
   INVENTORY_EVENT,
   INVEST_EVENT,
   INVESTMENTS_EVENT,
@@ -135,6 +137,8 @@ export const LOREGAME_STATE = 'loregame-state';
  * level-ups, the profiles, the skills menus and the equipment, every player's.
  */
 const TURN_EVENT = `${LOREGAME_PARSER}.turn`;
+/** A send the parser was told of (the readiness's), which ends the probe's offer. */
+const SENT_EVENT = `${LOREGAME_PARSER}.sent`;
 export const CONSUMES: readonly string[] = [
   TURN_EVENT,
   BAN_EVENT,
@@ -166,6 +170,7 @@ export const CONSUMES: readonly string[] = [
   RECIPE_MADE_EVENT,
   // A picture fetched: the state's own, handed to its reducer, never published (src/media.ts).
   MEDIA_EVENT,
+  HEALTH_EVENT,
 ];
 
 /**
@@ -196,6 +201,9 @@ export const LORE_READINESS = new LoreReadinessModel({
     [TRAINING]: TRAINING_MECHANICS,
     // It asks a place's name, the person's to choose: a player never plays it by default.
     [REQUIREMENTS_COMMANDS[0] as string]: { interactive: true },
+    // The health's probe (src/health.ts): unlocked once per suspicion, its answer (or its send)
+    // ends it; interactive, so that only a player whose config names it sends it, in its chat.
+    [PROBE_COMMAND]: { unlock: {}, interactive: true },
   },
 });
 
@@ -229,6 +237,13 @@ const BAN_HOLD = 'ban';
  * not full, whatever the state believed (a use it did not hear, a start that knew nothing).
  */
 export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
+  // The probe is offered while the bot is suspect, once: a send of it, or any other health, ends it.
+  if (e.type === HEALTH_EVENT)
+    return e['state'] === 'suspect'
+      ? LORE_READINESS.unlock(r, PROBE_COMMAND, e.t)
+      : LORE_READINESS.lock(r, PROBE_COMMAND);
+  if (e.type === SENT_EVENT && LORE_READINESS.name(String(e['command'] ?? '')) === PROBE_COMMAND)
+    return LORE_READINESS.lock(r, PROBE_COMMAND);
   if (e.type === TURN_EVENT) {
     const o = outcomeOf(e);
     // A turn says it only when whole (one cut off lost its line) and not quoting it (a story's).
@@ -577,6 +592,31 @@ const recipeSchema = z.object({
 });
 export type Recipe = z.infer<typeof recipeSchema>;
 
+/** How many of the bot's outages the health keeps, the oldest dropped first. */
+export const OUTAGES_KEPT = 20;
+const healthSchema = z.object({
+  state: z.enum(HEALTH_STATES),
+  since: date.describe('Since when'),
+  reason: z.string().describe('What moved it'),
+  latency: z.number().nullable().describe("The bot's last reply's latency (ms)"),
+  outages: z
+    .array(
+      z.object({
+        start: z.string().describe('Suspected'),
+        down: date.describe('Found down'),
+        replay: date.describe('Its replay began'),
+        end: date.describe('Answering again'),
+      })
+    )
+    .describe('Each time it stopped answering, the latest last'),
+});
+export type HealthSection = z.infer<typeof healthSchema>;
+
+/** The health of a fresh instance: answering, as far as it knows. */
+export function initialHealth(): HealthSection {
+  return { state: 'up', since: null, reason: 'nothing heard yet', latency: null, outages: [] };
+}
+
 /** The state's schema: its sections, each described for the panel. */
 export const stateSchema = z.object({
   owner: z
@@ -705,6 +745,7 @@ export const stateSchema = z.object({
   recipes: z
     .record(z.string(), recipeSchema)
     .describe("The game's recipes, by name: their level, what they take and give, as last told"),
+  health: healthSchema.describe("The bot's health: whether it is answering now"),
 });
 
 export type Holding = z.infer<typeof holding>;
@@ -744,6 +785,7 @@ export function initialState(): LoreState {
     shop: initialShop(),
     catalogue: {},
     recipes: {},
+    health: initialHealth(),
   };
 }
 
@@ -1758,7 +1800,47 @@ const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
   reduceRecipes,
   reduceCatalogue,
   reduceMedia,
+  reduceHealth,
 ];
+
+/**
+ * The bot's health, as the parser tells each change (src/health.ts): the state, and each outage, from
+ * its suspicion to its end, with when it was found down and when its replay began. A suspicion that
+ * ended at once, a slow chat, is one too: the bot stopped answering where commands waited.
+ */
+function reduceHealth(state: LoreState, e: BusEvent): LoreState {
+  if (e.type !== HEALTH_EVENT) return state;
+  const said = z.enum(HEALTH_STATES).safeParse(e['state']);
+  if (!said.success) return state;
+  const now = said.data;
+  const at = asIso(e.t);
+  const was = state.health;
+  let outages = [...was.outages];
+  const open =
+    outages.at(-1)?.end === null ? (outages.pop() as HealthSection['outages'][number]) : undefined;
+  if (now === 'up') {
+    if (open !== undefined) outages.push({ ...open, end: at });
+  } else {
+    const o = open ?? { start: at, down: null, replay: null, end: null };
+    outages.push({
+      ...o,
+      down: o.down ?? (now === 'down' ? at : null),
+      replay: o.replay ?? (now === 'catching-up' ? at : null),
+    });
+  }
+  outages = outages.slice(-OUTAGES_KEPT);
+  const latency = e['latency'];
+  return {
+    ...state,
+    health: {
+      state: now,
+      since: at,
+      reason: typeof e['reason'] === 'string' ? e['reason'] : '',
+      latency: typeof latency === 'number' ? latency : was.latency,
+      outages,
+    },
+  };
+}
 
 export function reduce(state: LoreState, e: BusEvent): LoreState {
   const next = STEPS.reduce((s, step) => step(s, e), state);

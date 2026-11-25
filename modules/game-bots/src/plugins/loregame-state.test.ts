@@ -77,6 +77,7 @@ describe('the loregame-state node', () => {
       'reach',
       'holders',
       'count',
+      'health',
       'held',
       // The owner's readiness, for a shell player (D141).
       'ready',
@@ -360,6 +361,7 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.ban',
       'loregame.unban',
       'loregame.accumulo',
+      'loregame.health',
       'loregame.training',
       'loregame.levelUp',
       'loregame.profile',
@@ -540,6 +542,8 @@ describe('the accumulo, for a shell player', () => {
       // A place's requirements: it asks a place's name, so it is the person's, never played by
       // default.
       { command: '/requisiti', aliases: ['/req'], interactive: true },
+      // The health's probe: offered once per suspicion, only to a player whose config names it.
+      { command: '/info', unlock: {}, interactive: true },
     ]);
   });
 
@@ -692,6 +696,84 @@ describe('the accumulo, for a shell player', () => {
     // An answer it cannot read is drift, as a turn's.
     run.clock.advance(7 * 60 * MIN);
     await play(run, 'Qualcosa che il bot non ha mai scritto.');
+    expect(run.core.drift().find((d) => d.parser === 'loregame')).toMatchObject({ unread: 1 });
+    await run.core.stop();
+  });
+});
+
+/** A profile, the answer to `/info` (invented). */
+const PROBE_PROFILE = [
+  '👤 alice',
+  '',
+  '👥 Nessuna azienda',
+  '',
+  'Livello 3 (40 ⚔️)',
+  '▓░░░░░░░░░ 10.00%',
+  '',
+  'Il Bene 😇',
+  'Episodio 1.200',
+  '0 Ricette completate',
+  '1.250 ₭',
+  '',
+  'Armatura 🛡 - (vuoto)',
+  'Amuleto 🩺 - (vuoto)',
+  'Arma 🗡 - una spatola (3 - 8)',
+].join('\n');
+
+describe("the bot's health", () => {
+  it('offers the probe once when the bot falls silent, and keeps the outage to its end', async () => {
+    const run = await bootState(path.join(dir, 'h'), { group: true });
+    expect(run.read('health')).toMatchObject({ state: 'up', outages: [] });
+    expect(run.ready()['/info']).toMatchObject({ ready: false, why: 'waits for an unlock' });
+    const bobs = await run.group('bob', '/lore');
+    // A minute of silence: suspect, the probe offered.
+    run.clock.advance(MIN);
+    await run.settle();
+    expect(run.of('loregame.health')).toMatchObject([
+      { state: 'suspect', reason: 'silent for 60 s while a command waited' },
+    ]);
+    expect(run.ready()['/info']).toMatchObject({ ready: true });
+    // Sent (by hand here): offered no more; unanswered for two minutes, down.
+    await run.owner('/info');
+    expect(run.ready()['/info']).toMatchObject({ ready: false });
+    run.clock.advance(2 * MIN);
+    await run.settle();
+    expect(run.read('health')).toMatchObject({
+      state: 'down',
+      reason: 'the probe went unanswered for 120 s',
+    });
+    // Hours later, the replay: catching up; then a fresh reply: up.
+    run.clock.advance(300 * MIN);
+    await run.group('LoreGameBot', 'Stai calmo maschio...', { replyTo: bobs });
+    expect(run.read('health')).toMatchObject({ state: 'catching-up' });
+    const carols = await run.group('carol', '/lore');
+    await run.group('LoreGameBot', gain('un sasso [B1]'), { replyTo: carols });
+    expect(run.of('loregame.health').map((e) => e['state'])).toEqual([
+      'suspect',
+      'down',
+      'catching-up',
+      'up',
+    ]);
+    const at = (m: number): string => new Date(T0 + m * MIN).toISOString();
+    expect(run.read('health')).toMatchObject({
+      state: 'up',
+      since: at(303),
+      reason: 'a reply in 0 s',
+      latency: 0,
+      outages: [{ start: at(1), down: at(3), replay: at(303), end: at(303) }],
+    });
+    // Up, the probe is offered no more.
+    expect(run.ready()['/info']).toMatchObject({ ready: false });
+    await run.core.stop();
+  });
+
+  it('reads the probe’s answer, the profile, as its success', async () => {
+    const run = await bootState(path.join(dir, 'i'));
+    await run.owner('/info');
+    await run.bot(PROBE_PROFILE);
+    expect(run.core.drift().find((d) => d.parser === 'loregame')).toMatchObject({ unread: 0 });
+    await run.owner('/info');
+    await run.bot('Qualcosa che il bot non ha mai scritto.');
     expect(run.core.drift().find((d) => d.parser === 'loregame')).toMatchObject({ unread: 1 });
     await run.core.stop();
   });

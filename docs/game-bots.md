@@ -792,6 +792,33 @@ up as unanswered only once the bot has answered more than 10 s past it, live or 
 keeps at most 1,000 waiting. An answer more than a minute after its command is marked `replayed`,
 with its command's time (`asked`), in the events that carry it.
 
+### 5.16 The bot's health
+
+Whether the bot is answering now, from what the parser reads (`src/health.ts`), on the measures of
+§5.15: live, it answers within 2 s (98%); an outage is silence, then a replay in order, maybe in
+bursts.
+
+| State         | Entered when                                                                                                                  |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `up`          | a reply within a minute of what it answers (from any state); at the start, until told otherwise                               |
+| `suspect`     | up, and the bot has said nothing for 60 s since one of its commands was sent (any player's, in any chat read)                 |
+| `slow`        | suspect, and the probe is answered within 2 minutes: alive in private, held up where the commands wait (large files, a burst) |
+| `down`        | suspect, the probe unanswered for 2 minutes, or 5 minutes of silence without one; slow, 15 minutes; catching up, 5 minutes    |
+| `catching-up` | suspect or down, and the bot speaks again: replies to what was sent before its silence (its replay), or words it cannot place |
+
+- **Its commands** are those it answered in 95% of the exports' cases or more (`/lore`, `/l`,
+  `/avventura`, `/accumulo`, `/i`, `/vai`, `/me`, `/info`, …); not `/dai` nor `/usa`, which other
+  bots take too. Any word of the bot's ends their wait: a single answer never given (1%) or a day of
+  answers that reply to nothing (August) raises nothing.
+- **The probe** is `/info` in the owner's private chat: the profile, which the bot always gives. It
+  is offered once per suspicion, to a player whose config names it, and never again while the bot is
+  down: it may stay down for days, each probe would join the replay, and the group's own traffic
+  tells when it is back. A send of `/info` there, by hand or by a player, during a suspicion, is the
+  probe; the bot's first word there after it, its answer.
+- **Back** needs a fresh reply: a replay's replies all answer what was sent before the silence, so a
+  burst that stops (§5.15) leaves it catching up, and silent again, down. The replay keeps the
+  order, so a fresh reply means it is through.
+
 ## 6. The owner's state at @LoreGameBot
 
 `loregame-state` (`modules/game-bots/`) keeps what the `loregame` parser reads of the owner's turns.
