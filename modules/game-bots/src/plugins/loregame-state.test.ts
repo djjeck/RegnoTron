@@ -564,6 +564,12 @@ describe('the accumulo, for a shell player', () => {
       // A place's requirements: it asks a place's name, so it is the person's, never played by
       // default.
       { command: '/requisiti', aliases: ['/req'], interactive: true },
+      // The shop: listed, ready again when its items change, at midnight in Italy.
+      {
+        command: '/negozio',
+        aliases: ['/shop'],
+        resetsAt: { times: ['00:00'], timeZone: 'Europe/Rome' },
+      },
     ]);
   });
 
@@ -2410,6 +2416,34 @@ describe('the shop, the same for every player (§5.12)', () => {
     sagra: string | null;
     items: { item: string; price: number; bought: boolean | null }[];
   };
+
+  it('is ready to list again at midnight in Rome, whoever listed it last (#12)', async () => {
+    const run = await bootState(path.join(dir, 'shop-ready'), { group: true });
+    // Nothing listed yet: ready.
+    expect(run.ready()['/negozio']).toMatchObject({ ready: true });
+    // bob's listing, in the group (13:00 in Rome): the owner's would tell nothing new until midnight.
+    const asked = await run.group('bob', '/negozio');
+    await run.group('LoreGameBot', SHOP('bob', PIGNA), { replyTo: asked });
+    const midnight = Date.parse('2026-11-06T23:00:00Z');
+    expect(run.ready()['/negozio']).toEqual({
+      ready: false,
+      until: midnight,
+      why: 'waits for its reset',
+    });
+    // Midnight: ready, since then.
+    run.clock.advance(midnight - run.clock.now());
+    expect(run.ready()['/negozio']).toMatchObject({ ready: true, since: midnight });
+    // The owner's own, by its alias, in private: held until the next midnight.
+    run.clock.advance(20 * MIN);
+    await run.owner('/shop');
+    await run.bot(SHOP('alice', MESTOLO));
+    expect(run.ready()['/negozio']).toMatchObject({
+      ready: false,
+      until: midnight + 24 * HOUR,
+      sent: { byHand: true },
+    });
+    await run.core.stop();
+  });
 
   it('keeps the day’s items, each player’s purchases apart, and announces a new day’s', async () => {
     const run = await bootState(path.join(dir, 'shop'), { group: true });

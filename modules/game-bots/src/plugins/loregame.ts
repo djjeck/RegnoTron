@@ -56,6 +56,7 @@
  * **The shop** (docs/game-bots.md §5.12): every listing of the shop's (`/negozio`, `/shop`), in any
  * chat, the player who asked named by it, as `loregame.shop`: the day's items, the same for everyone,
  * each marked bought or not by that player. A listing its buttons edit back into one is read again.
+ * `/negozio` is in the vocabulary, so the shell pairs the owner's send with its listing.
  *
  * **Bans** (docs/game-bots.md §5): the bot answers a banned player's every message with the ban.
  *
@@ -117,7 +118,7 @@ import {
   splitLevelUp,
   TURN_COMMANDS,
 } from '#src/replies.ts';
-import { parseShop, PurchaseWatch, type ShopListing } from '#src/shop.ts';
+import { parseShop, PurchaseWatch, SHOP_COMMANDS, type ShopListing } from '#src/shop.ts';
 import { parseSkillMenu } from '#src/skills.ts';
 import {
   parseTraining,
@@ -131,8 +132,9 @@ export const LOREGAME_PARSER = 'loregame';
 /**
  * @LoreGameBot's vocabulary (MegaBotTron1999's D140, D141): its turn, by its own command first and
  * its aliases after; the accumulo, by its full name, with `/acc` its alias, as the bot takes
- * both; the training; and `/requisiti` (`/req`), a place's requirements, which any player may ask
- * at any time. The parser's, and given to `loregame-state`'s readiness too.
+ * both; the training; `/requisiti` (`/req`), a place's requirements, which any player may ask
+ * at any time; and the shop, `/negozio` (`/shop`). The parser's, and given to `loregame-state`'s
+ * readiness too.
  */
 export const LOREGAME_VOCABULARY = {
   bot: LOREGAMEBOT,
@@ -141,6 +143,7 @@ export const LOREGAME_VOCABULARY = {
     [ACCUMULO]: { aliases: ACCUMULO_COMMANDS.slice(1) },
     [TRAINING]: { aliases: TRAINING_COMMANDS.slice(1) },
     [REQUIREMENTS_COMMANDS[0] as string]: { aliases: REQUIREMENTS_COMMANDS.slice(1) },
+    [SHOP_COMMANDS[0] as string]: { aliases: SHOP_COMMANDS.slice(1) },
   },
 };
 /** Every form of `names` a player may send (D139, D140): each bare, then addressed to the bot. */

@@ -9,6 +9,12 @@
  * item ends at the line that ends in its rarity, tags and price. The list is the same for every
  * player, all day: it changes at midnight Italian time.
  */
+import { type CommandMechanics } from '@megabottron1999/turns/readiness.ts';
+
+/** The shop's commands: its name, then its alias. */
+export const SHOP_COMMANDS: readonly string[] = ['/negozio', '/shop'];
+/** The shop's command, by its name. */
+export const SHOP = SHOP_COMMANDS[0] as string;
 
 /** An item as the shop lists it. */
 export interface ShopItem {
@@ -102,6 +108,14 @@ const DAY = new Intl.DateTimeFormat('en-CA', {
 
 /** The shop's day at `t` (ms): the date in Italy, `YYYY-MM-DD`. */
 export const shopDayOf = (t: number): string => DAY.format(new Date(t));
+
+/**
+ * The shop's mechanics (MegaBotTron1999's D165): listed, it has nothing new to say until its items
+ * change, at midnight in Italy, whoever listed it. Not interactive: the listing asks nothing.
+ */
+export const SHOP_MECHANICS: CommandMechanics = {
+  resetsAt: { times: ['00:00'], timeZone: SHOP_TIME_ZONE },
+};
 
 /** A purchase the shop's buttons asked to confirm, or made. */
 export interface Purchase {

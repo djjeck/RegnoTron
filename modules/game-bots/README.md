@@ -179,6 +179,13 @@ state keeps one list, the day's, with each player's purchases apart, and every i
 sale; `loregame-state.shopChanged` announces a new day's items, or the day's told otherwise, with
 those never seen on sale before (docs/game-bots.md §5.12, §6).
 
+**`/negozio`** (`/shop`) is among the bot's commands the parser names (since 0.51.0), and the state
+declares it ready again at midnight in Italy (`resetsAt`, MegaBotTron1999's D165): any player's
+listing, in any chat, holds it until then, since the shop has nothing new to say before. A shell
+`player` bound to the state lists it, ticked by default (it is not interactive): one with no command
+list in its config now plays it, once a day, soon after midnight. **It needs MegaBotTron1999 0.1.67
+or later**, whose manifests know `resetsAt`.
+
 **The generators.** A generator's confirmation, replying to its player's command, and its outcome, a
 message of its own, are paired by the name it repeats (a story's, or an item made usable, by the
 oldest waiting in its chat), and published as `loregame.generated`: the generator leaves its

@@ -46,7 +46,8 @@
  *   `foldReadiness`: the owner's ban holds every command until it ends, and the bot's answer to the
  *   owner's `/accumulo` in any chat (`loregame.accumulo`, which the shell cannot pair in the group)
  *   uses it (a use: the turn's rest ended) or withdraws its unlock (not full, or under the level):
- *   never a time, only the bot's line on a turn unlocks it again. And a rule of the game's over the shell's readiness
+ *   never a time, only the bot's line on a turn unlocks it again; any player's shop listing uses
+ *   `/negozio`, ready again at midnight in Italy (`resetsAt`). And a rule of the game's over the shell's readiness
  *   (`LoreReadinessModel`): `/accumulo` is legal only while the turn rests, which is when the bot
  *   takes it.
  *
@@ -115,7 +116,7 @@ import {
 } from '#src/plugins/loregame.ts';
 import { levelForXp, xpForLevel } from '#src/profile.ts';
 import { loreRestMs, type Outcome } from '#src/replies.ts';
-import { shopDayOf } from '#src/shop.ts';
+import { SHOP, SHOP_MECHANICS, shopDayOf } from '#src/shop.ts';
 import {
   mismatches,
   move,
@@ -199,6 +200,8 @@ export const LORE_READINESS = new LoreReadinessModel({
     [TRAINING]: TRAINING_MECHANICS,
     // It asks a place's name, the person's to choose: a player never plays it by default.
     [REQUIREMENTS_COMMANDS[0] as string]: { interactive: true },
+    // Listed, it waits for the shop's next items, at midnight in Italy.
+    [SHOP]: SHOP_MECHANICS,
   },
 });
 
@@ -229,7 +232,9 @@ const BAN_HOLD = 'ban';
  * unlock ("not yet", the level gate: no time, the bot's next line unlocks it); the owner's training, wherever it
  * came, starts its cooldown (a "too soon" replies to the command, which the shell pairs); and a
  * turn of the owner's without the accumulo's line withdraws its unlock: the bot's word that it is
- * not full, whatever the state believed (a use it did not hear, a start that knew nothing).
+ * not full, whatever the state believed (a use it did not hear, a start that knew nothing). Any
+ * player's shop listing uses `/negozio`: the shop is the same for everyone, so the owner's would
+ * tell nothing new until its items change.
  */
 export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
   if (e.type === TURN_EVENT) {
@@ -251,6 +256,7 @@ export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
           }
     );
   }
+  if (e.type === SHOP_EVENT) return LORE_READINESS.succeed(r, SHOP, e.t);
   if (e.type === TRAINING_EVENT)
     return e['owner'] === true && e['result'] === 'trained'
       ? LORE_READINESS.succeed(r, TRAINING, e.t)

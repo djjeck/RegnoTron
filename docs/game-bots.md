@@ -651,6 +651,11 @@ bob, oggi nel negozio:
   last listing before midnight and the first after it differ (the closest, 23:59 and 00:01). It
   changed during a day three times (24 August, 10 and 12 September 2026: three generators' prices
   swapped, the whole list, an item's rarity), each by the bot's own data [?], not on a clock.
+- **Ready again at midnight** (since game-bots 0.51.0): the parser names `/negozio` (`/shop` its
+  alias) among its bot's commands, and the state declares it `resetsAt: 00:00 Europe/Rome`
+  (MegaBotTron1999's D165). Any player's listing, read in any chat, counts as its use: the shop is
+  the same for everyone, so the owner's own would tell nothing new until midnight. A shell `player`
+  bound to the state plays it soon after each change, at its person's next sitting.
 - **Buying** is done with the listing's buttons [M]: the bot edits the listing into
   `bob, sei sicuro di voler comprare <item> per <price> ₭?` (7 listings were last seen so in the
   exports, which show each message as it was last edited), and the purchase itself sends no message.
