@@ -223,16 +223,8 @@ const parser: Plugin = turnParserPlugin({
     if (m.command === SHOP) {
       // The shop's listing (§5.12): a success, which holds `/negozio` until midnight. Its items are
       // `loregame.shop`'s, published for any listing in any chat, paired or not.
-      const listing = parseShop(m.text);
-      if (listing !== undefined)
-        return {
-          outcome: {
-            kind: 'shop',
-            bot: LOREGAMEBOT,
-            items: listing.items.length,
-            sagra: listing.sagra,
-          } as TurnOutcome,
-        };
+      if (parseShop(m.text) !== undefined)
+        return { outcome: { kind: 'shop', bot: LOREGAMEBOT } as TurnOutcome };
       const outcome = parseLoreGameBot(m.text);
       return outcome.kind === 'banned' ? bannedReading(outcome.until) : { unread: true };
     }
