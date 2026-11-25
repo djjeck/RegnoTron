@@ -209,8 +209,9 @@ catalogue, with when and how it was first seen; `loregame-state.itemsDiscovered`
 ones (docs/game-bots.md §6).
 
 **Gifts.** `/give` and `/dai` are published as `loregame.gift`, paired with the giver's command (the
-answer replies to none): the state moves the items or the coins from the giver to the receiver, each
-player's (docs/game-bots.md §5.10).
+answer replies to none), and so are the owner's notices in private of a gift received: each of the
+owner's once, its answer in the group and its notice in private being one gift. The state moves the
+items or the coins from the giver to the receiver, each player's (docs/game-bots.md §5.10).
 
 **The places.** `/vai` and `/v` are published as `loregame.travel` (an arrival with what it
 consumed, where one is, a refusal), each the player's whose command it replies to, and any place's

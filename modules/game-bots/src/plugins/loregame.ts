@@ -44,8 +44,9 @@
  * `loregame.requirements`, with the guardians made where it tells them. A
  * neutralizing ticket used (its answer names its player) and, in private, the owner's neutrality
  * ended, as `loregame.neutral`.
- * A gift (`/give`, `/dai`, §5.10), paired with its giver as the accumulo's answers are, as
- * `loregame.gift`.
+ * A gift (`/give`, `/dai`, §5.10), paired with its giver as the accumulo's answers are, or the
+ * owner's notice in private of one received, as `loregame.gift`: each of the owner's once, its
+ * answer and its notice being one gift.
  *
  * **The market** (docs/game-bots.md §5.11): every company's value, from each update (the bot's own,
  * or one its developer forced) and each market listed, as `loregame.market`; and, paired with the
@@ -1179,10 +1180,11 @@ export const loregamePlugin: Plugin = {
         );
       }
       market(m, self);
-      // A gift, its giver's (the answer names the receiver alone, and replies to nothing, §5.10).
+      // A gift, its giver's (the answer names the receiver alone, and replies to nothing), or the
+      // owner's notice of one received; each of the owner's once, answer and notice (§5.10).
       const gift = gifts.answer(m, self);
       if (gift !== undefined) {
-        const { player: giver, owner: mine, reply } = gift;
+        const { player: giver, owner: mine, reply, toOwner } = gift;
         ctx.bus.publish(
           GIFT_EVENT,
           {
@@ -1190,7 +1192,7 @@ export const loregamePlugin: Plugin = {
             player: giver,
             owner: mine,
             ...reply,
-            toOwner: self !== undefined && reply.to.toLowerCase() === self.toLowerCase(),
+            toOwner,
             ...lateOf(gift),
             ...old,
           },

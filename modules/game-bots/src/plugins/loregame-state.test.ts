@@ -2067,6 +2067,35 @@ describe('gifts, as /give and /dai answer', () => {
     ]);
     await run.core.stop();
   });
+
+  it("applies the owner's gift once, its answer in the group and its echo in private", async () => {
+    const run = await bootState(path.join(dir, 'g2'), { group: true });
+    await run.owner('/me');
+    const listing = await run.group('alice', '/zaino', { own: true });
+    await run.group('LoreGameBot', 'alice, hai:\n> un sasso [B1] x3', {
+      replyTo: listing,
+      buttons: [['🔒', '🔒']],
+    });
+    await run.group('alice', '/dai bob sasso', { own: true });
+    await run.group('LoreGameBot', '[N] Hai inviato 1x un sasso [B1] a bob!');
+    run.clock.advance(2000);
+    await run.bot('[N] Hai inviato 1x un sasso [B1] a bob!');
+    // Bob's gift to the owner: its answer in the group, then the owner's notice in private.
+    await run.group('bob', '/dai alice pigna');
+    await run.group('LoreGameBot', '[N] Hai inviato 1x una pigna [B1] a alice!');
+    await run.bot('[N] Hai ricevuto 1x una pigna [B1] da bob!');
+    // Carol's, played in private: the notice alone.
+    await run.bot('[N] Hai ricevuto 3x una pigna [B1] da carol!');
+    expect(run.of('loregame.gift')).toHaveLength(3);
+    expect(run.read('inventory', { player: 'bob' })).toMatchObject({
+      items: { 'un sasso': { qty: 1 } },
+    });
+    expect(run.read('get', { path: 'inventory.items' })).toMatchObject({
+      'un sasso': { qty: 2, exact: true },
+      'una pigna': { qty: 4, exact: true },
+    });
+    await run.core.stop();
+  });
 });
 
 describe('the market, every company’s and every player’s (§5.11)', () => {

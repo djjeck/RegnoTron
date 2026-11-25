@@ -1,6 +1,6 @@
 # The game bots RegnoTron reads
 
-Documented as of 24 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
+Documented as of 25 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
 has other game bots, each with its own game played one turn at a time. RegnoTron reads the turns of
 two of them, @LoreGameBot and @EpicLorelecBot, in `modules/game-bots/`: their reply grammars
 (`src/replies.ts`) and their parser plugins in `src/plugins/`. @InventoryBot's parser, the plugin
@@ -549,16 +549,38 @@ above `N1` lands (the state guesses the same step of their faction's ladder).
 `Hai inviato <n> monete a <username>!`, at times after `[N] ` (the bot's mark of a notification,
 §5.9). The receiver is named as the giver typed them (an `@`, any case). The answer names the
 receiver, not the giver, and since August 2026 it replies to no command (all 209 since then): the
-parser pairs it with the command waiting, as the accumulo's answers (§5.2). The receiver is told in
-private, at times: `[N] Hai ricevuto <n>x <item> … da <username>!` [M], not read yet (the owner
-would count a gift twice that they also saw sent in the group). Its refusals (`Formato non valido!`,
-`Oggetto non trovato!`, `Non possiedi l'oggetto!`, `Elemento non trovato o utente non registrato!`,
-…) change nothing, and are not read. All 388 gifts in the exports are read, 45 of coins.
+parser pairs it with the command waiting, as the accumulo's answers (§5.2). Its refusals
+(`Formato non valido!`, `Oggetto non trovato!`, `Non possiedi l'oggetto!`,
+`Elemento non trovato o utente non registrato!`, …) change nothing, and are not read. All 388 gifts
+in the group's exports are read, 45 of coins.
 
-**`loregame.gift`** carries every gift the parser pairs: the giver (`player`, `owner`), `kind`
-(`item`, with `item`, `qty`, `rarity`, `tags`, `level`; `coins`, with `coins`), `to` and `toOwner`.
-The state moves the items from the giver's inventory to the receiver's, or the coins from the one's
-`coins` to the other's; the receiver known whatever the case of their name.
+**Each side is also told in private** [M]: the giver `[N] Hai inviato …`, the same text as the
+answer, and the receiver `[N] Hai ricevuto <n>x <item> [<rarity>] [<tag>]… da <username>!` (or
+`<n> monete`), the giver by username, seconds after the answer in the group (2 s, in the owner's
+private export). So the owner hears a gift they give or receive in the group twice, its answer there
+and its notice in private, and one given them in private once, its notice. Whether the owner's own
+gift played in private brings a notice besides its answer is not seen [?]; if it did, the rule below
+drops it. **The parser gives each gift of the owner's once**, whichever of its messages it hears, in
+whichever order:
+
+- A private `Hai inviato` that answers no command known to wait is the owner's, and a private
+  `Hai ricevuto` is a gift to the owner from the player it names.
+- An answer paired with its command and a notice that answers none tell the same gift when they
+  agree on its way (the owner's to the same receiver, or another's to the owner), its item, rarity
+  and quantity, or its coins, and come within a minute of each other: the second heard is dropped. A
+  giver named alike is paired first (an export names the group's players by display name, the notice
+  by username).
+- Each message pairs once: two like gifts in a row are two answers and two notices, two gifts. Two
+  answers never pair, each having answered its own command, nor two notices. A gift heard once is
+  given; one whose two messages came more than a minute apart would be counted twice (none seen).
+- Other players' gifts have no notice the owner hears, and are given as answered.
+
+**`loregame.gift`** carries every gift the parser pairs, or the owner's notice of one, once: the
+giver (`player`, `owner`), `kind` (`item`, with `item`, `qty`, `rarity`, `tags`, `level`; `coins`,
+with `coins`), `to` and `toOwner` (a notice received names the owner as `to`), from whichever of its
+messages came first (`chat`). The state moves the items from the giver's inventory to the
+receiver's, or the coins from the one's `coins` to the other's; the receiver known whatever the case
+of their name.
 
 ### 5.11 The market
 
