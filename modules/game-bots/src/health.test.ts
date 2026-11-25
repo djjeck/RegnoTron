@@ -54,7 +54,7 @@ describe("the bot's health", () => {
     expect(h.due()).toBeUndefined();
   });
 
-  it('is suspect after a minute of silence while a command waits, the oldest', () => {
+  it('is suspect after 4 minutes of silence while a command waits, the oldest', () => {
     const h = new HealthWatch('LoreGameBot', undefined, T);
     h.hear(said('bob', '/lore', T));
     h.hear(said('carol', '/avventura', T + 30_000));
@@ -63,7 +63,7 @@ describe("the bot's health", () => {
     expect(h.tick(T + SUSPECT_MS)).toEqual({
       state: 'suspect',
       since: T + SUSPECT_MS,
-      reason: 'silent for 60 s while a command waited',
+      reason: 'silent for 240 s while a command waited',
     });
     // Any word of the bot's ends the wait: a command answered or lost, it spoke.
     const live = new HealthWatch('LoreGameBot', undefined, T);
@@ -111,13 +111,13 @@ describe("the bot's health", () => {
     expect(h.due()).toBeUndefined();
   });
 
-  it('is down after five minutes of silence, nothing sent since the suspicion', () => {
+  it('is down after 8 minutes of silence, nothing sent since the suspicion', () => {
     const h = new HealthWatch('LoreGameBot', undefined, T);
     h.sent({ chat: GROUP, id: '5', t: T });
     expect(h.tick(T + SUSPECT_MS)?.state).toBe('suspect');
     expect(h.tick(T + DOWN_MS)).toMatchObject({
       state: 'down',
-      reason: 'silent for 300 s while a command waited',
+      reason: 'silent for 480 s while a command waited',
     });
   });
 
@@ -154,8 +154,8 @@ describe("the bot's health", () => {
       state: 'catching-up',
       reason: 'the bot speaks again, replying to nothing it can place',
     });
-    expect(answered(h, T + 13 * HOUR, 2 * 60_000)).toBeUndefined();
-    expect(h.hear(bot('Un messaggio qualunque', T + 13 * HOUR + 3 * 60_000))).toBeUndefined();
+    expect(answered(h, T + 13 * HOUR, 5 * 60_000)).toBeUndefined();
+    expect(h.hear(bot('Un messaggio qualunque', T + 13 * HOUR + 6 * 60_000))).toBeUndefined();
     expect(answered(h, T + 14 * HOUR, 500)).toMatchObject({ state: 'up', latency: 500 });
   });
 
@@ -163,7 +163,7 @@ describe("the bot's health", () => {
     const h = new HealthWatch('LoreGameBot', undefined, T);
     h.hear(said('bob', '/lore', T));
     h.tick(T + SUSPECT_MS);
-    expect(answered(h, T + 70_000, 2000)?.state).toBe('up');
+    expect(answered(h, T + SUSPECT_MS + 10_000, 2000)?.state).toBe('up');
   });
 
   it('keeps its health and the last word across a restart', () => {

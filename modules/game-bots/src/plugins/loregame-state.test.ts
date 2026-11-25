@@ -726,11 +726,11 @@ describe("the bot's health", () => {
     const run = await bootState(path.join(dir, 'h'), { group: true });
     expect(run.read('health')).toMatchObject({ state: 'up', outages: [] });
     const bobs = await run.group('bob', '/lore');
-    // A minute of silence: suspect.
-    run.clock.advance(MIN);
+    // Four minutes of silence: suspect.
+    run.clock.advance(4 * MIN);
     await run.settle();
     expect(run.of('loregame.health')).toMatchObject([
-      { state: 'suspect', reason: 'silent for 60 s while a command waited' },
+      { state: 'suspect', reason: 'silent for 240 s while a command waited' },
     ]);
     // A probe, sent by another node of the owner's account and told to the parser: unanswered for
     // two minutes, down. The bot's readiness knows nothing of it.
@@ -759,10 +759,10 @@ describe("the bot's health", () => {
     const at = (m: number): string => new Date(T0 + m * MIN).toISOString();
     expect(run.read('health')).toMatchObject({
       state: 'up',
-      since: at(303),
+      since: at(306),
       reason: 'a reply in 0 s',
       latency: 0,
-      outages: [{ start: at(1), down: at(3), replay: at(303), end: at(303) }],
+      outages: [{ start: at(4), down: at(6), replay: at(306), end: at(306) }],
     });
     await run.core.stop();
   });

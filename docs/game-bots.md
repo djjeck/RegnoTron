@@ -796,13 +796,14 @@ with its command's time (`asked`), in the events that carry it.
 
 Whether the bot is answering now, from what the parser reads (`src/health.ts`), on the measures of
 §5.15: live, it answers within 2 s (98%); an outage is silence, then a replay in order, maybe in
-bursts.
+bursts. Some days it lags for minutes while live, and not replaying: so it is suspect only after 4
+minutes (since game-bots 0.50.3; 60 s before), and a reply up to 4 minutes late is in time.
 
 | State         | Entered when                                                                                                                  |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `up`          | a reply within a minute of what it answers (from any state); at the start, until told otherwise                               |
-| `suspect`     | up, and the bot has said nothing for 60 s since one of its commands was sent (any player's, in any chat read)                 |
-| `down`        | suspect, and a command sent since went unanswered for 2 minutes, or 5 minutes of silence; catching up, 5 minutes of silence   |
+| `up`          | a reply within 4 minutes of what it answers (from any state); at the start, until told otherwise                              |
+| `suspect`     | up, and the bot has said nothing for 4 minutes since one of its commands was sent (any player's, in any chat read)            |
+| `down`        | suspect, and a command sent since went unanswered for 2 minutes, or 8 minutes of silence; catching up, 8 minutes of silence   |
 | `catching-up` | suspect or down, and the bot speaks again: replies to what was sent before its silence (its replay), or words it cannot place |
 
 - **Its commands** are those it answered in 95% of the exports' cases or more (`/lore`, `/l`,

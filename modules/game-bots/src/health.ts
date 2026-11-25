@@ -11,25 +11,37 @@
  *   load-bearing (about 1% are never given, and some days its answers reply to nothing).
  * - **Suspect, then:** a command sent since, any player's or the owner's (a probe another node
  *   sends, told as a send), left unanswered `ANSWER_WAIT_MS`, is down; so is `DOWN_MS` of silence.
- * - **Back** is a reply at normal latency (within `REPLAY_MS` of what it answers): in private, the
+ * - **Back** is a reply in time (within `LATE_MS` of what it answers): in private, the
  *   bot's first word after a send of the owner's answers it. A replay's replies answer what was
  *   sent before the silence, so they never end an outage: they mark it `catching-up`. Since the
  *   replay keeps the order, a fresh reply means it is through.
  */
 import { isPrivate } from '@megabottron1999/turns/turn-parser.ts';
-import { REPLAY_MS } from '#src/answer-watch.ts';
 import { type Heard } from '#src/bans.ts';
 
 /** The bot's health: answering, silent, gone, or replaying what it missed. */
 export const HEALTH_STATES = ['up', 'suspect', 'down', 'catching-up'] as const;
 export type HealthState = (typeof HEALTH_STATES)[number];
 
-/** Silence while a command waits, this long: suspect. Live, the bot answers within 2 s (98%). */
-export const SUSPECT_MS = 60_000;
+/**
+ * Silence while a command waits, this long: suspect. Live, the bot answers within 2 s (98%), but
+ * some days it lags for minutes while it is live and not replaying: 4 minutes, so that a slow bot
+ * is not taken for a gone one (game-bots 0.50.3; 60 s before).
+ */
+export const SUSPECT_MS = 4 * 60_000;
+/**
+ * A reply this late or less is in time: the bot is up. Later, it answers what was sent before a
+ * silence: catching up. Its own, not the parser's `REPLAY_MS` (60 s), for the same slow days.
+ */
+export const LATE_MS = 4 * 60_000;
 /** A command sent while suspect, unanswered this long: down. */
 export const ANSWER_WAIT_MS = 2 * 60_000;
-/** Silence while a command waits, this long, suspect or catching up: down. */
-export const DOWN_MS = 5 * 60_000;
+/**
+ * Silence while a command waits, this long, suspect or catching up: down. Four minutes after the
+ * suspicion, as before 0.50.3 (5 minutes then), so that a command sent while suspect has its
+ * `ANSWER_WAIT_MS`.
+ */
+export const DOWN_MS = SUSPECT_MS + 4 * 60_000;
 
 /**
  * The commands the bot answers, whose wait tells its silence: those it answered in 95% or more of
@@ -133,7 +145,7 @@ export class HealthWatch {
     if (sent !== undefined) this.privateSends.delete(m.chat);
     const from = to ?? (sent !== undefined && m.time >= sent ? sent : undefined);
     const lag = from === undefined ? undefined : m.time - from;
-    if (lag !== undefined && lag <= REPLAY_MS)
+    if (lag !== undefined && lag <= LATE_MS)
       return this.health.state === 'up'
         ? this.note(lag)
         : this.move('up', m.time, `a reply in ${seconds(lag)}`, lag);

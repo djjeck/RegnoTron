@@ -280,10 +280,11 @@ the state declares it `interactive` (it asks a place's name, the person's to cho
 it.
 
 **The bot's health** (docs/game-bots.md §5.16): whether @LoreGameBot is answering now. The parser
-watches every message it reads and every send it is told of (`src/health.ts`): a minute of the bot's
-silence while one of its commands waits is `suspect`; a command sent since unanswered for 2 minutes,
-or 5 minutes of silence, `down`; the bot speaking again but replying to what was sent before its
-silence, `catching-up` (its replay); a reply within a minute of what it answers, `up`. It publishes
+watches every message it reads and every send it is told of (`src/health.ts`): 4 minutes of the
+bot's silence while one of its commands waits is `suspect`; a command sent since unanswered for 2
+minutes, or 8 minutes of silence, `down`; the bot speaking again but replying to what was sent
+before its silence, `catching-up` (its replay); a reply within 4 minutes of what it answers, `up`
+(since 0.50.3: a minute before, but the bot lags for minutes on some days while live). It publishes
 each change as `loregame.health` (`state`, `reason`, `latency`, at the change's time) and keeps it
 across a restart. The state keeps it in the section `health`, with the latest 20 outages (each when
 it was suspected, found down, began its replay and ended), and answers `state.health()`, for any
