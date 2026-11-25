@@ -23,8 +23,7 @@
  *   (a player's ban, the owner's unless named; `bannedUntil` in `src/bans.ts` is the actor's
  *   helper over it) and `state.bans()` (every banned player).
  * - **The bot's health** (`state.health()`, docs/game-bots.md §5.16): whether it is answering now,
- *   as the parser's `loregame.health` tells each change, with its latest outages; and the probe,
- *   `/info`, offered to a player once per suspicion (`foldReadiness`).
+ *   as the parser's `loregame.health` tells each change, with its latest outages.
  * - **The accumulo** (`state.accumulo()`, `accumuloReady` in `src/accumulo.ts` is the actor's
  *   check): the turns counted since it was last emptied, the bot's word that it is full (`ready`),
  *   and the `drift` between the two. `loregame-state.accumuloReady`, `accumuloUsed` and
@@ -745,6 +744,16 @@ const base = statePlugin<Kept>({
       if (kept?.state === undefined || kept.state['health'] !== undefined) return;
       store.write('state', { ...kept, state: { ...kept.state, health: initialHealth() } });
     },
+    // 0.50.1 tells no `slow` (0.50.0's, a probe's answer in private): a health kept so is up.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      const health = kept?.state?.['health'] as Record<string, unknown> | undefined;
+      if (kept?.state === undefined || health?.['state'] !== 'slow') return;
+      store.write('state', {
+        ...kept,
+        state: { ...kept.state, health: { ...health, state: 'up' } },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -912,7 +921,7 @@ const base = statePlugin<Kept>({
       },
     },
     health: {
-      help: "Whether @LoreGameBot is answering now (docs/game-bots.md §5.16): up, slow (held up where commands wait, alive in private), suspect, down, or catching-up (replaying what it missed); since when, why, its last reply's latency, and its latest outages",
+      help: "Whether @LoreGameBot is answering now (docs/game-bots.md §5.16): up, suspect (silent for a minute while a command waits), down, or catching-up (replaying what it missed); since when, why, its last reply's latency, and its latest outages",
       output: z.looseObject({ state: z.string(), since: z.string().nullable() }),
       run: (s) => s.health,
     },

@@ -281,21 +281,15 @@ it.
 
 **The bot's health** (docs/game-bots.md §5.16): whether @LoreGameBot is answering now. The parser
 watches every message it reads and every send it is told of (`src/health.ts`): a minute of the bot's
-silence while one of its commands waits is `suspect`; the probe answered, `slow` (held up where the
-commands wait, alive in private); the probe unanswered for 2 minutes, or 5 minutes of silence
-without one, `down`; the bot speaking again but replying to what was sent before its silence,
-`catching-up` (its replay); a reply within a minute of what it answers, `up`. It publishes each
-change as `loregame.health` (`state`, `reason`, `latency`, at the change's time) and keeps it across
-a restart. The state keeps it in the section `health`, with the latest 20 outages (each when it was
-suspected, found down, began its replay and ended), and answers `state.health()`, for any node that
-should hold while the bot is not answering.
-
-**The probe**, `/info` in the owner's private chat with the bot, is among the parser's `commands`,
-and the state offers it once per suspicion: unlocked when the health turns `suspect`, its unlock
-withdrawn at its send or at any other health. Declared `interactive`, it is played only by a shell
-`player` whose config names it: give it one in the private chat, its `commands` `["/info"]`. Without
-one there is no probe, and silence alone tells `down`. Its answer, the profile, is the probe's
-success.
+silence while one of its commands waits is `suspect`; a command sent since unanswered for 2 minutes,
+or 5 minutes of silence, `down`; the bot speaking again but replying to what was sent before its
+silence, `catching-up` (its replay); a reply within a minute of what it answers, `up`. It publishes
+each change as `loregame.health` (`state`, `reason`, `latency`, at the change's time) and keeps it
+across a restart. The state keeps it in the section `health`, with the latest 20 outages (each when
+it was suspected, found down, began its replay and ended), and answers `state.health()`, for any
+node that should hold while the bot is not answering. Nothing here probes the bot: a node that does,
+woken by `loregame.health`, sends from the owner's account and tells the state of its send
+(`actions.sent`), and its answer is read as any other.
 
 It also keeps the **owner's readiness** at @LoreGameBot (the section `readiness`): when each of the
 bot's commands may be played, reduced by the shell from the parser's events, with the owner's ban,

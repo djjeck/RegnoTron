@@ -1,6 +1,6 @@
 /**
- * Whether @LoreGameBot is answering now (docs/game-bots.md §5.16): `up`, `slow`, `suspect`, `down`
- * or `catching-up`, from what the parser hears and the sends it is told of. Pure, but for what a
+ * Whether @LoreGameBot is answering now (docs/game-bots.md §5.16): `up`, `suspect`, `down` or
+ * `catching-up`, from what the parser hears and the sends it is told of. Pure, but for what a
  * plugin hands it: the plugin ticks it on a timer, since a silence is told by no message.
  *
  * The bot goes down for minutes to days and says nothing; then it replays what it missed, in
@@ -9,32 +9,27 @@
  * - **Silence while a command waits** is the signal: the bot has said nothing, anywhere the parser
  *   reads, since a command of its was sent `SUSPECT_MS` ago. No single command's answer is
  *   load-bearing (about 1% are never given, and some days its answers reply to nothing).
- * - **A probe, once per suspicion:** `/info` in the owner's private chat, which `loregame-state`
- *   offers a player while `suspect`. Answered: the bot is alive, only slow where the commands wait.
- *   Unanswered after `PROBE_WAIT_MS`: down. Without one, `DOWN_MS` of silence is down all the same.
- * - **Back** is a reply at normal latency (within `REPLAY_MS` of what it answers). A replay's
- *   replies answer what was sent before the silence, so they never end an outage: they mark it
- *   `catching-up`. Since the replay keeps the order, a fresh reply means it is through.
+ * - **Suspect, then:** a command sent since, any player's or the owner's (a probe another node
+ *   sends, told as a send), left unanswered `ANSWER_WAIT_MS`, is down; so is `DOWN_MS` of silence.
+ * - **Back** is a reply at normal latency (within `REPLAY_MS` of what it answers): in private, the
+ *   bot's first word after a send of the owner's answers it. A replay's replies answer what was
+ *   sent before the silence, so they never end an outage: they mark it `catching-up`. Since the
+ *   replay keeps the order, a fresh reply means it is through.
  */
 import { isPrivate } from '@megabottron1999/turns/turn-parser.ts';
 import { REPLAY_MS } from '#src/answer-watch.ts';
 import { type Heard } from '#src/bans.ts';
 
-/** The bot's health: answering, held up in one chat, silent, gone, or replaying what it missed. */
-export const HEALTH_STATES = ['up', 'slow', 'suspect', 'down', 'catching-up'] as const;
+/** The bot's health: answering, silent, gone, or replaying what it missed. */
+export const HEALTH_STATES = ['up', 'suspect', 'down', 'catching-up'] as const;
 export type HealthState = (typeof HEALTH_STATES)[number];
 
 /** Silence while a command waits, this long: suspect. Live, the bot answers within 2 s (98%). */
 export const SUSPECT_MS = 60_000;
-/** A probe unanswered this long after it was sent: down. */
-export const PROBE_WAIT_MS = 2 * 60_000;
-/** Silence while a command waits, this long, suspect or catching up, probe or not: down. */
+/** A command sent while suspect, unanswered this long: down. */
+export const ANSWER_WAIT_MS = 2 * 60_000;
+/** Silence while a command waits, this long, suspect or catching up: down. */
 export const DOWN_MS = 5 * 60_000;
-/** Silence while a command waits, this long, though the probe was answered: down. */
-export const SLOW_DOWN_MS = 15 * 60_000;
-
-/** The probe: a command any player may send at any time, which the bot always answers. */
-export const PROBE_COMMAND = '/info';
 
 /**
  * The commands the bot answers, whose wait tells its silence: those it answered in 95% or more of
@@ -51,7 +46,7 @@ export const HEALTH_COMMANDS = [
   '/vai',
   '/v',
   '/me',
-  PROBE_COMMAND,
+  '/info',
   '/abilita',
   '/negozio',
   '/give',
@@ -88,13 +83,19 @@ export class HealthWatch {
   private lastWord: number;
   /** When the oldest of its commands sent since its last word was sent. */
   private waiting: number | undefined;
-  /** The probe sent this suspicion, if any: when, and its message. */
-  private probe: { t: number; chat: string; id: string | undefined } | undefined;
+  /** When the oldest of its commands sent since the suspicion began was sent. */
+  private sinceSuspect: number | undefined;
+  /** The owner's last send in each private chat, when: the bot's next word there answers it. */
+  private readonly privateSends = new Map<string, number>();
   private readonly heard = new Map<string, number>();
 
   constructor(bot: string, kept?: HealthKept, now = 0) {
     this.bot = bot.toLowerCase();
-    this.health = kept?.health ?? { state: 'up', since: now, reason: 'nothing heard yet' };
+    // A state no longer told (0.50.0's `slow`) starts again from nothing known.
+    this.health =
+      kept !== undefined && HEALTH_STATES.includes(kept.health.state)
+        ? kept.health
+        : { state: 'up', since: now, reason: 'nothing heard yet' };
     this.lastWord = kept?.lastWord ?? -Infinity;
   }
 
@@ -123,21 +124,19 @@ export class HealthWatch {
   hear(m: Heard): Health | undefined {
     if (m.own === true || m.sender.toLowerCase() !== this.bot) {
       this.remember(m.chat, m.id, m.time);
-      if (this.isCommand(m.text)) this.asked(m.chat, m.id, m.time, m.text, isPrivate(m));
+      if (this.isCommand(m.text)) this.asked(m.time);
+      if (m.own === true && isPrivate(m)) this.privateSends.set(m.chat, m.time);
       return undefined;
     }
     this.lastWord = Math.max(this.lastWord, m.time);
     this.waiting = undefined;
+    this.sinceSuspect = undefined;
     const to = m.replyTo === undefined ? undefined : this.heard.get(`${m.chat}\n${m.replyTo}`);
-    const lag = to === undefined ? undefined : m.time - to;
-    // The probe's answer: the bot's first word in private after it, a reply or not.
-    const probe = this.probe;
-    if (probe !== undefined && isPrivate(m) && m.chat === probe.chat && m.time >= probe.t) {
-      this.probe = undefined;
-      const took = lag ?? m.time - probe.t;
-      if (this.health.state === 'suspect' && took <= PROBE_WAIT_MS)
-        return this.move('slow', m.time, `the probe was answered in ${seconds(took)}`, took);
-    }
+    // In private, its first word after the owner's send answers it, a reply or not.
+    const sent = isPrivate(m) ? this.privateSends.get(m.chat) : undefined;
+    if (sent !== undefined) this.privateSends.delete(m.chat);
+    const from = to ?? (sent !== undefined && m.time >= sent ? sent : undefined);
+    const lag = from === undefined ? undefined : m.time - from;
     if (lag !== undefined && lag <= REPLAY_MS)
       return this.health.state === 'up'
         ? this.note(lag)
@@ -159,8 +158,8 @@ export class HealthWatch {
   sent(s: { chat: string; id?: string; t: number; command?: string }): Health | undefined {
     this.remember(s.chat, s.id, s.t);
     // No command named: a turn.
-    const text = s.command ?? '/avventura';
-    if (this.isCommand(text)) this.asked(s.chat, s.id, s.t, text, s.chat.startsWith('@'));
+    if (this.isCommand(s.command ?? '/avventura')) this.asked(s.t);
+    if (s.chat.startsWith('@')) this.privateSends.set(s.chat, s.t);
     return undefined;
   }
 
@@ -169,47 +168,40 @@ export class HealthWatch {
     const s = this.health.state;
     const waited = this.waiting === undefined ? -Infinity : now - this.waiting;
     if (s === 'up' && waited >= SUSPECT_MS) {
-      this.probe = undefined;
+      this.sinceSuspect = undefined;
       return this.move('suspect', now, `silent for ${seconds(waited)} while a command waited`);
     }
-    if (s === 'suspect' && this.probe !== undefined && now - this.probe.t >= PROBE_WAIT_MS)
-      return this.move('down', now, `the probe went unanswered for ${seconds(now - this.probe.t)}`);
+    const unanswered = this.sinceSuspect === undefined ? -Infinity : now - this.sinceSuspect;
+    if (s === 'suspect' && unanswered >= ANSWER_WAIT_MS)
+      return this.move(
+        'down',
+        now,
+        `a command sent while suspect went unanswered for ${seconds(unanswered)}`
+      );
     if ((s === 'suspect' || s === 'catching-up') && waited >= DOWN_MS)
       return this.move('down', now, `silent for ${seconds(waited)} while a command waited`);
-    if (s === 'slow' && waited >= SLOW_DOWN_MS)
-      return this.move('down', now, `silent for ${seconds(waited)}, though the probe was answered`);
     return undefined;
   }
 
   /** When a tick may next change the health (ms), if one can before anything is heard. */
   due(): number | undefined {
     const s = this.health.state;
-    const after = (ms: number): number | undefined =>
-      this.waiting === undefined ? undefined : this.waiting + ms;
+    const after = (from: number | undefined, ms: number): number | undefined =>
+      from === undefined ? undefined : from + ms;
     const times: (number | undefined)[] = [];
-    if (s === 'up') times.push(after(SUSPECT_MS));
-    if (s === 'suspect') {
-      times.push(after(DOWN_MS));
-      if (this.probe !== undefined) times.push(this.probe.t + PROBE_WAIT_MS);
-    }
-    if (s === 'catching-up') times.push(after(DOWN_MS));
-    if (s === 'slow') times.push(after(SLOW_DOWN_MS));
+    if (s === 'up') times.push(after(this.waiting, SUSPECT_MS));
+    if (s === 'suspect') times.push(after(this.sinceSuspect, ANSWER_WAIT_MS));
+    if (s === 'suspect' || s === 'catching-up') times.push(after(this.waiting, DOWN_MS));
     const known = times.filter((t): t is number => t !== undefined);
     return known.length === 0 ? undefined : Math.min(...known);
   }
 
-  /** One of the bot's commands, sent at `t`: it waits, and a probe in private is the probe. */
-  private asked(
-    chat: string,
-    id: string | undefined,
-    t: number,
-    text: string,
-    inPrivate: boolean
-  ): void {
-    if (t > this.lastWord) this.waiting = Math.min(this.waiting ?? t, t);
-    const probe = text.trim().split(/[\s@]/u)[0]?.toLowerCase() === PROBE_COMMAND;
-    if (probe && inPrivate && this.health.state === 'suspect' && this.probe === undefined)
-      this.probe = { t, chat, id };
+  /** One of the bot's commands, sent at `t`: it waits, and while suspect it is a test of the bot. */
+  private asked(t: number): void {
+    if (t <= this.lastWord) return;
+    this.waiting = Math.min(this.waiting ?? t, t);
+    if (this.health.state === 'suspect' && t >= this.health.since)
+      this.sinceSuspect = Math.min(this.sinceSuspect ?? t, t);
   }
 
   private remember(chat: string, id: string | undefined, t: number): void {

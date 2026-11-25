@@ -89,13 +89,7 @@ import { BanWatch } from '#src/bans.ts';
 import { parseEquip } from '#src/equipment.ts';
 import { BOX, GenerationWatch, parseBox } from '#src/generators.ts';
 import { GiftWatch } from '#src/gifts.ts';
-import {
-  type Health,
-  HEALTH_STATES,
-  type HealthKept,
-  HealthWatch,
-  PROBE_COMMAND,
-} from '#src/health.ts';
+import { type Health, HEALTH_STATES, type HealthKept, HealthWatch } from '#src/health.ts';
 import { pageOf, parseInventory } from '#src/inventory.ts';
 import {
   CASHOUT_COMMANDS,
@@ -137,8 +131,8 @@ export const LOREGAME_PARSER = 'loregame';
 /**
  * @LoreGameBot's vocabulary (MegaBotTron1999's D140, D141): its turn, by its own command first and
  * its aliases after; the accumulo, by its full name, with `/acc` its alias, as the bot takes
- * both; the training; `/requisiti` (`/req`), a place's requirements, which any player may ask
- * at any time; and `/info`, the profile, which is the health's probe (src/health.ts). The parser's, and given to `loregame-state`'s readiness too.
+ * both; the training; and `/requisiti` (`/req`), a place's requirements, which any player may ask
+ * at any time. The parser's, and given to `loregame-state`'s readiness too.
  */
 export const LOREGAME_VOCABULARY = {
   bot: LOREGAMEBOT,
@@ -147,9 +141,6 @@ export const LOREGAME_VOCABULARY = {
     [ACCUMULO]: { aliases: ACCUMULO_COMMANDS.slice(1) },
     [TRAINING]: { aliases: TRAINING_COMMANDS.slice(1) },
     [REQUIREMENTS_COMMANDS[0] as string]: { aliases: REQUIREMENTS_COMMANDS.slice(1) },
-    // The owner's profile, and the health's probe (src/health.ts): `loregame-state` offers it once
-    // per suspicion, to a player whose config names it.
-    [PROBE_COMMAND]: {},
   },
 };
 /** Every form of `names` a player may send (D139, D140): each bare, then addressed to the bot. */
@@ -240,13 +231,6 @@ const parser: Plugin = turnParserPlugin({
       // Banned: nothing spent; the ban holds every command (`loregame-state`'s readiness).
       return outcome.kind === 'banned' ? bannedReading(outcome.until) : { unread: true };
     }
-    if (m.command === PROBE_COMMAND) {
-      // The profile: the probe answered, a success, read in full by the profile's watch.
-      if (parseProfile(m.text) !== undefined)
-        return { outcome: { bot: LOREGAMEBOT, kind: 'profile' } as unknown as TurnOutcome };
-      const said = parseLoreGameBot(m.text);
-      return said.kind === 'banned' ? bannedReading(said.until) : { unread: true };
-    }
     if (!m.answers && !(m.private && m.replies)) return undefined;
     const outcome = parseLoreGameBot(m.text);
     if (outcome.kind === 'unknown') return m.answers ? { unread: true } : undefined;
@@ -303,9 +287,7 @@ const unbanEvent = z
 
 const healthEvent = z
   .object({
-    state: z
-      .enum(HEALTH_STATES)
-      .describe('Answering, slow in a chat, silent, gone, or replaying what it missed'),
+    state: z.enum(HEALTH_STATES).describe('Answering, silent, gone, or replaying what it missed'),
     reason: z.string().describe('What moved it'),
     latency: z.number().optional().describe("The bot's last reply's latency, if known (ms)"),
   })

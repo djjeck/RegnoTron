@@ -507,6 +507,28 @@ describe('the loregame parser’s accumulo', () => {
   });
 });
 
+describe("the bot's health, kept by 0.50.0", () => {
+  it('is up where 0.50.0 kept a `slow` it no longer tells', async () => {
+    const dir2 = path.join(dir, 'slow');
+    const run = await bootState(dir2);
+    await run.turn(lit('un sasso [B1]'));
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    kept.state.health = { ...kept.state.health, state: 'slow', reason: 'the probe was answered' };
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    const meta = JSON.parse(fs.readFileSync(path.join(docs, '_meta.json'), 'utf8'));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 1 }));
+    const migrated = await bootState(dir2);
+    expect(migrated.read('health')).toMatchObject({
+      state: 'up',
+      reason: 'the probe was answered',
+    });
+    await migrated.core.stop();
+  });
+});
+
 describe('the accumulo, for a shell player', () => {
   const ready = (run: { ready: () => Record<string, { ready: boolean; why?: string }> }) =>
     run.ready()['/accumulo'];
@@ -542,8 +564,6 @@ describe('the accumulo, for a shell player', () => {
       // A place's requirements: it asks a place's name, so it is the person's, never played by
       // default.
       { command: '/requisiti', aliases: ['/req'], interactive: true },
-      // The health's probe: offered once per suspicion, only to a player whose config names it.
-      { command: '/info', unlock: {}, interactive: true },
     ]);
   });
 
@@ -701,46 +721,28 @@ describe('the accumulo, for a shell player', () => {
   });
 });
 
-/** A profile, the answer to `/info` (invented). */
-const PROBE_PROFILE = [
-  '👤 alice',
-  '',
-  '👥 Nessuna azienda',
-  '',
-  'Livello 3 (40 ⚔️)',
-  '▓░░░░░░░░░ 10.00%',
-  '',
-  'Il Bene 😇',
-  'Episodio 1.200',
-  '0 Ricette completate',
-  '1.250 ₭',
-  '',
-  'Armatura 🛡 - (vuoto)',
-  'Amuleto 🩺 - (vuoto)',
-  'Arma 🗡 - una spatola (3 - 8)',
-].join('\n');
-
 describe("the bot's health", () => {
-  it('offers the probe once when the bot falls silent, and keeps the outage to its end', async () => {
+  it('keeps the outage from its suspicion to its end, a probe answered as any command', async () => {
     const run = await bootState(path.join(dir, 'h'), { group: true });
     expect(run.read('health')).toMatchObject({ state: 'up', outages: [] });
-    expect(run.ready()['/info']).toMatchObject({ ready: false, why: 'waits for an unlock' });
     const bobs = await run.group('bob', '/lore');
-    // A minute of silence: suspect, the probe offered.
+    // A minute of silence: suspect.
     run.clock.advance(MIN);
     await run.settle();
     expect(run.of('loregame.health')).toMatchObject([
       { state: 'suspect', reason: 'silent for 60 s while a command waited' },
     ]);
-    expect(run.ready()['/info']).toMatchObject({ ready: true });
-    // Sent (by hand here): offered no more; unanswered for two minutes, down.
+    // A probe, sent by another node of the owner's account and told to the parser: unanswered for
+    // two minutes, down. The bot's readiness knows nothing of it.
+    const before = run.ready();
     await run.owner('/info');
-    expect(run.ready()['/info']).toMatchObject({ ready: false });
+    expect(run.ready()['/lore']).toEqual(before['/lore']);
+    expect(run.ready()).not.toHaveProperty('/info');
     run.clock.advance(2 * MIN);
     await run.settle();
     expect(run.read('health')).toMatchObject({
       state: 'down',
-      reason: 'the probe went unanswered for 120 s',
+      reason: 'a command sent while suspect went unanswered for 120 s',
     });
     // Hours later, the replay: catching up; then a fresh reply: up.
     run.clock.advance(300 * MIN);
@@ -762,19 +764,6 @@ describe("the bot's health", () => {
       latency: 0,
       outages: [{ start: at(1), down: at(3), replay: at(303), end: at(303) }],
     });
-    // Up, the probe is offered no more.
-    expect(run.ready()['/info']).toMatchObject({ ready: false });
-    await run.core.stop();
-  });
-
-  it('reads the probe’s answer, the profile, as its success', async () => {
-    const run = await bootState(path.join(dir, 'i'));
-    await run.owner('/info');
-    await run.bot(PROBE_PROFILE);
-    expect(run.core.drift().find((d) => d.parser === 'loregame')).toMatchObject({ unread: 0 });
-    await run.owner('/info');
-    await run.bot('Qualcosa che il bot non ha mai scritto.');
-    expect(run.core.drift().find((d) => d.parser === 'loregame')).toMatchObject({ unread: 1 });
     await run.core.stop();
   });
 });

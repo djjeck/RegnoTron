@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Heard } from './bans.ts';
-import {
-  DOWN_MS,
-  HealthWatch,
-  PROBE_COMMAND,
-  PROBE_WAIT_MS,
-  SLOW_DOWN_MS,
-  SUSPECT_MS,
-} from './health.ts';
+import { ANSWER_WAIT_MS, DOWN_MS, HealthWatch, SUSPECT_MS } from './health.ts';
 
 const T = Date.parse('2026-11-06T12:00:00Z');
 const GROUP = '-1001';
@@ -79,75 +72,74 @@ describe("the bot's health", () => {
     expect(live.tick(T + SUSPECT_MS)).toBeUndefined();
   });
 
-  it('is slow when the probe is answered, and up again at a fresh reply', () => {
+  it('is up again when a command sent while suspect is answered fresh: in private, any word', () => {
     const h = new HealthWatch('LoreGameBot', undefined, T);
     h.hear(said('bob', '/lore', T));
     h.tick(T + SUSPECT_MS);
-    // The probe, sent by the owner's player; the bot answers it in private.
-    h.sent({ chat: DM, id: '7', t: T + SUSPECT_MS + 1000, command: PROBE_COMMAND });
-    expect(h.due()).toBe(T + SUSPECT_MS + 1000 + PROBE_WAIT_MS);
-    expect(h.hear(bot('Profilo', T + SUSPECT_MS + 3000, { chat: DM, replyTo: '7' }))).toEqual({
-      state: 'slow',
+    // A probe, a send of the owner's account another node made; the bot's next word there answers it.
+    h.sent({ chat: DM, id: '7', t: T + SUSPECT_MS + 1000, command: '/info' });
+    expect(h.due()).toBe(T + SUSPECT_MS + 1000 + ANSWER_WAIT_MS);
+    expect(h.hear(bot('Profilo', T + SUSPECT_MS + 3000, { chat: DM }))).toEqual({
+      state: 'up',
       since: T + SUSPECT_MS + 3000,
-      reason: 'the probe was answered in 2 s',
+      reason: 'a reply in 2 s',
       latency: 2000,
     });
-    // Late replies in the group: still slow. A fresh one: up.
-    expect(answered(h, T + 2 * 60_000, 2 * 60_000)).toBeUndefined();
-    expect(h.current().state).toBe('slow');
-    expect(answered(h, T + 5 * 60_000, 1000)).toMatchObject({
+    // The owner's own, by hand, in private: the same.
+    const hand = new HealthWatch('LoreGameBot', undefined, T);
+    hand.hear(said('bob', '/lore', T));
+    hand.tick(T + SUSPECT_MS);
+    hand.hear(said('alice', '/info', T + SUSPECT_MS + 1000, { own: true, chat: DM }));
+    expect(hand.hear(bot('Profilo', T + SUSPECT_MS + 6000, { chat: DM }))).toMatchObject({
       state: 'up',
-      reason: 'a reply in 1 s',
+      reason: 'a reply in 5 s',
     });
   });
 
-  it('takes the probe the owner sends by hand, in private, of its own', () => {
+  it('is down when a command sent while suspect goes unanswered, whoever sent it', () => {
     const h = new HealthWatch('LoreGameBot', undefined, T);
-    h.hear(said('bob', '/lore', T));
-    h.tick(T + SUSPECT_MS);
-    // In the group it is no probe.
-    h.hear(said('alice', '/info', T + SUSPECT_MS, { own: true }));
-    h.hear(said('alice', '/info', T + SUSPECT_MS + 1000, { own: true, chat: DM }));
-    expect(h.hear(bot('Profilo', T + SUSPECT_MS + 6000, { chat: DM }))).toMatchObject({
-      state: 'slow',
-      reason: 'the probe was answered in 5 s',
-    });
-  });
-
-  it('is down when the probe goes unanswered, and a probe sent before a suspicion is none', () => {
-    const h = new HealthWatch('LoreGameBot', undefined, T);
-    h.sent({ chat: DM, id: '6', t: T, command: PROBE_COMMAND });
+    // Sent before the suspicion: it waits, but tests nothing.
+    h.sent({ chat: DM, id: '6', t: T, command: '/info' });
     h.tick(T + SUSPECT_MS);
     expect(h.current().state).toBe('suspect');
-    h.sent({ chat: DM, id: '7', t: T + SUSPECT_MS, command: PROBE_COMMAND });
-    expect(h.tick(T + SUSPECT_MS + PROBE_WAIT_MS)).toMatchObject({
+    expect(h.due()).toBe(T + DOWN_MS);
+    h.hear(said('carol', '/lore', T + SUSPECT_MS + 1000));
+    expect(h.tick(T + SUSPECT_MS + 1000 + ANSWER_WAIT_MS)).toMatchObject({
       state: 'down',
-      reason: 'the probe went unanswered for 120 s',
+      reason: 'a command sent while suspect went unanswered for 120 s',
     });
     expect(h.due()).toBeUndefined();
   });
 
-  it('is down after five minutes of silence without a probe, slow after fifteen', () => {
+  it('is down after five minutes of silence, nothing sent since the suspicion', () => {
     const h = new HealthWatch('LoreGameBot', undefined, T);
     h.sent({ chat: GROUP, id: '5', t: T });
     expect(h.tick(T + SUSPECT_MS)?.state).toBe('suspect');
-    expect(h.due()).toBe(T + DOWN_MS);
     expect(h.tick(T + DOWN_MS)).toMatchObject({
       state: 'down',
       reason: 'silent for 300 s while a command waited',
     });
-    const s = new HealthWatch('LoreGameBot', undefined, T);
-    s.hear(said('bob', '/lore', T));
-    s.tick(T + SUSPECT_MS);
-    s.sent({ chat: DM, id: '7', t: T + SUSPECT_MS, command: PROBE_COMMAND });
-    s.hear(bot('Profilo', T + SUSPECT_MS + 1000, { chat: DM }));
-    const t = T + SUSPECT_MS + 2000;
-    s.hear(said('bob', '/lore', t));
-    expect(s.due()).toBe(t + SLOW_DOWN_MS);
-    expect(s.tick(t + SLOW_DOWN_MS)).toMatchObject({
-      state: 'down',
-      reason: 'silent for 900 s, though the probe was answered',
+  });
+
+  it('reads a word of the bot in private after no send of the owner as no reply', () => {
+    const h = new HealthWatch('LoreGameBot', undefined, T);
+    h.hear(said('bob', '/lore', T));
+    h.tick(T + SUSPECT_MS);
+    expect(
+      h.hear(bot('Un messaggio qualunque', T + SUSPECT_MS + 1000, { chat: DM }))
+    ).toMatchObject({
+      state: 'catching-up',
+      reason: 'the bot speaks again, replying to nothing it can place',
     });
+  });
+
+  it('starts from nothing known when it kept a state it no longer tells (0.50.0’s slow)', () => {
+    const h = new HealthWatch(
+      'LoreGameBot',
+      { health: { state: 'slow' as 'up', since: T, reason: 'old' }, lastWord: null },
+      T + HOUR
+    );
+    expect(h.current()).toEqual({ state: 'up', since: T + HOUR, reason: 'nothing heard yet' });
   });
 
   it('catches up through a replay in bursts, and is up only at a fresh reply', () => {

@@ -65,7 +65,7 @@ import { z } from 'zod';
 import { ACCUMULO, ACCUMULO_MAX, ACCUMULO_MECHANICS } from '#src/accumulo.ts';
 import { type Companies, type Company, companyOf, idOf, paged, quoted } from '#src/companies.ts';
 import { GENERATORS } from '#src/generators.ts';
-import { HEALTH_STATES, PROBE_COMMAND } from '#src/health.ts';
+import { HEALTH_STATES } from '#src/health.ts';
 import { initialSchedule, type Point, scheduled, type Via } from '#src/market.ts';
 import {
   MEDIA_EVENT,
@@ -137,8 +137,6 @@ export const LOREGAME_STATE = 'loregame-state';
  * level-ups, the profiles, the skills menus and the equipment, every player's.
  */
 const TURN_EVENT = `${LOREGAME_PARSER}.turn`;
-/** A send the parser was told of (the readiness's), which ends the probe's offer. */
-const SENT_EVENT = `${LOREGAME_PARSER}.sent`;
 export const CONSUMES: readonly string[] = [
   TURN_EVENT,
   BAN_EVENT,
@@ -201,9 +199,6 @@ export const LORE_READINESS = new LoreReadinessModel({
     [TRAINING]: TRAINING_MECHANICS,
     // It asks a place's name, the person's to choose: a player never plays it by default.
     [REQUIREMENTS_COMMANDS[0] as string]: { interactive: true },
-    // The health's probe (src/health.ts): unlocked once per suspicion, its answer (or its send)
-    // ends it; interactive, so that only a player whose config names it sends it, in its chat.
-    [PROBE_COMMAND]: { unlock: {}, interactive: true },
   },
 });
 
@@ -237,13 +232,6 @@ const BAN_HOLD = 'ban';
  * not full, whatever the state believed (a use it did not hear, a start that knew nothing).
  */
 export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
-  // The probe is offered while the bot is suspect, once: a send of it, or any other health, ends it.
-  if (e.type === HEALTH_EVENT)
-    return e['state'] === 'suspect'
-      ? LORE_READINESS.unlock(r, PROBE_COMMAND, e.t)
-      : LORE_READINESS.lock(r, PROBE_COMMAND);
-  if (e.type === SENT_EVENT && LORE_READINESS.name(String(e['command'] ?? '')) === PROBE_COMMAND)
-    return LORE_READINESS.lock(r, PROBE_COMMAND);
   if (e.type === TURN_EVENT) {
     const o = outcomeOf(e);
     // A turn says it only when whole (one cut off lost its line) and not quoting it (a story's).
@@ -1806,7 +1794,7 @@ const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
 /**
  * The bot's health, as the parser tells each change (src/health.ts): the state, and each outage, from
  * its suspicion to its end, with when it was found down and when its replay began. A suspicion that
- * ended at once, a slow chat, is one too: the bot stopped answering where commands waited.
+ * ended at once is one too: the bot stopped answering for a minute while commands waited.
  */
 function reduceHealth(state: LoreState, e: BusEvent): LoreState {
   if (e.type !== HEALTH_EVENT) return state;
