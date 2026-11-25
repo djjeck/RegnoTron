@@ -77,6 +77,22 @@ describe('the loregame parser', () => {
     expect(p.drift()).toMatchObject({ read: 6, unread: 1 });
   });
 
+  it('reads the shop’s listing as the answer to /negozio, not drift (#12)', async () => {
+    const p = await run(GROUP);
+    const lore = { sender: 'LoreGameBot' };
+    p.hear({ chat: '@LoreGameBot', sender: 'alice', own: true, text: '/negozio' });
+    p.hear({
+      ...lore,
+      chat: '@LoreGameBot',
+      text: 'alice, oggi nel negozio:\n- 🛒 una pigna [B1] 200₭\n- 🛒 un mestolo [M4] 1.000₭',
+    });
+    expect(p.drift()).toMatchObject({ unread: 0 });
+    // By its alias, an answer that is no listing: drift, as for any command it names.
+    p.hear({ chat: '@LoreGameBot', sender: 'alice', own: true, text: '/shop' });
+    p.hear({ ...lore, chat: '@LoreGameBot', text: 'Un messaggio qualunque' });
+    expect(p.drift()).toMatchObject({ unread: 1 });
+  });
+
   it('counts /lore as a turn, as /avventura, in the group and in private', async () => {
     const p = await run(GROUP);
     const lore = { sender: 'LoreGameBot' };

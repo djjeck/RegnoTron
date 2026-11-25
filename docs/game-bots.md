@@ -655,7 +655,9 @@ bob, oggi nel negozio:
   alias) among its bot's commands, and the state declares it `resetsAt: 00:00 Europe/Rome`
   (MegaBotTron1999's D165). Any player's listing, read in any chat, counts as its use: the shop is
   the same for everyone, so the owner's own would tell nothing new until midnight. A shell `player`
-  bound to the state plays it soon after each change, at its person's next sitting.
+  bound to the state plays it soon after each change, at its person's next sitting. The owner's
+  `/negozio`, paired by the shell, is read as a success (`kind: 'shop'`, its count of items and its
+  sagra); since 0.52.1, as 0.51.0 left it unread, a drift that stopped the owner's actors.
 - **Buying** is done with the listing's buttons [M]: the bot edits the listing into
   `bob, sei sicuro di voler comprare <item> per <price> ₭?` (7 listings were last seen so in the
   exports, which show each message as it was last edited), and the purchase itself sends no message.

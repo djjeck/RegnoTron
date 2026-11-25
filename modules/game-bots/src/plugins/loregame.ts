@@ -118,7 +118,7 @@ import {
   splitLevelUp,
   TURN_COMMANDS,
 } from '#src/replies.ts';
-import { parseShop, PurchaseWatch, SHOP_COMMANDS, type ShopListing } from '#src/shop.ts';
+import { parseShop, PurchaseWatch, SHOP, SHOP_COMMANDS, type ShopListing } from '#src/shop.ts';
 import { parseSkillMenu } from '#src/skills.ts';
 import {
   parseTraining,
@@ -220,6 +220,22 @@ const parser: Plugin = turnParserPlugin({
   ...LOREGAME_VOCABULARY,
   read: (m): TurnReading => {
     // By its name, whichever alias was sent (D140).
+    if (m.command === SHOP) {
+      // The shop's listing (§5.12): a success, which holds `/negozio` until midnight. Its items are
+      // `loregame.shop`'s, published for any listing in any chat, paired or not.
+      const listing = parseShop(m.text);
+      if (listing !== undefined)
+        return {
+          outcome: {
+            kind: 'shop',
+            bot: LOREGAMEBOT,
+            items: listing.items.length,
+            sagra: listing.sagra,
+          } as TurnOutcome,
+        };
+      const outcome = parseLoreGameBot(m.text);
+      return outcome.kind === 'banned' ? bannedReading(outcome.until) : { unread: true };
+    }
     if (m.command === ACCUMULO || m.command === TRAINING) {
       // The answer to the owner's /accumulo (used, the success, or a "too soon" of some kind), or
       // to their /allenati (a training, or a "too soon").
