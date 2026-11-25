@@ -725,6 +725,26 @@ describe('every player, as the group shows them', () => {
     await run.core.stop();
   });
 
+  it('pairs the answers the bot replays after an outage, in order, and marks them', async () => {
+    const run = await bootState(path.join(dir, 'r'), { group: true });
+    // Bob asks; the bot is down. Dave plays, Carol asks, hours later.
+    await run.group('bob', '/acc');
+    run.clock.advance(60 * MIN);
+    const daves = await run.group('dave', '/lore');
+    run.clock.advance(120 * MIN);
+    const asked = run.clock.now();
+    await run.group('carol', '/acc');
+    run.clock.advance(120 * MIN);
+    // Back: the replay. Dave's turn is refused by the flood guard; Bob, who asked before him, got
+    // no answer; Carol's comes of its own, and is hers.
+    await run.group('LoreGameBot', 'Stai calmo maschio...', { replyTo: daves });
+    await run.group('LoreGameBot', USED);
+    expect(run.of('loregame.playerAccumulo')).toEqual([
+      expect.objectContaining({ player: 'carol', result: 'used', replayed: true, asked }),
+    ]);
+    await run.core.stop();
+  });
+
   it('adds the players to a state kept before there were any', async () => {
     const dir2 = path.join(dir, 'q');
     const run = await bootState(dir2);

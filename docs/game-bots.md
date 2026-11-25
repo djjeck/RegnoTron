@@ -186,10 +186,11 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
 - **Whose answer it is.** In private it is the owner's. In the group, since 7 Feb 2026 [M] the bot
   no longer replies to the command: the answer is a message of its own that follows it, within 10
   seconds in 99.8% of 5,400 answers. The parser pairs each answer with the oldest command waiting in
-  that chat, the way the bot answers them (a ban it replies to the command with ends that command's
-  wait). It therefore needs, like the bans (§5.1), the group's chat edge to deliver every sender: it
-  cannot tell an answer to the owner from one to another player when it does not hear the other
-  player's command. The level gate counts only as an answer to the command.
+  that chat, the way the bot answers them, on the bot's clock across an outage (§5.15) (a ban it
+  replies to the command with ends that command's wait). It therefore needs, like the bans (§5.1),
+  the group's chat edge to deliver every sender: it cannot tell an answer to the owner from one to
+  another player when it does not hear the other player's command. The level gate counts only as an
+  answer to the command.
 - **`loregame.accumulo`** carries the owner's answers (`result`: `short`, `idle`, `used`, `locked`;
   `count`, `max`, `level`), as the parser's event; the turn's line is `accumulo` in the outcome of
   `loregame.turn`. `loregame-state` counts against them (§6).
@@ -756,6 +757,40 @@ list: `player`, `owner`, `recipes` (each `name`, `level`, `lacking`, none for `[
 **`loregame.recipe`** carries an answer: `player`, `owner`, `name`, `lacking` and `held` (each
 `item`, `qty`, `rarity`, `tags`, `level`). **`loregame.recipeMade`** carries a recipe made:
 `player`, `owner`, `used` (each as above) and `made`.
+
+### 5.15 Outages and replays
+
+@LoreGameBot goes down often [M], for minutes to days, until its machine is restarted: it stops
+answering, and says nothing. When it comes back it answers every message it missed, in private and
+in the group, as if all had been sent that instant, so its flood guard answers most of them with
+`Stai calmo maschio...`, the players who kept retrying most of all. Measured on the group's exports,
+Aug–Nov 2026:
+
+- **Live, it answers at once:** of ~19,300 commands it answers with a reply, half within 1 s, 98%
+  within 2 s. About 1% are never answered, outages or not.
+- **An outage is silence:** nothing at all, for 2 minutes to 14 hours in that span (two of about 14
+  hours in October). Short stalls, of minutes, end the same way as long outages.
+- **The replay keeps the order:** 428 replayed replies across three replays, none out of order, each
+  replying to the command it answers, up to 13 hours late.
+- **A replay may come in bursts with silence between:** one outage replayed 54 messages, went silent
+  for 3 hours more, then replayed 326.
+- **The flood guard dominates a replay:** 282 of 307 replayed answers in one burst, to 10 players.
+  Outside a replay it is an ordinary refusal (`reason: calm`).
+- **The bot applies a replayed command when it answers it**, as if just sent: its outcome counts
+  from then, not from the command.
+- For two days in August most answers did not reply to their command, the bot up throughout: a
+  missing reply is no sign of an outage.
+
+**How the parsers pair across one.** A reply names its command, so the turns' answers (§5) and the
+others that reply are paired however late. The answers that do not reply (the accumulo's, §5.2, a
+training's, §5.3, a gift's, §5.10, the market's, §5.11) are paired in order with the commands
+waiting, and a command waits on **the bot's clock**, not the time's: how far the bot has answered in
+that chat. A reply sets it to the time of the message it answers; a message of its own, to now,
+while the bot is live (its clock current at its last word, a moment before), and leaves it otherwise
+(while it replays, or after a silence, until a reply tells). Silent, it stops. So a command is given
+up as unanswered only once the bot has answered more than 10 s past it, live or in a replay; a watch
+keeps at most 1,000 waiting. An answer more than a minute after its command is marked `replayed`,
+with its command's time (`asked`), in the events that carry it.
 
 ## 6. The owner's state at @LoreGameBot
 

@@ -122,7 +122,12 @@ describe('whose answer it is', () => {
     // The answer in the group is bob's, not the owner's of the other chat.
     expect(w.hear(bot(SHORT))).toBeUndefined();
     w.hear(owner('/acc'));
-    // The bot never answered; a later answer is not that command's.
+    // The bot answers live, past it: it never answered; a later answer is not that command's.
+    const lore = said('bob', '/lore', { time: T + ANSWER_WINDOW_MS });
+    w.hear(lore);
+    w.hear(
+      bot('Hai ottenuto un sasso [B1]!', { time: T + ANSWER_WINDOW_MS, replyTo: lore.id as string })
+    );
     expect(w.hear(bot(SHORT, { time: T + ANSWER_WINDOW_MS + 1 }))).toBeUndefined();
     w.hear(owner('/acc', { time: T + ANSWER_WINDOW_MS + 5 }));
     expect(w.hear(bot(SHORT, { time: T + ANSWER_WINDOW_MS + 6 }))).toEqual({
@@ -185,7 +190,7 @@ describe('the accumulo watch, told a send twice', () => {
       { chat: G, sender: 'alice', own: true, text: '/accumulo', time: T0, id: '7' },
       'alice'
     );
-    expect(w.ownerWaiting(G, T0 + 1000)).toEqual(['#7']);
+    expect(w.ownerWaiting(G)).toEqual(['#7']);
     const used =
       '🔋 IL TUO ACCUMULO SI ATTIVA! Ti senti di nuovo pronto per vivere una nuova storia! /lore';
     expect(
@@ -195,7 +200,7 @@ describe('the accumulo watch, told a send twice', () => {
       reply: { result: 'used' },
     });
     // Nothing left waiting to claim the next player's answer.
-    expect(w.ownerWaiting(G, T0 + 2000)).toEqual([]);
+    expect(w.ownerWaiting(G)).toEqual([]);
     expect(
       w.answer({ chat: G, sender: 'LoreGameBot', text: used, time: T0 + 2000 }, 'alice')
     ).toBeUndefined();

@@ -376,7 +376,11 @@ seeds them again (docs/game-bots.md §6.1). The parser publishes them as `lorega
 `loregame.playerAccumulo`, `loregame.training`, `loregame.levelUp` and `loregame.profile`, which
 needs the group edge to deliver every sender, as the bans do. A player's turn carries the message id
 of their turn command (`message`) and of the bot's answer (`answer`), so that another node can reply
-to it.
+to it. An answer paired in order (`loregame.accumulo`, `loregame.playerAccumulo`,
+`loregame.training`, `loregame.gift` and the market's) that came more than a minute after its
+command carries `replayed: true` and the command's time (`asked`): the bot replayed it after an
+outage, or stalled (docs/game-bots.md §5.15). Its event is at the answer's time, when the bot
+applied it.
 
 `loregame-state.accumuloReady` (`count`, `max`, `via`: `turn` or `reading`), `accumuloUsed` (`turns`
 since the last use, `exact`) and `accumuloDrift` (`kind`, `counted`, `said`, `max`) announce each

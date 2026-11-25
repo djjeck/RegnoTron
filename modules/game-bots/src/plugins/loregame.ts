@@ -243,6 +243,23 @@ const parser: Plugin = turnParserPlugin({
 const player = z
   .string()
   .describe('The player, as the group names them; the owner: their username');
+/**
+ * The fields of an answer the bot held back (`src/answer-watch.ts`): it came long after its
+ * command, replayed after an outage or a stall. The bot applies it when it answers, so the event is
+ * at the answer's time; `asked` is the command's.
+ */
+const lateFields = {
+  replayed: z
+    .literal(true)
+    .optional()
+    .describe(
+      'Answered more than a minute after its command: replayed after an outage, or a stall'
+    ),
+  asked: z.number().optional().describe('replayed: when its command was sent (ms)'),
+};
+/** The late fields of a paired answer, if it was held back. */
+const lateOf = (a: { replayed?: true; asked?: number } | undefined) =>
+  a?.replayed === true && a.asked !== undefined ? { replayed: true as const, asked: a.asked } : {};
 const banEvent = z
   .object({
     chat: z.string(),
@@ -274,6 +291,7 @@ const accumuloEvent = z
     count: z.number().optional().describe("The bot's counter: turns since the last use"),
     max: z.number().optional().describe('How many turns it needs, as the bot states it'),
     level: z.number().optional().describe('locked: the level it asks'),
+    ...lateFields,
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("How @LoreGameBot answered the owner's /accumulo");
@@ -295,6 +313,7 @@ const trainingEvent = z
       .optional()
       .describe("trained: the level-up it brought, as a turn's (src/replies.ts's LoreLevelUp)"),
     retryMs: z.number().optional().describe('soon: the wait left, as the bot states it (ms)'),
+    ...lateFields,
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("How @LoreGameBot answered a player's /allenati: any player's the account reads");
@@ -472,6 +491,7 @@ const giftEvent = z
     tags: z.array(z.string()).optional(),
     level: z.object({ low: z.number(), high: z.number() }).nullable().optional(),
     coins: z.number().optional(),
+    ...lateFields,
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("A player's gift of items or coins (/give, /dai), as @LoreGameBot answered it");
@@ -552,6 +572,7 @@ const investmentsEvent = z
       .object({ invested: z.number(), value: z.number(), pct: z.number() })
       .nullable()
       .describe('Their totals; none with nothing open'),
+    ...lateFields,
     playback: back,
   })
   .describe("A player's open investments, as the market listed them to them (/mercato, /borsa)");
@@ -565,6 +586,7 @@ const investEvent = z
     invested: z.number().describe('All they have in it now'),
     entry: z.number().describe('The value it was entered at'),
     coins: z.number().describe('What they have left'),
+    ...lateFields,
     playback: back,
   })
   .describe("A player's investment (/punta, /investi), as @LoreGameBot answered it");
@@ -587,6 +609,7 @@ const cashoutEvent = z
         })
       )
       .describe('Each investment withdrawn'),
+    ...lateFields,
     playback: back,
   })
   .describe("A player's withdrawal (/riscuoti, /ritira), as @LoreGameBot answered it");
@@ -979,7 +1002,14 @@ export const loregamePlugin: Plugin = {
         if (r.kind === 'market' && r.positions !== null && of !== undefined)
           ctx.bus.publish(
             INVESTMENTS_EVENT,
-            { chat: m.chat, ...of, positions: r.positions, total: r.total, ...old },
+            {
+              chat: m.chat,
+              ...of,
+              positions: r.positions,
+              total: r.total,
+              ...lateOf(listed),
+              ...old,
+            },
             m.time
           );
         return;
@@ -988,7 +1018,11 @@ export const loregamePlugin: Plugin = {
         const of = who(invested);
         if (of === undefined) return;
         const { kind: _, ...made } = r;
-        ctx.bus.publish(INVEST_EVENT, { chat: m.chat, ...of, ...made, ...old }, m.time);
+        ctx.bus.publish(
+          INVEST_EVENT,
+          { chat: m.chat, ...of, ...made, ...lateOf(invested), ...old },
+          m.time
+        );
         return;
       }
       if (r.kind === 'cashout' || r.kind === 'cashout-all') {
@@ -1005,7 +1039,14 @@ export const loregamePlugin: Plugin = {
               }));
         ctx.bus.publish(
           CASHOUT_EVENT,
-          { chat: m.chat, ...of, all: r.kind === 'cashout-all', positions, ...old },
+          {
+            chat: m.chat,
+            ...of,
+            all: r.kind === 'cashout-all',
+            positions,
+            ...lateOf(cashed),
+            ...old,
+          },
           m.time
         );
         return;
@@ -1019,9 +1060,7 @@ export const loregamePlugin: Plugin = {
       // that chat is logged (its id, a reply or not, never its text), with what the watch made of
       // it: an answer the parser does not pair shows whether it arrived at all.
       const bots = m.own !== true && m.sender.toLowerCase() === LOREGAMEBOT.toLowerCase();
-      const waiting = bots
-        ? [...asked.ownerWaiting(m.chat, m.time), ...trained.ownerWaiting(m.chat, m.time)]
-        : [];
+      const waiting = bots ? [...asked.ownerWaiting(m.chat), ...trained.ownerWaiting(m.chat)] : [];
       const news = watch.hear(m, chat.self());
       if (news !== undefined) {
         if (news.type === 'ban')
@@ -1046,7 +1085,14 @@ export const loregamePlugin: Plugin = {
       if (any !== undefined && any.player !== '')
         ctx.bus.publish(
           PLAYER_ACCUMULO_EVENT,
-          { chat: m.chat, player: any.player, owner: any.owner, ...any.reply, ...old },
+          {
+            chat: m.chat,
+            player: any.player,
+            owner: any.owner,
+            ...any.reply,
+            ...lateOf(any),
+            ...old,
+          },
           m.time
         );
       const answer = any?.owner === true ? any.reply : undefined;
@@ -1057,7 +1103,11 @@ export const loregamePlugin: Plugin = {
       if (answer !== undefined) {
         // `loregame-state` reduces it into the owner's readiness, in any chat (D141): a use ends
         // the turns' rest there, and nowhere else (D142).
-        ctx.bus.publish(ACCUMULO_EVENT, { chat: m.chat, ...answer, ...old }, m.time);
+        ctx.bus.publish(
+          ACCUMULO_EVENT,
+          { chat: m.chat, ...answer, ...lateOf(any), ...old },
+          m.time
+        );
       }
       // Any player's training, the owner's in any chat: `loregame-state` folds the owner's success
       // into the readiness (the shell pairs it in private alone).
@@ -1074,7 +1124,7 @@ export const loregamePlugin: Plugin = {
         const { player: who, owner, reply } = training;
         ctx.bus.publish(
           TRAINING_EVENT,
-          { chat: m.chat, player: who, owner, ...reply, ...old },
+          { chat: m.chat, player: who, owner, ...reply, ...lateOf(training), ...old },
           m.time
         );
       }
@@ -1091,6 +1141,7 @@ export const loregamePlugin: Plugin = {
             owner: mine,
             ...reply,
             toOwner: self !== undefined && reply.to.toLowerCase() === self.toLowerCase(),
+            ...lateOf(gift),
             ...old,
           },
           m.time
