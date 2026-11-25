@@ -750,10 +750,16 @@ describe("the bot's health", () => {
       state: 'down',
       reason: 'a command sent while suspect went unanswered for 120 s',
     });
-    // Hours later, the replay: catching up; then a fresh reply: up.
+    // Down: every command held, with no end, for a player (#13).
+    for (const r of Object.values(run.ready()))
+      expect(r).toMatchObject({ ready: false, why: 'the bot is down' });
+    expect(run.ready()['/lore']).not.toHaveProperty('until');
+    // Hours later, the replay: catching up, every command free again; then a fresh reply: up.
     run.clock.advance(300 * MIN);
     await run.group('LoreGameBot', 'Stai calmo maschio...', { replyTo: bobs });
     expect(run.read('health')).toMatchObject({ state: 'catching-up' });
+    expect(run.ready()['/lore']).toEqual(before['/lore']);
+    expect(run.ready()['/negozio']).toMatchObject({ ready: true });
     const carols = await run.group('carol', '/lore');
     await run.group('LoreGameBot', gain('un sasso [B1]'), { replyTo: carols });
     expect(run.of('loregame.health').map((e) => e['state'])).toEqual([

@@ -47,7 +47,8 @@
  *   owner's `/accumulo` in any chat (`loregame.accumulo`, which the shell cannot pair in the group)
  *   uses it (a use: the turn's rest ended) or withdraws its unlock (not full, or under the level):
  *   never a time, only the bot's line on a turn unlocks it again; any player's shop listing uses
- *   `/negozio`, ready again at midnight in Italy (`resetsAt`). And a rule of the game's over the shell's readiness
+ *   `/negozio`, ready again at midnight in Italy (`resetsAt`); and the bot `down` holds every
+ *   command until its health moves on. And a rule of the game's over the shell's readiness
  *   (`LoreReadinessModel`): `/accumulo` is legal only while the turn rests, which is when the bot
  *   takes it.
  *
@@ -224,6 +225,8 @@ function endRest(r: ReadinessState, t: number): ReadinessState {
 
 /** The key of the owner's ban among the readiness's holds. */
 const BAN_HOLD = 'ban';
+/** The key of the bot's outage among the readiness's holds (#13). */
+const DOWN_HOLD = 'down';
 
 /**
  * The facts this state knows besides the parser's answers, folded into the owner's readiness
@@ -234,7 +237,10 @@ const BAN_HOLD = 'ban';
  * turn of the owner's without the accumulo's line withdraws its unlock: the bot's word that it is
  * not full, whatever the state believed (a use it did not hear, a start that knew nothing). Any
  * player's shop listing uses `/negozio`: the shop is the same for everyone, so the owner's would
- * tell nothing new until its items change.
+ * tell nothing new until its items change. While the bot is `down` (its health, §5.16) every
+ * command is held, with no end: a send would only join the backlog it replays. Not while
+ * `suspect` (mostly a slow bot, and a send then confirms an outage sooner) nor `catching-up` (only
+ * a reply to a command sent since it spoke again ends it, so a hold would wait on other players).
  */
 export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
   if (e.type === TURN_EVENT) {
@@ -257,6 +263,16 @@ export function foldReadiness(r: ReadinessState, e: BusEvent): ReadinessState {
     );
   }
   if (e.type === SHOP_EVENT) return LORE_READINESS.succeed(r, SHOP, e.t);
+  if (e.type === HEALTH_EVENT) {
+    const state = e['state'];
+    if (typeof state !== 'string' || !(HEALTH_STATES as readonly string[]).includes(state))
+      return r;
+    return LORE_READINESS.hold(
+      r,
+      DOWN_HOLD,
+      state === 'down' ? { why: 'the bot is down' } : undefined
+    );
+  }
   if (e.type === TRAINING_EVENT)
     return e['owner'] === true && e['result'] === 'trained'
       ? LORE_READINESS.succeed(r, TRAINING, e.t)

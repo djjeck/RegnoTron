@@ -823,6 +823,13 @@ minutes (since game-bots 0.50.3; 60 s before), and a reply up to 4 minutes late 
 - **Back** needs a fresh reply: a replay's replies all answer what was sent before the silence, so a
   burst that stops (§5.15) leaves it catching up, and silent again, down. The replay keeps the
   order, so a fresh reply means it is through.
+- **Every command held while `down`** (since game-bots 0.52.0): the state's readiness holds them
+  all, with no end, `the bot is down`, as it holds them for the owner's ban; a shell player then
+  sends nothing that would only join the backlog. Lifted as the health moves on. Not while `suspect`
+  (mostly a slow bot, and a command sent then confirms an outage sooner), nor `catching-up`: only a
+  reply to a command sent since the bot spoke again ends it, so a hold would wait on the other
+  players. `down` ends at any word of the bot, and is reached only with a command unanswered, so a
+  replay is due; if it is lost, a node that probes may repeat while `down`.
 
 ## 6. The owner's state at @LoreGameBot
 

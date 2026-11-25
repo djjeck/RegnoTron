@@ -301,8 +301,9 @@ woken by `loregame.health`, sends from the owner's account and tells the state o
 
 It also keeps the **owner's readiness** at @LoreGameBot (the section `readiness`): when each of the
 bot's commands may be played, reduced by the shell from the parser's events, with the owner's ban,
-their `/accumulo` answers and their trainings folded in (`foldReadiness`), which a shell player
-reads before each command (`state.ready`, `state.commands`, `state.bot`).
+their `/accumulo` answers, their trainings, any player's shop listing and the bot `down` (every
+command held until its health moves on, since 0.52.0) folded in (`foldReadiness`), which a shell
+player reads before each command (`state.ready`, `state.commands`, `state.bot`).
 
 Its config is `pin` alone, the paths of the state its panel draws first (the first two make the line
 on its card; by default `inventory.held` and `owner.as_of`). It survives restarts, resumes from its
