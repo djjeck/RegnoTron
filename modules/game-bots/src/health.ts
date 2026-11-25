@@ -91,11 +91,7 @@ export class HealthWatch {
 
   constructor(bot: string, kept?: HealthKept, now = 0) {
     this.bot = bot.toLowerCase();
-    // A state no longer told (0.50.0's `slow`) starts again from nothing known.
-    this.health =
-      kept !== undefined && HEALTH_STATES.includes(kept.health.state)
-        ? kept.health
-        : { state: 'up', since: now, reason: 'nothing heard yet' };
+    this.health = kept?.health ?? { state: 'up', since: now, reason: 'nothing heard yet' };
     this.lastWord = kept?.lastWord ?? -Infinity;
   }
 

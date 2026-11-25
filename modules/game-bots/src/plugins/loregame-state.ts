@@ -738,21 +738,11 @@ const base = statePlugin<Kept>({
         },
       });
     },
-    // 0.50.0 keeps the bot's health: added, answering as far as it knows.
+    // 0.50 keeps the bot's health: added, answering as far as it knows.
     (store: Store) => {
       const kept = store.read<{ state?: Record<string, unknown> }>('state');
       if (kept?.state === undefined || kept.state['health'] !== undefined) return;
       store.write('state', { ...kept, state: { ...kept.state, health: initialHealth() } });
-    },
-    // 0.50.1 tells no `slow` (0.50.0's, a probe's answer in private): a health kept so is up.
-    (store: Store) => {
-      const kept = store.read<{ state?: Record<string, unknown> }>('state');
-      const health = kept?.state?.['health'] as Record<string, unknown> | undefined;
-      if (kept?.state === undefined || health?.['state'] !== 'slow') return;
-      store.write('state', {
-        ...kept,
-        state: { ...kept.state, health: { ...health, state: 'up' } },
-      });
     },
   ],
   queries: {

@@ -507,28 +507,6 @@ describe('the loregame parser’s accumulo', () => {
   });
 });
 
-describe("the bot's health, kept by 0.50.0", () => {
-  it('is up where 0.50.0 kept a `slow` it no longer tells', async () => {
-    const dir2 = path.join(dir, 'slow');
-    const run = await bootState(dir2);
-    await run.turn(lit('un sasso [B1]'));
-    await run.core.stop();
-    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
-    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
-    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
-    kept.state.health = { ...kept.state.health, state: 'slow', reason: 'the probe was answered' };
-    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
-    const meta = JSON.parse(fs.readFileSync(path.join(docs, '_meta.json'), 'utf8'));
-    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 1 }));
-    const migrated = await bootState(dir2);
-    expect(migrated.read('health')).toMatchObject({
-      state: 'up',
-      reason: 'the probe was answered',
-    });
-    await migrated.core.stop();
-  });
-});
-
 describe('the accumulo, for a shell player', () => {
   const ready = (run: { ready: () => Record<string, { ready: boolean; why?: string }> }) =>
     run.ready()['/accumulo'];

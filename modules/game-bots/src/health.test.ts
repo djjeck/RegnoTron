@@ -133,15 +133,6 @@ describe("the bot's health", () => {
     });
   });
 
-  it('starts from nothing known when it kept a state it no longer tells (0.50.0’s slow)', () => {
-    const h = new HealthWatch(
-      'LoreGameBot',
-      { health: { state: 'slow' as 'up', since: T, reason: 'old' }, lastWord: null },
-      T + HOUR
-    );
-    expect(h.current()).toEqual({ state: 'up', since: T + HOUR, reason: 'nothing heard yet' });
-  });
-
   it('catches up through a replay in bursts, and is up only at a fresh reply', () => {
     const h = new HealthWatch('LoreGameBot', undefined, T);
     const before = said('bob', '/lore', T);
