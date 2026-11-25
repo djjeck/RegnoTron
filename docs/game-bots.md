@@ -657,7 +657,8 @@ bob, oggi nel negozio:
   the same for everyone, so the owner's own would tell nothing new until midnight. A shell `player`
   bound to the state plays it soon after each change, at its person's next sitting. The owner's
   `/negozio`, paired by the shell, is read as a success (`kind: 'shop'`, its count of items and its
-  sagra); since 0.52.1, as 0.51.0 left it unread, a drift that stopped the owner's actors.
+  sagra); since 0.52.1: 0.51.0 left it unread, a drift notice at each listing, and past five in 15
+  minutes a stop of the parser's actors.
 - **Buying** is done with the listing's buttons [M]: the bot edits the listing into
   `bob, sei sicuro di voler comprare <item> per <price> ₭?` (7 listings were last seen so in the
   exports, which show each message as it was last edited), and the purchase itself sends no message.
