@@ -150,7 +150,7 @@ export const rests: Check = {
     let earlyDouble = 0;
     for (const s of r.steps) {
       if (s.event.type !== 'loregame.playerTurn') continue;
-      const name = s.event['player'] as string;
+      const name = s.event['playerName'] as string;
       const p = playerOf(s.before, name);
       const o = s.event['outcome'] as {
         kind: string;
@@ -213,7 +213,7 @@ export const accumulo: Check = {
     const drift: string[] = [];
     for (const s of r.steps) {
       if (s.event.type !== 'loregame.playerAccumulo') continue;
-      const name = s.event['player'] as string;
+      const name = s.event['playerName'] as string;
       const count = s.event['count'];
       const p = playerOf(s.before, name);
       if (typeof count === 'number' && p !== null && p.turns > 0) {
@@ -222,7 +222,7 @@ export const accumulo: Check = {
       }
     }
     for (const s of r.steps) {
-      const name = s.event['player'];
+      const name = s.event['playerName'];
       if (typeof name !== 'string') continue;
       const before = new Set(
         (playerOf(s.before, name)?.accumulo.drift ?? []).map((d) => `${d.kind}@${d.at}`)
@@ -231,7 +231,7 @@ export const accumulo: Check = {
         if (!before.has(`${d.kind}@${d.at}`)) drift.push(d.kind);
     }
     const ready = r.steps.filter((s) => {
-      const name = s.event['player'];
+      const name = s.event['playerName'];
       if (typeof name !== 'string') return false;
       return (
         playerOf(s.after, name)?.accumulo.ready === true &&
@@ -267,7 +267,7 @@ export const training: Check = {
     for (const s of answers) {
       const retryMs = s.event['retryMs'];
       if (s.event['result'] !== 'soon' || typeof retryMs !== 'number') continue;
-      const before = playerOf(s.before, s.event['player'] as string)?.training;
+      const before = playerOf(s.before, s.event['playerName'] as string)?.training;
       if (before?.last === null || before?.until === null || before === undefined) continue;
       const off = s.event.t + retryMs - Date.parse(before.until);
       verdicts.push(
@@ -310,7 +310,7 @@ export const levels: Check = {
     const placed = r.steps.filter((s) => s.event.type === 'loregame.levelUp');
     const byLevel = new Map<number, number[]>();
     for (const s of placed) {
-      const name = s.event['player'] as string;
+      const name = s.event['playerName'] as string;
       const up = playerOf(s.after, name)?.xp.level_ups.at(-1);
       if (up?.xp === null || up === undefined) continue;
       byLevel.set(up.level, [...(byLevel.get(up.level) ?? []), up.xp]);
@@ -354,7 +354,7 @@ export const profiles: Check = {
     let unread = 0;
     const last = new Map<string, { episode: number; turns: number; unseen: number }>();
     for (const s of seen) {
-      const name = s.event['player'] as string;
+      const name = s.event['playerName'] as string;
       const said = { xp: s.event['xp'] as number, episode: s.event['episode'] as number };
       if (levelForXp(said.xp) === s.event['level']) levels++;
       unread += (s.event['unread'] as string[]).length;
@@ -445,7 +445,7 @@ export const whereabouts: Check = {
     let factionsAgree = 0;
     for (const s of r.steps) {
       if (s.event.type !== PROFILE_EVENT) continue;
-      const name = String(s.event['player']);
+      const name = String(s.event['playerName']);
       const was = playerOf(s.before, name);
       if (was === null || was.profile !== null) continue;
       const place = stat(was, 'location')?.value as { code?: string } | null | undefined;
@@ -506,12 +506,12 @@ export const shop: Check = {
     let checked = 0;
     let agreed = 0;
     for (const b of bought) {
-      const name = String(b.event['player']);
+      const name = String(b.event['playerName']);
       const next = r.steps.find(
         (s) =>
           s.event.type === PROFILE_EVENT &&
           s.event.t >= b.event.t &&
-          String(s.event['player']).toLowerCase() === name.toLowerCase()
+          String(s.event['playerName']).toLowerCase() === name.toLowerCase()
       );
       const held = next === undefined ? null : playerOf(next.before, name);
       const coins =
@@ -544,7 +544,7 @@ export const shop: Check = {
         ['items seen on sale', `${seen.length} (${generators} generators)`],
         [
           'players whose purchases were told',
-          String(new Set(read.map((s) => String(s.event['player']))).size),
+          String(new Set(read.map((s) => String(s.event['playerName']))).size),
         ],
         ['purchases read (a listing edited back from its confirmation)', String(bought.length)],
         ['their coins agreeing with the buyer’s next profile', pct(agreed, checked)],
@@ -621,13 +621,13 @@ export const recipes: Check = {
     let checked = 0;
     let agreed = 0;
     for (const m of made) {
-      const name = String(m.event['player']);
+      const name = String(m.event['playerName']);
       const owner = m.event['owner'] === true;
       const next = r.steps.find(
         (s) =>
           s.event.type === INVENTORY_EVENT &&
           s.event.t >= m.event.t &&
-          (owner ? s.event['owner'] === true : String(s.event['player']) === name)
+          (owner ? s.event['owner'] === true : String(s.event['playerName']) === name)
       );
       if (next === undefined) continue;
       const before = inventoryOfPlayer(next.before, owner ? undefined : name);

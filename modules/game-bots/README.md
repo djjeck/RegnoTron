@@ -33,6 +33,15 @@ other.
 
 It plays nothing. The bots are described in [docs/game-bots.md](../../docs/game-bots.md).
 
+**People by their stable id (0.56.0, #17).** Every event that names a person names them by their
+username and their Telegram id: `playerName` and `playerId` (`null` until the account has seen
+them), a gift's `toName` and `toId`, a company's `leaderName` and `leaderId`; a rename the account
+sees is `loregame.renamed`. The state keeps players by id, moving one first known by username to
+their id once an event links the two. **Breaking:** a consumer that read `player` reads `playerName`
+(and keys by `playerId` when known), `to` is `toName`, `leader` is `leaderName`, and
+`state.holders`' `player` is `playerName`. Needs MegaBotTron1999 v0.1.69 or later (docs/game-bots.md
+§6.3).
+
 An instance that ran `inventorybot` from this module (0.1.0) moved it to InventoryBotTron by the
 steps in this README's git history (game-bots 0.1.1).
 
@@ -323,7 +332,7 @@ have gained what the reply lost: it changes no count, and marks the inventory `u
 | `state.ban({ player? })`                                   | A player's ban (the owner's unless named): `{ until, since }`                                                                            |
 | `state.bans()`                                             | Every banned player, with their ban                                                                                                      |
 | `state.accumulo()`                                         | The owner's accumulo: the count, the bot's word, the drift                                                                               |
-| `state.player({ name })`                                   | A player by username: level, turns, rest, accumulo, training, XP                                                                         |
+| `state.player({ name })`                                   | A player by username or id: level, turns, rest, accumulo, training, XP                                                                   |
 | `state.profile({ player?, stat? })`                        | A player's last profile (the owner's unless named), or one stat by dotted path                                                           |
 | `state.stat({ player?, stat })`                            | A player's stat now (`xp`, `coins`, `location.code`, …): `{ value, exact, as_of }`                                                       |
 | `state.ready()`                                            | Each of the bot's commands' readiness, for a shell player (D141)                                                                         |
@@ -336,8 +345,9 @@ end passes: the state drops it at the next event, and `state.ban` may answer a b
 which a reader checks against its clock. The owner's ban holds every command of the readiness
 (`state.ready`) until it ends.
 
-`loregame-state.banned` (`player`, `until`, `owner`) and `loregame-state.unbanned` (`player`,
-`owner`, `reason`: `lifted` or `expired`) announce each change, for any player, from live news.
+`loregame-state.banned` (`playerName`, `playerId`, `until`, `owner`) and `loregame-state.unbanned`
+(`playerName`, `playerId`, `owner`, `reason`: `lifted` or `expired`) announce each change, for any
+player, from live news.
 
 **The accumulo** is counted and heard at once. The state counts the owner's turns since it was last
 emptied (`count`; `exact` once the bot's own counter, "Il tuo accumulo: 7/20", or a use has set it)
@@ -348,18 +358,19 @@ it keeps the latest ten in `drift`, and announces each once: `count`, `early`, `
 `not_ready`, `used_early` (docs/game-bots.md §6 says which is which). The bot's word wins: the
 readiness unlocks `/accumulo` when the bot said it is full, never on the state's own count.
 
-**Every player** whose turns the account reads is kept too, by username (`players`, the owner's
-included; docs/game-bots.md §6.1): their name and level in the game, their turns seen and those a
-"too soon" told of (played in their private chat, which the account does not read), their rest,
-their accumulo and their trainings (`training`: those seen, those a "too soon" told of, the last,
-and until when the next waits), their XP seen (`xp`: since their last level-up, and their latest
-level-ups with the XP seen before each), their last profile (`profile`: as the bot gave it, each
-line a stat, queried alone with `state.profile`) and their **stats now** (`stats`: the profile's,
-moved by each command read since, each with whether it is still exact and when it changed, queried
-with `state.stat`; the skills menu and the slots listed move them too, and each player's `gear`,
-every item seen worn with its slot and level range, places an item equipped). A new profile, menu or
-listing is checked against the stats held exactly: each it says otherwise is kept in `stats_drift`
-and announced as `loregame-state.statsDrift` (`player`, `owner`, `stat`, `expected`, `said`), then
+**Every player** whose turns the account reads is kept too, by their stable id once known, else by
+username (`players`, each with their username as last seen, `name`; the owner's included;
+docs/game-bots.md §6.1): their name and level in the game, their turns seen and those a "too soon"
+told of (played in their private chat, which the account does not read), their rest, their accumulo
+and their trainings (`training`: those seen, those a "too soon" told of, the last, and until when
+the next waits), their XP seen (`xp`: since their last level-up, and their latest level-ups with the
+XP seen before each), their last profile (`profile`: as the bot gave it, each line a stat, queried
+alone with `state.profile`) and their **stats now** (`stats`: the profile's, moved by each command
+read since, each with whether it is still exact and when it changed, queried with `state.stat`; the
+skills menu and the slots listed move them too, and each player's `gear`, every item seen worn with
+its slot and level range, places an item equipped). A new profile, menu or listing is checked
+against the stats held exactly: each it says otherwise is kept in `stats_drift` and announced as
+`loregame-state.statsDrift` (`playerName`, `playerId`, `owner`, `stat`, `expected`, `said`), then
 seeds them again (docs/game-bots.md §6.1). The parser publishes them as `loregame.playerTurn`,
 `loregame.playerAccumulo`, `loregame.training`, `loregame.levelUp` and `loregame.profile`, which
 needs the group edge to deliver every sender, as the bans do. A player's turn carries the message id

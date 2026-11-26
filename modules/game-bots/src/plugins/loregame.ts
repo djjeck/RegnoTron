@@ -176,6 +176,8 @@ const TRAVEL_ALIAS = '/v';
 /** The events of every player's move or place (§5.9), and of every place's requirements. */
 export const TRAVEL_EVENT = `${LOREGAME_PARSER}.travel`;
 export const REQUIREMENTS_EVENT = `${LOREGAME_PARSER}.requirements`;
+/** A known person seen under a new username (D167): the state renames what it keeps of them. */
+export const RENAMED_EVENT = `${LOREGAME_PARSER}.renamed`;
 /** The event of every player's gift (`/give`, `/dai`, `/paga`, §5.10). */
 export const GIFT_EVENT = `${LOREGAME_PARSER}.gift`;
 /** The event of a player neutralized by a ticket, or of the owner's neutrality ended (§5.9). */
@@ -261,9 +263,19 @@ const parser: Plugin = turnParserPlugin({
   },
 });
 
-const player = z
+/**
+ * A person, as every event names them (MegaBotTron1999's D167, #17): their username, as the group
+ * and the bot's texts name them, and their stable id, the key to keep them by (a username may
+ * change, or pass to another), once the account knows it.
+ */
+const playerName = z
   .string()
-  .describe('The player, as the group names them; the owner: their username');
+  .describe("The player's username, as the group names them; the owner: theirs ('' unknown)");
+const playerId = z
+  .string()
+  .nullable()
+  .describe("The player's stable id (Telegram's): none until the account has seen them");
+const named = { playerName, playerId };
 /**
  * The fields of an answer the bot held back (`src/answer-watch.ts`): it came long after its
  * command, replayed after an outage or a stall. The bot applies it when it answers, so the event is
@@ -284,7 +296,7 @@ const lateOf = (a: { replayed?: true; asked?: number } | undefined) =>
 const banEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     until: z.number().describe('When the ban ends, as the bot states it (ms)'),
     owner: z.boolean().describe('The player is the owner of the account'),
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
@@ -293,7 +305,7 @@ const banEvent = z
 const unbanEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean(),
     playback: z.literal(true).optional(),
   })
@@ -328,7 +340,7 @@ const accumuloEvent = z
 const trainingEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     result: z.enum(['trained', 'soon']).describe('Trained, or too soon'),
     gym: z.string().nullable().optional().describe("trained: the faction's gym, none without one"),
@@ -350,7 +362,7 @@ const trainingEvent = z
 const levelUpEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     level: z.number().describe('The level reached'),
     coins: z.number().describe('The coins it gives'),
@@ -379,7 +391,8 @@ const equipped = z
 const profileEvent = z
   .object({
     chat: z.string(),
-    player: player.describe('The player it names, by username'),
+    playerName: playerName.describe('The player it names, by username'),
+    playerId,
     owner: z.boolean().describe('It names the account'),
     company: z.string().nullable(),
     level: z.number(),
@@ -405,7 +418,7 @@ const profileEvent = z
 const skillsEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     skills: z
       .array(
@@ -439,7 +452,7 @@ const requiredItem = z.object({
 const travelEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     kind: z
       .enum(['arrived', 'here', 'refused'])
@@ -498,7 +511,7 @@ const requirementsEvent = z
 const neutralEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     kind: z
       .enum(['neutralized', 'restored'])
@@ -506,13 +519,22 @@ const neutralEvent = z
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
   .describe("A player's neutrality, as @LoreGameBot told it (a ticket used; its end, in private)");
+const renamedEvent = z
+  .object({
+    playerId: z.string().describe("The person's stable id"),
+    playerName: z.string().nullable().describe('Their username now; none if they dropped it'),
+    previousName: z.string().nullable().describe('The username they had; none if they had none'),
+  })
+  .describe('A person the account knows, seen under a new username (D167)');
 const giftEvent = z
   .object({
     chat: z.string(),
-    player: player.describe('Who gave it'),
+    playerName: playerName.describe('Who gave it'),
+    playerId,
     owner: z.boolean().describe('The giver is the owner of the account'),
     kind: z.enum(['item', 'coins']),
-    to: z.string().describe('Who received it, as the giver named them'),
+    toName: z.string().describe('Who received it, as the giver named them'),
+    toId: playerId.describe("The receiver's stable id: none until the account has seen them"),
     toOwner: z.boolean().describe('The receiver is the owner of the account'),
     item: z.string().optional(),
     qty: z.number().optional(),
@@ -531,7 +553,7 @@ const giftEvent = z
 const inventoryEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     filter: z.string().nullable().describe("/i's filter; none for the whole inventory"),
     items: z
@@ -558,7 +580,7 @@ const inventoryEvent = z
 const equipmentEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     kind: z
       .enum(['equipped', 'removed', 'listing'])
@@ -594,7 +616,7 @@ const marketEvent = z
 const investmentsEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     positions: z
       .array(
@@ -612,7 +634,7 @@ const investmentsEvent = z
 const investEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     company: z.string(),
     amount: z.number().describe('Put in now'),
@@ -626,7 +648,7 @@ const investEvent = z
 const cashoutEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     all: z.boolean().describe('Every investment withdrawn at once'),
     positions: z
@@ -652,11 +674,12 @@ const companyEvent = z
     name: z.string().describe('As its page names it: without its emoji'),
     size: z.number(),
     max: z.number(),
-    leader: z.string(),
+    leaderName: z.string(),
+    leaderId: playerId.describe("The leader's stable id: none until the account has seen them"),
     power: z.number().describe('Its combat level, its members summed'),
     members: z.array(
       z.object({
-        player: z.string(),
+        ...named,
         faction: z.string().describe('Its emoji: 😇, 👿, 👤'),
         level: z.number(),
         power: z.number(),
@@ -671,7 +694,8 @@ const companyEvent = z
 const shopEvent = z
   .object({
     chat: z.string(),
-    player: player.describe('Who asked, as the listing names them'),
+    playerName: playerName.describe('Who asked, as the listing names them'),
+    playerId,
     owner: z.boolean().describe('The player is the owner of the account'),
     sagra: z
       .string()
@@ -696,7 +720,7 @@ const shopEvent = z
 const purchaseEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     item: z.string(),
     rarity: z.string(),
@@ -716,7 +740,7 @@ const listedItem = z.object({
 const generatedEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     kind: z
       .enum(['item', 'story', 'guardian', 'season', 'utility', 'equipment', 'blueprint'])
@@ -745,7 +769,7 @@ const generatedEvent = z
 const usedEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     item: z.string().describe('The item used up'),
     found: z.array(listedItem).describe('What it gave'),
@@ -756,7 +780,7 @@ const countedItem = listedItem.extend({ qty: z.number() });
 const recipesEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     recipes: z
       .array(
@@ -774,7 +798,7 @@ const recipesEvent = z
 const recipeEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     name: z.string().describe('The recipe'),
     lacking: z.array(countedItem).describe('What they lack, each by how many'),
@@ -785,7 +809,7 @@ const recipeEvent = z
 const recipeMadeEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     used: z.array(countedItem).describe('The items it took, each by how many'),
     made: countedItem.describe('The item it gave'),
@@ -796,7 +820,7 @@ const recipeMadeEvent = z
 const playerTurnEvent = z
   .object({
     chat: z.string(),
-    player,
+    ...named,
     owner: z.boolean().describe('The player is the owner of the account'),
     command: z.string().describe('The turn command it answered (/avventura, /lore, /l)'),
     outcome: z
@@ -812,7 +836,7 @@ const playerTurnEvent = z
   })
   .describe("A player's turn, as @LoreGameBot answered it: any player's the account reads");
 const playerAccumuloEvent = accumuloEvent
-  .extend({ player, owner: z.boolean().describe('The player is the owner of the account') })
+  .extend({ ...named, owner: z.boolean().describe('The player is the owner of the account') })
   .describe("How @LoreGameBot answered a player's /accumulo: any player's the account reads");
 
 /**
@@ -871,6 +895,7 @@ export const loregamePlugin: Plugin = {
       [INVENTORY_EVENT]: inventoryEvent,
       [TRAVEL_EVENT]: travelEvent,
       [GIFT_EVENT]: giftEvent,
+      [RENAMED_EVENT]: renamedEvent,
       [NEUTRAL_EVENT]: neutralEvent,
       [REQUIREMENTS_EVENT]: requirementsEvent,
       [PLAYER_TURN_EVENT]: playerTurnEvent,
@@ -905,6 +930,54 @@ export const loregamePlugin: Plugin = {
   create: async (ctx) => {
     const instance = await parser.create(ctx);
     const chat = ctx.connector('chat');
+    /**
+     * The stable id of the person a username names (D167): the account's own for the owner, else
+     * whoever the account's people directory knows by it; none for a name it never saw.
+     */
+    const idOf = (name: string, owner: unknown): string | null => {
+      const self = chat.self();
+      const mine =
+        owner === true || (self !== undefined && name.toLowerCase() === self.toLowerCase());
+      if (mine) return chat.selfId() ?? null;
+      return name === '' ? null : (chat.person?.(name)?.id ?? null);
+    };
+    /**
+     * An event's payload with each person it names by username named by id as well (#17): a
+     * player, a gift's receiver, a company's leader and members.
+     */
+    const withIds = (p: Record<string, unknown>): Record<string, unknown> => {
+      const { player, to, leader, members, ...rest } = p;
+      return {
+        ...rest,
+        ...(typeof player === 'string'
+          ? { playerName: player, playerId: idOf(player, p['owner']) }
+          : {}),
+        ...(typeof to === 'string' ? { toName: to, toId: idOf(to, p['toOwner']) } : {}),
+        ...(typeof leader === 'string'
+          ? { leaderName: leader, leaderId: idOf(leader, false) }
+          : {}),
+        ...(Array.isArray(members)
+          ? {
+              members: (members as { player: string }[]).map(({ player: m, ...member }) => ({
+                ...member,
+                playerName: m,
+                playerId: idOf(m, false),
+              })),
+            }
+          : {}),
+      };
+    };
+    /** Publishes an event, each person it names by id as well (`withIds`). */
+    const publish = (type: string, payload: Record<string, unknown>, t?: number): void =>
+      ctx.bus.publish(type, withIds(payload), t);
+    // A known person under a new username: what the state keeps of them follows (D167).
+    chat.onRename?.((r) =>
+      ctx.bus.publish(
+        RENAMED_EVENT,
+        { playerId: r.id, playerName: r.to ?? null, previousName: r.from ?? null },
+        r.time
+      )
+    );
     const watch = new BanWatch(
       LOREGAMEBOT,
       ctx.store.read<{ bans: [string, number][] }>(BANS_DOC)?.bans
@@ -924,7 +997,7 @@ export const loregamePlugin: Plugin = {
         ctx.store.write(HEALTH_DOC, health.kept());
         ctx.log.info(`the bot is ${h.state}: ${h.reason}`);
         const { since, ...rest } = h;
-        ctx.bus.publish(HEALTH_EVENT, rest, since);
+        publish(HEALTH_EVENT, rest, since);
       }
       ctx.clock.clearTimeout(tick);
       tick = undefined;
@@ -956,7 +1029,7 @@ export const loregamePlugin: Plugin = {
         listings.set(key, player);
         if (listings.size > KEPT_LISTINGS) listings.delete(listings.keys().next().value as string);
       }
-      ctx.bus.publish(
+      publish(
         INVENTORY_EVENT,
         {
           chat: m.chat,
@@ -997,7 +1070,7 @@ export const loregamePlugin: Plugin = {
     const shop = (m: Inbound, self: string | undefined, t: number): void => {
       const bought = purchases.hear(m);
       if (bought !== undefined)
-        ctx.bus.publish(
+        publish(
           PURCHASE_EVENT,
           {
             chat: m.chat,
@@ -1010,7 +1083,7 @@ export const loregamePlugin: Plugin = {
         );
       const listing: ShopListing | undefined = parseShop(m.text);
       if (listing === undefined) return;
-      ctx.bus.publish(
+      publish(
         SHOP_EVENT,
         {
           chat: m.chat,
@@ -1042,7 +1115,7 @@ export const loregamePlugin: Plugin = {
       if (of === undefined) return;
       if (r.kind === 'market') {
         if (r.positions !== null)
-          ctx.bus.publish(
+          publish(
             INVESTMENTS_EVENT,
             {
               chat: h.chat,
@@ -1058,11 +1131,7 @@ export const loregamePlugin: Plugin = {
       }
       if (r.kind === 'invest') {
         const { kind: _, ...made } = r;
-        ctx.bus.publish(
-          INVEST_EVENT,
-          { chat: h.chat, ...of, ...made, ...lateOf(a), ...oldOf(h) },
-          h.time
-        );
+        publish(INVEST_EVENT, { chat: h.chat, ...of, ...made, ...lateOf(a), ...oldOf(h) }, h.time);
         return;
       }
       if (r.kind === 'cashout' || r.kind === 'cashout-all') {
@@ -1075,7 +1144,7 @@ export const loregamePlugin: Plugin = {
                 cashed: p.cashed,
                 left: null,
               }));
-        ctx.bus.publish(
+        publish(
           CASHOUT_EVENT,
           {
             chat: h.chat,
@@ -1097,7 +1166,7 @@ export const loregamePlugin: Plugin = {
      */
     const accumuloOf = (h: Heard, any: PlayerAnswer<AccumuloReply>): void => {
       if (any.player !== '')
-        ctx.bus.publish(
+        publish(
           PLAYER_ACCUMULO_EVENT,
           {
             chat: h.chat,
@@ -1110,7 +1179,7 @@ export const loregamePlugin: Plugin = {
           h.time
         );
       if (any.owner)
-        ctx.bus.publish(
+        publish(
           ACCUMULO_EVENT,
           { chat: h.chat, ...any.reply, ...lateOf(any), ...oldOf(h) },
           h.time
@@ -1119,7 +1188,7 @@ export const loregamePlugin: Plugin = {
     /** A player's training, `h` the bot's message, as it came or late (#16). */
     const trainingOf = (h: Heard, t: PlayerAnswer<TrainingReply>): void => {
       const { player, owner, reply } = t;
-      ctx.bus.publish(
+      publish(
         TRAINING_EVENT,
         { chat: h.chat, player, owner, ...reply, ...lateOf(t), ...oldOf(h) },
         h.time
@@ -1128,7 +1197,7 @@ export const loregamePlugin: Plugin = {
     /** A gift, `h` the bot's message it was read from, as it came or late (#16). */
     const giftOf = (h: Heard, gift: PlayerGift): void => {
       const { player, owner, reply, toOwner } = gift;
-      ctx.bus.publish(
+      publish(
         GIFT_EVENT,
         {
           chat: h.chat,
@@ -1161,7 +1230,7 @@ export const loregamePlugin: Plugin = {
       if (r.kind === 'update' || r.kind === 'market') {
         // Every company there is, none when none is quoted: one not quoted is gone.
         if (r.quotes.length > 0 || r.kind === 'market')
-          ctx.bus.publish(
+          publish(
             MARKET_EVENT,
             {
               chat: m.chat,
@@ -1177,7 +1246,7 @@ export const loregamePlugin: Plugin = {
       if (r.kind === 'invest') return marketOf(m, r, invested);
       if (r.kind === 'cashout' || r.kind === 'cashout-all') return marketOf(m, r, cashed);
       const { kind: _, ...page } = r;
-      ctx.bus.publish(COMPANY_EVENT, { chat: m.chat, ...page, ...oldOf(m) }, m.time);
+      publish(COMPANY_EVENT, { chat: m.chat, ...page, ...oldOf(m) }, m.time);
     };
     chat.onMessage((m) => {
       const old = m.playback ? { playback: true as const } : {};
@@ -1190,13 +1259,13 @@ export const loregamePlugin: Plugin = {
       const news = watch.hear(m, chat.self());
       if (news !== undefined) {
         if (news.type === 'ban')
-          ctx.bus.publish(
+          publish(
             BAN_EVENT,
             { chat: m.chat, player: news.player, until: news.until, owner: news.owner, ...old },
             m.time
           );
         else
-          ctx.bus.publish(
+          publish(
             UNBAN_EVENT,
             { chat: m.chat, player: news.player, owner: news.owner, ...old },
             m.time
@@ -1205,8 +1274,7 @@ export const loregamePlugin: Plugin = {
       }
       const self = chat.self();
       const turn = players.hear(m, self);
-      if (turn !== undefined)
-        ctx.bus.publish(PLAYER_TURN_EVENT, { chat: m.chat, ...turn, ...old }, m.time);
+      if (turn !== undefined) publish(PLAYER_TURN_EVENT, { chat: m.chat, ...turn, ...old }, m.time);
       const any = asked.answer(m, self);
       if (any !== undefined) accumuloOf(m, any);
       for (const late of asked.takeLate()) accumuloOf(late.message, late.answer);
@@ -1236,7 +1304,7 @@ export const loregamePlugin: Plugin = {
       // A profile, its player's: it names them (§5.5).
       const profile = bots ? parseProfile(m.text) : undefined;
       if (profile !== undefined)
-        ctx.bus.publish(
+        publish(
           PROFILE_EVENT,
           {
             chat: m.chat,
@@ -1257,7 +1325,7 @@ export const loregamePlugin: Plugin = {
               ? undefined
               : { player: training.player, owner: training.owner };
         if (levelUp !== undefined && by !== undefined)
-          ctx.bus.publish(
+          publish(
             LEVEL_UP_EVENT,
             { chat: m.chat, player: by.player, owner: by.owner, ...levelUp, ...old },
             m.time
@@ -1269,11 +1337,11 @@ export const loregamePlugin: Plugin = {
         const menu = parseSkillMenu(m.text);
         const menuOf = menu === undefined ? undefined : to(SKILLS_COMMAND);
         if (menu !== undefined && menuOf !== undefined)
-          ctx.bus.publish(SKILLS_EVENT, { chat: m.chat, ...menuOf, ...menu, ...old }, m.time);
+          publish(SKILLS_EVENT, { chat: m.chat, ...menuOf, ...menu, ...old }, m.time);
         const equip = parseEquip(m.text);
         const equipOf = equip === undefined ? undefined : to(EQUIP_COMMAND);
         if (equip !== undefined && equipOf !== undefined)
-          ctx.bus.publish(EQUIPMENT_EVENT, { chat: m.chat, ...equipOf, ...equip, ...old }, m.time);
+          publish(EQUIPMENT_EVENT, { chat: m.chat, ...equipOf, ...equip, ...old }, m.time);
         listed(m, self);
         shop(m, self, m.time);
         // A generator's confirmation, the player's whose command it replies to (in private, the
@@ -1288,7 +1356,7 @@ export const loregamePlugin: Plugin = {
         if (asker === undefined || !generations.asked(m, asker, m.time)) {
           const made = generations.answer(m, m.time);
           if (made !== undefined && (made.owner || made.player !== ''))
-            ctx.bus.publish(
+            publish(
               GENERATED_EVENT,
               {
                 chat: m.chat,
@@ -1310,7 +1378,7 @@ export const loregamePlugin: Plugin = {
         // The moving box opened: it names its player.
         const box = parseBox(m.text);
         if (box !== undefined)
-          ctx.bus.publish(
+          publish(
             USED_EVENT,
             {
               chat: m.chat,
@@ -1329,14 +1397,14 @@ export const loregamePlugin: Plugin = {
         });
         const recipes = parseRecipes(m.text);
         if (recipes !== undefined)
-          ctx.bus.publish(
+          publish(
             RECIPES_EVENT,
             { chat: m.chat, ...whom(recipes.player), recipes: recipes.recipes, ...old },
             m.time
           );
         const needs = parseRecipeNeeds(m.text);
         if (needs !== undefined)
-          ctx.bus.publish(
+          publish(
             RECIPE_EVENT,
             {
               chat: m.chat,
@@ -1350,7 +1418,7 @@ export const loregamePlugin: Plugin = {
           );
         const made = parseRecipeMade(m.text);
         if (made !== undefined)
-          ctx.bus.publish(
+          publish(
             RECIPE_MADE_EVENT,
             { chat: m.chat, ...whom(made.player), used: made.used, made: made.made, ...old },
             m.time
@@ -1368,7 +1436,7 @@ export const loregamePlugin: Plugin = {
               ? { player: self ?? '', owner: true }
               : undefined;
         if (neutral !== undefined && neutralOf !== undefined)
-          ctx.bus.publish(
+          publish(
             NEUTRAL_EVENT,
             { chat: m.chat, ...neutralOf, kind: neutral.kind, ...old },
             m.time
@@ -1379,7 +1447,7 @@ export const loregamePlugin: Plugin = {
         const traveller =
           travel === undefined ? undefined : (to(TRAVEL_COMMAND) ?? to(TRAVEL_ALIAS));
         if (travel !== undefined && traveller !== undefined)
-          ctx.bus.publish(
+          publish(
             TRAVEL_EVENT,
             { chat: m.chat, ...traveller, ...travel, answer: m.id ?? null, ...old },
             m.time
@@ -1391,7 +1459,7 @@ export const loregamePlugin: Plugin = {
         ]) {
           // The items the player holds are theirs, on the move: the place's are the game's, and so
           // are the guardians made (listed as made for every player once one is).
-          ctx.bus.publish(
+          publish(
             REQUIREMENTS_EVENT,
             { chat: m.chat, place: r.place, ...r.requirements, ...old },
             m.time
@@ -1410,7 +1478,7 @@ export const loregamePlugin: Plugin = {
       const menu = parseSkillMenu(m.text);
       const of = menu === undefined ? undefined : answerTo(m, SKILLS_COMMAND, chat.self());
       if (menu === undefined || of === undefined) return;
-      ctx.bus.publish(
+      publish(
         SKILLS_EVENT,
         { chat: m.chat, ...of, ...menu, edited: true, ...(m.playback ? { playback: true } : {}) },
         m.edited ?? m.time

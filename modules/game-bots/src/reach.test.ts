@@ -66,7 +66,7 @@ function state(o: {
   const level = o.level === undefined ? 9 : o.level;
   return {
     ...s,
-    owner: { as_of: AT, name: 'alice' },
+    owner: { as_of: AT, name: 'alice', id: null },
     players: {
       bob: {
         ...p,
@@ -197,7 +197,7 @@ describe('how far a player can climb', () => {
     expect(reachOf(state({ at: 'X' }), 'bob').unknown).toBe('location');
     expect(reachOf(state({ alignment: null }), 'bob').unknown).toBe('alignment');
     expect(reachOf(state({}), 'carol')).toMatchObject({ unknown: 'alignment', from: null });
-    expect(reachOf({ ...state({}), owner: { as_of: AT, name: null } })).toMatchObject({
+    expect(reachOf({ ...state({}), owner: { as_of: AT, name: null, id: null } })).toMatchObject({
       player: null,
       unknown: 'player',
     });

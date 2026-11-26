@@ -23,6 +23,8 @@ import { loregamePlugin } from '#src/plugins/loregame.ts';
 import { loregameStatePlugin } from '#src/plugins/loregame-state.ts';
 
 const OWNER = 'alice';
+/** The owner's id, with `ids` (D167). */
+export const OWNER_ID = '1000';
 const DM = '@LoreGameBot';
 export const MIN = 60_000;
 export const T0 = Date.parse('2026-11-06T12:00:00Z');
@@ -37,7 +39,7 @@ export const GROUP = '-1001';
  */
 export async function bootState(
   dir: string,
-  o: { at?: number; config?: object; group?: boolean; photos?: boolean } = {}
+  o: { at?: number; config?: object; group?: boolean; photos?: boolean; ids?: boolean } = {}
 ) {
   const graphed = o.group === true || o.photos === true;
   if (graphed) {
@@ -76,6 +78,8 @@ export async function bootState(
   const account = new FakeConnector({
     account: `telegram:${OWNER}`,
     ...(o.photos === true ? { photos: [] } : {}),
+    // `ids`: the account has an id and a people directory (D167), as a Telegram one does.
+    ...(o.ids === true ? { people: true, selfId: OWNER_ID } : {}),
   });
   const records: BusEvent[] = [];
   const core = new Core({
@@ -142,7 +146,13 @@ export async function bootState(
   const group = async (
     senderUsername: string,
     text: string,
-    m: { replyTo?: string; own?: boolean; buttons?: string[][]; photo?: Media | string } = {}
+    m: {
+      replyTo?: string;
+      own?: boolean;
+      buttons?: string[][];
+      photo?: Media | string;
+      senderId?: string;
+    } = {}
   ): Promise<string> => {
     const id = String(n++);
     const { photo, ...heard } = m;

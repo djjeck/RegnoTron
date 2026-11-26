@@ -245,8 +245,8 @@ charges by one at each `/lore`, and that once full, `/accumulo` zeroes the rest 
   command waiting in that chat, which needs the group's chat edge to deliver every sender. Nothing
   in it says who trained.
 - **`loregame.training`** carries every player's answer the parser pairs, the owner's included
-  (`player`, `owner`, `result`: `trained` with `gym`, `learned`, `extra` and its `levelUp`, or
-  `soon` with `retryMs`).
+  (`playerName`, `playerId`, `owner`, `result`: `trained` with `gym`, `learned`, `extra` and its
+  `levelUp`, or `soon` with `retryMs`).
 - **Played by the shell's `player`**, as the accumulo (§5.2): the parser names `/allenati` in its
   vocabulary, and `loregame-state` declares its mechanics, a cooldown of a day (`cooldownMin: 1440`)
   after each success. A training is the success; "too soon" holds it for the wait it states. The
@@ -267,13 +267,13 @@ over every interval between the owner's profiles since October, a training rose 
 **A level-up** ends a message of the bot's: `🎉 Congratulazioni, hai raggiunto il livello <n>! 🎉`,
 then `Ottieni:` and its list (§5). In the exports since October it ends turns and trainings alone,
 but it is not tied to them: the parser reads it off **any** message of the bot's that ends in one,
-whatever brought it, and publishes it as an event of its own, `loregame.levelUp` (`player`, `owner`,
-`level`, `coins`, `skillPoints`, `items`, `other`). A level-up names nobody, so the parser places it
-as it places the rest: in private the owner's; in the group the sender of the message it replies to,
-whatever that message was; else the player whose training it paired (§5.3). One it cannot place is
-no one's (none since October: all 21 placed [M]). The turn's and the training's outcomes still carry
-the level-up they ended in, but the state reads it from `loregame.levelUp` alone, so it is counted
-once.
+whatever brought it, and publishes it as an event of its own, `loregame.levelUp` (`playerName`,
+`playerId`, `owner`, `level`, `coins`, `skillPoints`, `items`, `other`). A level-up names nobody, so
+the parser places it as it places the rest: in private the owner's; in the group the sender of the
+message it replies to, whatever that message was; else the player whose training it paired (§5.3).
+One it cannot place is no one's (none since October: all 21 placed [M]). The turn's and the
+training's outcomes still carry the level-up they ended in, but the state reads it from
+`loregame.levelUp` alone, so it is counted once.
 
 **XP** [M] is the profile's ⚔️ (§5.5), measured over every interval between the owner's profiles
 since October (25 of 25 exact), and again by `lore-check` over every player's profiles whose turns
@@ -319,9 +319,9 @@ lines are read by what they say, not where they stand (the season before had the
 `👤 Configurazioni giocatore` (the settings) also starts with 👤, and is not a profile. What each
 skill does, the `/abilita` menu says (§5.6).
 
-**`loregame.profile`** carries every profile the parser reads (`player`, `owner`, and each line's
-value: `company`, `level`, `xp`, `progress`, `alignment`, `episode`, `recipes`, `coins`,
-`obsession`, `equipment`, `skills`, `effects`, `titles`, `location`, `unread`).
+**`loregame.profile`** carries every profile the parser reads (`playerName`, `playerId`, `owner`,
+and each line's value: `company`, `level`, `xp`, `progress`, `alignment`, `episode`, `recipes`,
+`coins`, `obsession`, `equipment`, `skills`, `effects`, `titles`, `location`, `unread`).
 
 ### 5.6 The skills menu
 
@@ -408,11 +408,11 @@ which page it is from its buttons (D145: the first has no ◀️, the last no �
 one page, the whole list); a later page is the player's whose first page it follows, or whose
 command it replies to.
 
-**`loregame.inventory`** carries every listing and page the parser reads: `player`, `owner`,
-`filter`, `items` (each `item`, `qty`, `rarity`, `tags`, `level`), `cut` (an item cut between this
-page and another, not read), `page` (`first`, `last`, both for a listing without buttons; none when
-its buttons are not known: an export, a shell before MegaBotTron1999 0.1.47), `message` (whose edits
-its pages are) and `edited`.
+**`loregame.inventory`** carries every listing and page the parser reads: `playerName`, `playerId`,
+`owner`, `filter`, `items` (each `item`, `qty`, `rarity`, `tags`, `level`), `cut` (an item cut
+between this page and another, not read), `page` (`first`, `last`, both for a listing without
+buttons; none when its buttons are not known: an export, a shell before MegaBotTron1999 0.1.47),
+`message` (whose edits its pages are) and `edited`.
 
 ### 5.9 The places
 
@@ -538,9 +538,9 @@ The game's places ("stagioni") ask a level and items to enter, consumed at the a
 place's: `place`, `level`, `items`, `guardians` (each a place's code) and `met` (the guardians
 already made, where the block is split; the same for every player). **`loregame.neutral`** carries a
 ticket used (`neutralized`, its player by the name the answer gives) and the owner's neutrality
-ended (`restored`, heard in private alone): `player`, `owner`, `kind`. A guardian made is read from
-its generator's outcome (§5.13). **Not read yet:** where a player thrown out of a neutral place
-above `N1` lands (the state guesses the same step of their faction's ladder).
+ended (`restored`, heard in private alone): `playerName`, `playerId`, `owner`, `kind`. A guardian
+made is read from its generator's outcome (§5.13). **Not read yet:** where a player thrown out of a
+neutral place above `N1` lands (the state guesses the same step of their faction's ladder).
 
 ### 5.10 Gifts
 
@@ -588,12 +588,12 @@ whichever of its messages it hears, in whichever order:
   its echo; only a notice heard before the group's answer is paired takes its place.
 
 **`loregame.gift`** carries every gift the parser pairs, or the owner's notice of one, once: the
-giver (`player`, `owner`), `kind` (`item`, with `item`, `qty`, `rarity`, `tags`, `level`; `coins`,
-with `coins`), `to` and `toOwner` (a notice received names the owner as `to`), from whichever of its
-messages came first: its `chat`, and `answer`, the id of the bot's message it was read from (the
-answer, or the owner's notice; `null` if the message had none). The state moves the items from the
-giver's inventory to the receiver's, or the coins from the one's `coins` to the other's; the
-receiver known whatever the case of their name.
+giver (`playerName`, `playerId`, `owner`), `kind` (`item`, with `item`, `qty`, `rarity`, `tags`,
+`level`; `coins`, with `coins`), the receiver (`toName`, `toId`, `toOwner`; a notice received names
+the owner), from whichever of its messages came first: its `chat`, and `answer`, the id of the bot's
+message it was read from (the answer, or the owner's notice; `null` if the message had none). The
+state moves the items from the giver's inventory to the receiver's, or the coins from the one's
+`coins` to the other's; the receiver known whatever the case of their name.
 
 ### 5.11 The market
 
@@ -642,8 +642,9 @@ a player's open investments, as the market they asked for lists them (`positions
 `invested`, `value`, `pct`; and `total`); **`loregame.invest`** an investment (`company`, `amount`,
 `invested`, `entry`, `coins`); **`loregame.cashout`** a withdrawal (`all`, and `positions`, each
 `company`, `amount` of what was invested, `cashed`, and what is `left` there at its value, none when
-all of it was taken): each with its `player` and `owner`. **`loregame.company`** carries a company's
-page, whoever asked.
+all of it was taken): each with its `playerName`, `playerId` and `owner`. **`loregame.company`**
+carries a company's page, whoever asked, its leader (`leaderName`, `leaderId`) and its members (each
+`playerName`, `playerId`, `faction`, `level`, `power`).
 
 **Not supported**, as past the game's changes: the encounter of level 0 that ends in
 `Ma non accade nulla...` (last seen on 3 Aug 2026), and the power line without its ⚡️ (March 2026).
@@ -703,13 +704,14 @@ bob, oggi nel negozio:
   each message as it was last edited, holds none of them. `/buy` is another bot's (a fishing game's,
   whose `Hai acquistato con successo …!` the exports hold once), not @LoreGameBot's.
 
-**`loregame.shop`** carries every listing the parser reads, in any chat, whoever asked: `player` (as
-the listing names them), `owner`, `sagra` (none on an ordinary day), `items` (each `item`, `rarity`,
-`tags`, `price` in coins, and `bought`, the `✅`) and `edited`. `npm run lore-check` reads every one
-of the exports' 178 listings, over 76 days; the shop sold 35 items in them, 8 of them generators
-(`[generatore]`). The sagra announced in the group (`È arrivata la sagra …!`) is not read: the day's
-first listing names it. **`loregame.purchase`** carries each purchase read: `player`, `owner`,
-`item`, `rarity`, `tags`, `price` and `qty` (1).
+**`loregame.shop`** carries every listing the parser reads, in any chat, whoever asked: `playerName`
+(as the listing names them), `playerId`, `owner`, `sagra` (none on an ordinary day), `items` (each
+`item`, `rarity`, `tags`, `price` in coins, and `bought`, the `✅`) and `edited`.
+`npm run lore-check` reads every one of the exports' 178 listings, over 76 days; the shop sold 35
+items in them, 8 of them generators (`[generatore]`). The sagra announced in the group
+(`È arrivata la sagra …!`) is not read: the day's first listing names it. **`loregame.purchase`**
+carries each purchase read: `playerName`, `playerId`, `owner`, `item`, `rarity`, `tags`, `price` and
+`qty` (1).
 
 ### 5.13 Generators and `/usa`
 
@@ -753,13 +755,13 @@ usable (`/generautilizzo`) runs its script and stays, as many times as it is use
 Over the exports, `npm run lore-check` reads 730 confirmations (392 items, 156 stories, 72
 equipment, 56 guardians, 36 made usable, 9 seasons, 9 blueprints) and 641 outcomes (the others
 cancelled), every one paired with its player; and 47 boxes opened, every one read.
-**`loregame.generated`** carries each outcome paired: `player`, `owner`, `kind` (`item`, `story`,
-`guardian`, `season`, `utility`, `equipment`, `blueprint`), `name`, `code` (an item's rarity, a
-guardian's level, a season's or a story's code), `gained` (the item it gave: equipment assembled, a
-blueprint's copy; `item`, `rarity`, `tags`, `level`), `reward` and `cost` in coins, and `removed`
-(the faction whose season generators went), and `answer`, the outcome's message id (its photo,
-§6.2). **`loregame.used`** carries each box opened: `player`, `owner`, `item` and `found` (each
-`item`, `rarity`, `tags`, `level`).
+**`loregame.generated`** carries each outcome paired: `playerName`, `playerId`, `owner`, `kind`
+(`item`, `story`, `guardian`, `season`, `utility`, `equipment`, `blueprint`), `name`, `code` (an
+item's rarity, a guardian's level, a season's or a story's code), `gained` (the item it gave:
+equipment assembled, a blueprint's copy; `item`, `rarity`, `tags`, `level`), `reward` and `cost` in
+coins, and `removed` (the faction whose season generators went), and `answer`, the outcome's message
+id (its photo, §6.2). **`loregame.used`** carries each box opened: `playerName`, `playerId`,
+`owner`, `item` and `found` (each `item`, `rarity`, `tags`, `level`).
 
 ### 5.14 The recipes
 
@@ -796,10 +798,10 @@ Scrivi /ricetta <nome ricetta> per vedere quali oggetti ti mancano per una certa
 
 Over the exports, `npm run lore-check` reads all 53 lists, 34 answers and 7 recipes made; the game
 had 4 recipes, and each one made is known by the items it took. **`loregame.recipes`** carries a
-list: `player`, `owner`, `recipes` (each `name`, `level`, `lacking`, none for `[*]`, and `starred`).
-**`loregame.recipe`** carries an answer: `player`, `owner`, `name`, `lacking` and `held` (each
-`item`, `qty`, `rarity`, `tags`, `level`). **`loregame.recipeMade`** carries a recipe made:
-`player`, `owner`, `used` (each as above) and `made`.
+list: `playerName`, `playerId`, `owner`, `recipes` (each `name`, `level`, `lacking`, none for `[*]`,
+and `starred`). **`loregame.recipe`** carries an answer: `playerName`, `playerId`, `owner`, `name`,
+`lacking` and `held` (each `item`, `qty`, `rarity`, `tags`, `level`). **`loregame.recipeMade`**
+carries a recipe made: `playerName`, `playerId`, `owner`, `used` (each as above) and `made`.
 
 ### 5.15 Outages and replays
 
@@ -1067,14 +1069,16 @@ It is a floor, not the truth, while the turns are all it reads:
 
 ### 6.1 Every player
 
-The state also keeps **every player** whose turns the account reads (`players`, by username; the
-owner's included), from five events of the parser for any player, `loregame.playerTurn` (a turn, or
-a "too soon"; with the turn command's message id, `message`, and the bot's answer's, `answer`, so
-that a consumer can reply to a player's turn: a supergroup's message ids are the same for every
-member, a bot's too), `loregame.playerAccumulo` (an answer to `/accumulo`), `loregame.training` (an
-answer to `/allenati`), `loregame.levelUp` and `loregame.profile`: the bot replies to a turn command
-naming nobody, so the parser names the player by the message it replies to, and pairs an `/accumulo`
-or a training answer as it does the owner's (§5.2, §5.3, §5.4). Per player:
+The state also keeps **every player** whose turns the account reads (`players`, by their stable id,
+each with their username as last seen, `name`; by their username until an event links it to an id,
+§6.3; the owner's included), from five events of the parser for any player, `loregame.playerTurn` (a
+turn, or a "too soon"; with the turn command's message id, `message`, and the bot's answer's,
+`answer`, so that a consumer can reply to a player's turn: a supergroup's message ids are the same
+for every member, a bot's too), `loregame.playerAccumulo` (an answer to `/accumulo`),
+`loregame.training` (an answer to `/allenati`), `loregame.levelUp` and `loregame.profile`: the bot
+replies to a turn command naming nobody, so the parser names the player by the message it replies
+to, and pairs an `/accumulo` or a training answer as it does the owner's (§5.2, §5.3, §5.4). Per
+player:
 
 - **in the game:** their name and level, as a fight's line and a level-up (§5.4) say;
 - **turns seen**, the last one's time, and their **rest** (15 minutes, 30 after a fight lost, a "too
@@ -1178,3 +1182,35 @@ story's creation card its story's (§5.13). The state keeps **each place's pictu
   counts, since the reset, 8 creation cards of seasons read (1 with its photo), 60 of stories (1),
   17 guardians made (none), 69 arrivals (1), 155 `/v` (3), 15,127 turns (737): 3 places pictured,
   each by one picture.
+
+### 6.3 People by their stable id
+
+A Telegram user may change their username at any time, or drop it, and another may take it; their
+numeric id is what lasts (MegaBotTron1999's D167). Since game-bots 0.56.0 (#17):
+
+- **Every event names a person by both** (`loregame.*`, and the state's `banned`, `unbanned` and
+  `statsDrift`): `playerName`, the username as before, and `playerId`, the stable id, `null` until
+  the account has seen them; a gift's receiver `toName` and `toId`, a company's `leaderName` and
+  `leaderId`, its members' `playerName` and `playerId`. The owner's id is the account's own. A
+  sender's id comes from the account's people directory, which knows everyone whose message it read;
+  a player only a bot's text names (a gift's receiver, a profile's `👤`, a company's page) has an id
+  only once the account has seen a message of theirs. One never seen stays id-less (the user
+  account's lookup is MegaBotTron1999's #86).
+- **`loregame.renamed`** (`playerId`, `playerName`, `previousName`): a person the account knows,
+  seen under a new username (the directory's `onRename`).
+- **The state keeps a player by their id**, with their username as last seen (`name`), and by their
+  username until an event links the two: then the entry moves to the id (a lazy re-key), with their
+  ban and the day's purchases; if both were kept, the id's wins. A rename keeps them under their id,
+  found by the new username and no longer by the old, which may become another player's. The owner's
+  id is `owner.id`. Queries take a username (any case) or an id; `state.holders` gives each holder's
+  `playerName` and `playerId`. A player without a username is still no one, as before.
+- **The migration to 0.56.0** gives each player kept a `name` (their key, a username) and the owner
+  an `id` (none): each moves to their id the first time an event names them with it.
+- **Exports** give each sender's id and display name, never a username, so nothing is seeded by id
+  from them.
+
+**Breaks, for a consumer of the events (0.56.0):** `player` is now `playerName`, beside `playerId`;
+a gift's `to` is `toName` (with `toId`); a company's `leader` is `leaderName` (with `leaderId`) and
+its members' `player` `playerName`; the state's announcements likewise. `state.holders`' `player` is
+`playerName`. To migrate: read `playerName` where `player` was read, and key a person by `playerId`
+when it is not `null`. The queries' inputs (`player`, `name`) are unchanged, and take an id as well.

@@ -179,14 +179,16 @@ const base = statePlugin<Kept>({
   events: {
     banned: z
       .object({
-        player: z.string(),
+        playerName: z.string().describe('Their username, as last seen'),
+        playerId: z.string().nullable().describe('Their stable id; none while kept by name'),
         until: z.string().nullable().describe('When the ban ends (ISO); none: not stated'),
         owner: z.boolean().describe('The player is the owner of the account'),
       })
       .describe("A player's ban, new or changed"),
     unbanned: z
       .object({
-        player: z.string(),
+        playerName: z.string(),
+        playerId: z.string().nullable(),
         owner: z.boolean(),
         reason: z
           .enum(['lifted', 'expired'])
@@ -208,7 +210,8 @@ const base = statePlugin<Kept>({
       .describe('The accumulo was used: the next /lore has no rest'),
     statsDrift: z
       .object({
-        player: z.string(),
+        playerName: z.string(),
+        playerId: z.string().nullable(),
         owner: z.boolean(),
         stat: z.string(),
         expected: z.unknown().describe('What the state held, exactly'),
@@ -755,6 +758,24 @@ const base = statePlugin<Kept>({
         state: { ...kept.state, health: { ...health, state: 'up' } },
       });
     },
+    // 0.56.0 keeps people by their stable id (#17): each player kept so far is kept by username,
+    // its `name`, until an event links it to an id (a lazy re-key); the owner's id, none known.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined) return;
+      const owner = (kept.state['owner'] ?? {}) as Record<string, unknown>;
+      const players = (kept.state['players'] ?? {}) as Record<string, Record<string, unknown>>;
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          owner: { id: null, ...owner },
+          players: Object.fromEntries(
+            Object.entries(players).map(([key, p]) => [key, { name: key, ...p }])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -778,7 +799,7 @@ const base = statePlugin<Kept>({
       run: (s): Accumulo => accumuloOf(s),
     },
     player: {
-      help: 'A player as the turns and answers the account reads tell (by username): their name and level in the game, their turns seen and unseen, their rest, their accumulo, their trainings, the XP seen and their level-ups; none if never heard of',
+      help: 'A player as the turns and answers the account reads tell (by username or id): their name and level in the game, their turns seen and unseen, their rest, their accumulo, their trainings, the XP seen and their level-ups; none if never heard of',
       input: z.object({ name: z.string() }),
       output: z.looseObject({ turns: z.number(), unseen: z.number() }).nullable(),
       run: (s, input: { name: string }) => playerOf(s, input.name),
@@ -909,7 +930,14 @@ const base = statePlugin<Kept>({
     holders: {
       help: 'Who holds an item, by its exact name: each player the state knows of (the owner too), with how many and whether it is exact, most first',
       input: z.object({ item: z.string() }),
-      output: z.array(z.object({ player: z.string(), qty: z.number(), exact: z.boolean() })),
+      output: z.array(
+        z.object({
+          playerName: z.string(),
+          playerId: z.string().nullable(),
+          qty: z.number(),
+          exact: z.boolean(),
+        })
+      ),
       run: (s, input: { item: string }) => holdersOf(s, input.item),
     },
     count: {

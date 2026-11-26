@@ -53,7 +53,7 @@ function state(o: {
   );
   return {
     ...s,
-    owner: { as_of: AT, name: 'alice' },
+    owner: { as_of: AT, name: 'alice', id: null },
     inventory: { held: 0, items, listed: o.listed === false ? null : AT },
     players: {
       alice: {

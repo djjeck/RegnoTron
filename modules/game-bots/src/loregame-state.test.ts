@@ -62,6 +62,7 @@ describe('the loregame state', () => {
       'loregame.travel',
       'loregame.requirements',
       'loregame.gift',
+      'loregame.renamed',
       'loregame.neutral',
       'loregame.market',
       'loregame.investments',
@@ -188,7 +189,7 @@ describe('the loregame state’s bans', () => {
       bob: { until: '2026-11-06T17:00:00.000Z', since: '2026-11-06T12:00:00.000Z' },
       alice: { until: '2026-11-06T13:00:00.000Z', since: '2026-11-06T12:01:00.000Z' },
     });
-    expect(s.owner).toEqual({ as_of: '2026-11-06T12:01:00.000Z', name: 'alice' });
+    expect(s.owner).toEqual({ as_of: '2026-11-06T12:01:00.000Z', name: 'alice', id: null });
     expect(stateSchema.safeParse(s).success).toBe(true);
     expect(banOf(s)).toMatchObject({ until: '2026-11-06T13:00:00.000Z' });
     expect(banOf(s, 'bob')).toMatchObject({ until: '2026-11-06T17:00:00.000Z' });
@@ -246,17 +247,28 @@ describe('the loregame state’s bans', () => {
     expect(announce(s0, s1, ban('alice', T + HOUR, T, true))).toEqual([
       {
         type: 'banned',
-        payload: { player: 'alice', until: '2026-11-06T13:00:00.000Z', owner: true },
+        payload: {
+          playerName: 'alice',
+          playerId: null,
+          until: '2026-11-06T13:00:00.000Z',
+          owner: true,
+        },
       },
     ]);
     expect(announce(s1, s1, ban('alice', T + HOUR))).toEqual([]);
     const s2 = reduce(s1, unban('alice', T + 1000));
     expect(announce(s1, s2, unban('alice', T + 1000))).toEqual([
-      { type: 'unbanned', payload: { player: 'alice', owner: true, reason: 'lifted' } },
+      {
+        type: 'unbanned',
+        payload: { playerName: 'alice', playerId: null, owner: true, reason: 'lifted' },
+      },
     ]);
     const e = turn({ kind: 'nothing', bot: 'LoreGameBot', reason: 'lost' }, T + 2 * HOUR);
     expect(announce(s1, reduce(s1, e), e)).toEqual([
-      { type: 'unbanned', payload: { player: 'alice', owner: true, reason: 'expired' } },
+      {
+        type: 'unbanned',
+        payload: { playerName: 'alice', playerId: null, owner: true, reason: 'expired' },
+      },
     ]);
   });
 
@@ -958,7 +970,7 @@ describe('a purchase at the shop (§5.12)', () => {
     });
     expect(s.catalogue['una pigna']).toMatchObject({ rarity: 'B1', via: 'shop' });
     // The owner's, once their name is known; nothing of a player unnamed.
-    const owner = { ...initialState(), owner: { as_of: null, name: 'alice' } };
+    const owner = { ...initialState(), owner: { as_of: null, name: 'alice', id: null } };
     const mine = reduce(owner, bought({ player: 'alice', owner: true }));
     expect(mine.inventory.items['una pigna']).toMatchObject({ qty: 1, via: 'purchase' });
     expect(reduce(initialState(), bought({ player: '', owner: false })).players).toEqual({});
@@ -1226,7 +1238,7 @@ describe('the recipes (§5.14)', () => {
   });
 
   it('reads a recipe of the owner’s, or of no one known', () => {
-    const owner = { ...initialState(), owner: { as_of: null, name: 'alice' } };
+    const owner = { ...initialState(), owner: { as_of: null, name: 'alice', id: null } };
     const mine = reduce(owner, { ...listed(1, 2), player: 'alice', owner: true } as BusEvent);
     expect(Object.keys(mine.recipes)).toEqual(['La zuppa', 'La zuppa fredda']);
     // The owner unnamed: the game's recipes alone; a player unnamed, nothing.

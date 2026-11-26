@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { initialPlayer, initialState, reduce } from '#src/loregame-state.ts';
 import { mediaIdOf } from '#src/media.ts';
-import { bootState, GROUP, MIN, T0 } from '#test/state-run.ts';
+import { bootState, GROUP, MIN, OWNER_ID, T0 } from '#test/state-run.ts';
 import { loregamePlugin } from './loregame.ts';
 import { loregameStatePlugin, plugins } from './loregame-state.ts';
 
@@ -231,7 +232,7 @@ describe('the loregame parser’s bans', () => {
     await run.bot(BAN);
     expect(run.of('loregame.ban')).toHaveLength(1);
     expect(run.of('loregame-state.banned')).toMatchObject([
-      { player: 'alice', until: BAN_ISO, owner: true },
+      { playerName: 'alice', until: BAN_ISO, owner: true },
     ]);
     // Its end passes: the player may go on.
     run.clock.advance(6 * 60 * MIN);
@@ -259,7 +260,7 @@ describe('the loregame parser’s bans', () => {
     expect(run.read('ban')).toMatchObject({ until: BAN_ISO });
     expect(run.read('ban', { player: 'bob' })).toMatchObject({ until: BAN_ISO });
     expect(run.read('ban', { player: 'dave' })).toBeNull();
-    expect(run.of('loregame-state.banned').map((e) => [e['player'], e['owner']])).toEqual([
+    expect(run.of('loregame-state.banned').map((e) => [e['playerName'], e['owner']])).toEqual([
       ['bob', false],
       ['carol', false],
       ['alice', true],
@@ -282,7 +283,7 @@ describe('the loregame parser’s bans', () => {
     expect(Object.keys(run.read('bans') as object)).toEqual(['carol']);
     expect(run.of('loregame.unban')).toHaveLength(1);
     expect(run.of('loregame-state.unbanned')).toMatchObject([
-      { player: 'bob', owner: false, reason: 'lifted' },
+      { playerName: 'bob', owner: false, reason: 'lifted' },
     ]);
     // Carol's runs out, and the next event drops it.
     run.clock.advance(6 * 60 * MIN);
@@ -290,7 +291,7 @@ describe('the loregame parser’s bans', () => {
     await run.group('LoreGameBot', BAN.replace('06/11', '07/11'), { replyTo: dave });
     expect(Object.keys(run.read('bans') as object)).toEqual(['dave']);
     expect(run.of('loregame-state.unbanned').at(-1)).toMatchObject({
-      player: 'carol',
+      playerName: 'carol',
       reason: 'expired',
     });
     await run.core.stop();
@@ -370,6 +371,7 @@ describe('the loregame parser’s accumulo', () => {
       'loregame.inventory',
       'loregame.travel',
       'loregame.gift',
+      'loregame.renamed',
       'loregame.neutral',
       'loregame.requirements',
       'loregame.playerTurn',
@@ -519,7 +521,8 @@ describe("the bot's health, kept by 0.50.0", () => {
     kept.state.health = { ...kept.state.health, state: 'slow', reason: 'the probe was answered' };
     fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
     const meta = JSON.parse(fs.readFileSync(path.join(docs, '_meta.json'), 'utf8'));
-    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 1 }));
+    // Back before 0.50.1's migration (and 0.56.0's after it), which run again.
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 2 }));
     const migrated = await bootState(dir2);
     expect(migrated.read('health')).toMatchObject({
       state: 'up',
@@ -791,11 +794,11 @@ describe('every player, as the group shows them', () => {
     await run.group('LoreGameBot', USED);
     expect(run.of('loregame.playerTurn')).toMatchObject([
       // With the turn command's message and the bot's answer, by their ids.
-      { player: 'bob', owner: false, outcome: { kind: 'gain' }, message: bobs, answer },
-      { player: 'alice', owner: true, outcome: { kind: 'gain' } },
+      { playerName: 'bob', owner: false, outcome: { kind: 'gain' }, message: bobs, answer },
+      { playerName: 'alice', owner: true, outcome: { kind: 'gain' } },
     ]);
     expect(run.of('loregame.playerAccumulo')).toMatchObject([
-      { player: 'bob', owner: false, result: 'used' },
+      { playerName: 'bob', owner: false, result: 'used' },
     ]);
     expect(run.read('player', { name: 'bob' })).toMatchObject({
       turns: 1,
@@ -823,7 +826,7 @@ describe('every player, as the group shows them', () => {
     await run.group('LoreGameBot', 'Stai calmo maschio...', { replyTo: daves });
     await run.group('LoreGameBot', USED);
     expect(run.of('loregame.playerAccumulo')).toEqual([
-      expect.objectContaining({ player: 'carol', result: 'used', replayed: true, asked }),
+      expect.objectContaining({ playerName: 'carol', result: 'used', replayed: true, asked }),
     ]);
     await run.core.stop();
   });
@@ -867,7 +870,7 @@ describe('a player that plays in the group', () => {
     expect(run.ready()['/lore']).toMatchObject({ ready: false });
     expect(run.ready()).not.toHaveProperty('/avventura');
     expect(run.of('loregame.playerTurn')).toMatchObject([
-      { player: 'alice', owner: true, command: '/avventura' },
+      { playerName: 'alice', owner: true, command: '/avventura' },
     ]);
     // Its /accumulo; the bot's use, a message of its own.
     run.clock.advance(10_000);
@@ -936,7 +939,7 @@ describe('the training, for a shell player', () => {
       outcome: { kind: 'training', learned: 10, extra: 0, gym: null },
     });
     expect(run.of('loregame.training')).toMatchObject([
-      { player: 'alice', owner: true, result: 'trained', learned: 10 },
+      { playerName: 'alice', owner: true, result: 'trained', learned: 10 },
     ]);
     expect(ready(run)).toMatchObject({ ready: false, until: at + DAY, why: 'its cooldown' });
     // By hand, a little later: "too soon", with the wait left.
@@ -962,8 +965,8 @@ describe('the training, for a shell player', () => {
     const at = run.clock.now();
     await run.group('LoreGameBot', `${TRAINED}\n\n💪🏻 +2 extra`);
     expect(run.of('loregame.training')).toMatchObject([
-      { player: 'bob', owner: false, result: 'trained', gym: 'Una Fazione 🏛', learned: 10 },
-      { player: 'alice', owner: true, result: 'trained', gym: null, extra: 2 },
+      { playerName: 'bob', owner: false, result: 'trained', gym: 'Una Fazione 🏛', learned: 10 },
+      { playerName: 'alice', owner: true, result: 'trained', gym: null, extra: 2 },
     ]);
     expect(ready(run)).toMatchObject({ ready: false, until: at + DAY });
     expect(run.read('player', { name: 'bob' })).toMatchObject({
@@ -995,7 +998,7 @@ describe('the training, for a shell player', () => {
   it('declares the owner’s answer to the outbox: a training is the ok, "too soon" a refusal', () => {
     const { answers } = parseManifest(loregamePlugin.manifest);
     const at = (payload: object) =>
-      readAnswer(answers, 'loregame.training', { chat: '-1001', player: 'p', ...payload }, T0);
+      readAnswer(answers, 'loregame.training', { chat: '-1001', playerName: 'p', ...payload }, T0);
     const ok = at({ owner: true, result: 'trained' });
     expect(ok?.answer).toMatchObject({ status: 'ok', reason: 'trained' });
     expect(ok?.commands).toEqual(['/allenati', '/allenati@LoreGameBot']);
@@ -1037,7 +1040,7 @@ describe('a level-up, whatever brought it', () => {
     // One that replies to nothing and pairs with no training: nobody's.
     await run.group('LoreGameBot', `Qualcosa accade.\n\n${LEVEL_UP}`);
     expect(run.of('loregame.levelUp')).toMatchObject([
-      { player: 'bob', owner: false, level: 3, coins: 30, skillPoints: 1 },
+      { playerName: 'bob', owner: false, level: 3, coins: 30, skillPoints: 1 },
     ]);
     expect(run.read('player', { name: 'bob' })).toMatchObject({
       game: { level: 3 },
@@ -1046,7 +1049,7 @@ describe('a level-up, whatever brought it', () => {
     expect(run.read('held')).toEqual({});
     // In private, the owner's, whatever it answers.
     await run.bot(`Una ricetta completata!\n\n${LEVEL_UP}`);
-    expect(run.of('loregame.levelUp').at(-1)).toMatchObject({ player: 'alice', owner: true });
+    expect(run.of('loregame.levelUp').at(-1)).toMatchObject({ playerName: 'alice', owner: true });
     expect(run.read('held')).toEqual({ 'una scatola di sassi 📦': 2 });
     await run.core.stop();
   });
@@ -1105,7 +1108,9 @@ describe('a profile, any player’s', () => {
     // Bob's, which the owner asked for in the group: it names him.
     const asked = await run.group('alice', '/info bob', { own: true });
     await run.group('LoreGameBot', PROFILE('bob', 3, 233), { replyTo: asked });
-    expect(run.of('loregame.profile')).toMatchObject([{ player: 'bob', owner: false, xp: 233 }]);
+    expect(run.of('loregame.profile')).toMatchObject([
+      { playerName: 'bob', owner: false, xp: 233 },
+    ]);
     expect(run.read('profile', { player: 'bob', stat: 'level' })).toBe(3);
     expect(run.read('profile', { player: 'bob', stat: 'equipment.weapon.level' })).toEqual({
       low: 3,
@@ -1126,7 +1131,7 @@ describe('a profile, any player’s', () => {
     expect(run.read('profile', { stat: 'coins' })).toBeNull();
     await run.owner('/me');
     await run.bot(PROFILE('alice', 4, 500));
-    expect(run.of('loregame.profile').at(-1)).toMatchObject({ player: 'alice', owner: true });
+    expect(run.of('loregame.profile').at(-1)).toMatchObject({ playerName: 'alice', owner: true });
     expect(run.read('profile', { stat: 'coins' })).toBe(1250);
     expect(run.read('get', { path: 'owner.name' })).toBe('alice');
     // A turn of theirs since moves their XP: 1, its win's "+N" besides.
@@ -1205,9 +1210,9 @@ describe('a player’s stats, now', () => {
     await run.owner('/me');
     await run.bot(PROFILE(101, 10));
     expect(run.of('loregame-state.statsDrift')).toMatchObject([
-      { player: 'alice', owner: true, stat: 'xp', expected: 501, said: 500 },
-      { player: 'alice', owner: true, stat: 'coins', expected: 50, said: 10 },
-      { player: 'alice', owner: true, stat: 'location', said: { name: 'Altrove', code: 'M1' } },
+      { playerName: 'alice', owner: true, stat: 'xp', expected: 501, said: 500 },
+      { playerName: 'alice', owner: true, stat: 'coins', expected: 50, said: 10 },
+      { playerName: 'alice', owner: true, stat: 'location', said: { name: 'Altrove', code: 'M1' } },
     ]);
     expect(run.read('stat', { stat: 'coins' })).toMatchObject({ value: 10, exact: true });
     await run.core.stop();
@@ -1295,7 +1300,7 @@ describe('skills and equipment, as /abilita and /equipaggia answer', () => {
       exact: false,
     });
     expect(run.of('loregame.equipment').at(-1)).toMatchObject({
-      player: 'alice',
+      playerName: 'alice',
       owner: true,
       kind: 'equipped',
       removed: 'un mestolo',
@@ -1331,7 +1336,7 @@ describe('skills and equipment, as /abilita and /equipaggia answer', () => {
     await run.owner('/me');
     await run.bot(PROFILE);
     await play(run, '/abilita', MENU('II', 1));
-    expect(run.of('loregame.skills').at(-1)).toMatchObject({ player: 'alice', points: 1 });
+    expect(run.of('loregame.skills').at(-1)).toMatchObject({ playerName: 'alice', points: 1 });
     expect(run.read('stat', { stat: 'skill_points' })).toMatchObject({ value: 1, exact: true });
     expect(run.read('stat', { stat: 'skills' })).toMatchObject({ value: { Sciacallaggio: 2 } });
     expect(run.of('loregame-state.statsDrift')).toEqual([]);
@@ -1453,7 +1458,7 @@ describe('the skills menu, as its buttons change it (D144)', () => {
     run.clock.advance(5000);
     await run.edit(menu.answer, MENU(1, 0), { replyTo: menu.id, time: said });
     expect(run.of('loregame.skills').at(-1)).toMatchObject({
-      player: 'alice',
+      playerName: 'alice',
       edited: true,
       points: 0,
       t: run.clock.now(),
@@ -1593,8 +1598,8 @@ describe('the inventory, as /zaino and /i list it', () => {
       held: 1,
     });
     expect(run.read('holders', { item: 'un sasso' })).toEqual([
-      { player: 'bob', qty: 7, exact: true },
-      { player: 'alice', qty: 2, exact: true },
+      { playerName: 'bob', playerId: null, qty: 7, exact: true },
+      { playerName: 'alice', playerId: null, qty: 2, exact: true },
     ]);
     // An empty inventory has no pages: it is whole.
     const carols = await run.group('carol', '/zaino');
@@ -1937,8 +1942,8 @@ describe('neutrality, as a ticket gives it and its end takes it', () => {
     await run.owner('/usa neutralizzante');
     await run.bot(TICKET);
     expect(run.of('loregame.neutral')).toMatchObject([
-      { player: 'alice', owner: true, kind: 'neutralized' },
-      { player: 'alice', owner: true, kind: 'neutralized' },
+      { playerName: 'alice', owner: true, kind: 'neutralized' },
+      { playerName: 'alice', owner: true, kind: 'neutralized' },
     ]);
     // Two tickets: 20 hours, exactly; both gone.
     expect(run.read('stat', { stat: 'effects' })).toMatchObject({
@@ -1967,7 +1972,7 @@ describe('neutrality, as a ticket gives it and its end takes it', () => {
       'bob, prendi il biglietto ma ti sbriciola in mano! Aspetta, ti sta succedendo qualcosa di strano... perché hai perso colore?'
     );
     expect(run.of('loregame.neutral')).toMatchObject([
-      { player: 'bob', owner: false, kind: 'neutralized' },
+      { playerName: 'bob', owner: false, kind: 'neutralized' },
     ]);
     expect(run.read('player', { name: 'bob' })).not.toBeNull();
     // The end, in the group, is no one's; in private, the owner's, who is not in a neutral place.
@@ -2007,6 +2012,122 @@ describe('neutrality, as a ticket gives it and its end takes it', () => {
   });
 });
 
+describe('people, kept by 0.55 by their username (#17)', () => {
+  it('are kept by their username, their `name`, until an event links it to an id', async () => {
+    const dir2 = path.join(dir, 'by-name');
+    const run = await bootState(dir2, { group: true });
+    const bobs = await run.group('bob', '/lore');
+    await run.group('LoreGameBot', gain('una pigna [B1]'), { replyTo: bobs });
+    await run.core.stop();
+    const docs = path.join(dir2, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    // As 0.55 kept it: no owner's id, no player's name.
+    delete kept.state.owner.id;
+    delete kept.state.players.bob.name;
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    const meta = JSON.parse(fs.readFileSync(path.join(docs, '_meta.json'), 'utf8'));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 1 }));
+    const migrated = await bootState(dir2, { group: true, ids: true });
+    expect(migrated.read('get', { path: 'owner' })).toMatchObject({ id: null });
+    expect(migrated.read('get', { path: 'players.bob' })).toMatchObject({ name: 'bob', turns: 1 });
+    // Bob seen with his id: moved to it.
+    const again = await migrated.group('bob', '/lore', { senderId: '2000' });
+    await migrated.group('LoreGameBot', gain('una pigna [B1]'), { replyTo: again });
+    expect(migrated.read('get', { path: 'players' })).toEqual({
+      '2000': expect.objectContaining({ name: 'bob', turns: 2 }) as unknown,
+    });
+    await migrated.core.stop();
+  });
+});
+
+describe('people, by their stable id (#17)', () => {
+  it('keys players by id, moves one first named alone to it, and follows a rename', async () => {
+    const run = await bootState(path.join(dir, 'ids'), { group: true, ids: true });
+    const players = () => Object.keys(run.read('get', { path: 'players' }) as object);
+    // Bob plays: his turn names him by his id and his username.
+    const bobs = await run.group('bob', '/lore', { senderId: '2000' });
+    await run.group('LoreGameBot', gain('una pigna [B1]'), { replyTo: bobs });
+    expect(run.of('loregame.playerTurn').at(-1)).toMatchObject({
+      playerName: 'bob',
+      playerId: '2000',
+    });
+    expect(run.read('get', { path: 'players.2000' })).toMatchObject({ name: 'bob', turns: 1 });
+    // The owner gives Carol, never seen, a stone: she is kept by her name until she is seen.
+    await run.group('alice', '/dai carol sasso', { own: true, senderId: OWNER_ID });
+    await run.group('LoreGameBot', 'Hai inviato 1x un sasso [B1] a carol!');
+    expect(run.of('loregame.gift').at(-1)).toMatchObject({
+      playerName: 'alice',
+      playerId: OWNER_ID,
+      toName: 'carol',
+      toId: null,
+    });
+    expect(players()).toEqual(expect.arrayContaining(['2000', 'carol']));
+    expect(run.read('get', { path: 'owner' })).toMatchObject({ name: 'alice', id: OWNER_ID });
+    // Carol plays: what was kept of her moves to her id, the stone too.
+    const carols = await run.group('carol', '/lore', { senderId: '3000' });
+    await run.group('LoreGameBot', gain('una pigna [B1]'), { replyTo: carols });
+    expect(players()).not.toContain('carol');
+    expect(run.read('get', { path: 'players.3000' })).toMatchObject({ name: 'carol', turns: 1 });
+    expect(run.read('inventory', { player: 'carol' })).toMatchObject({
+      items: { 'un sasso': { qty: 1 } },
+    });
+    // Bob takes another username: kept under his id, found by the new one, not the old.
+    await run.group('bobby', 'ciao a tutti', { senderId: '2000' });
+    expect(run.of('loregame.renamed')).toMatchObject([
+      { playerId: '2000', playerName: 'bobby', previousName: 'bob' },
+    ]);
+    expect(run.read('player', { name: 'bobby' })).toMatchObject({ name: 'bobby', turns: 1 });
+    expect(run.read('player', { name: '2000' })).toMatchObject({ name: 'bobby' });
+    expect(run.read('player', { name: 'bob' })).toBeNull();
+    // Another takes the name Bob left: a new player, not Bob.
+    const dave = await run.group('bob', '/lore', { senderId: '4000' });
+    await run.group('LoreGameBot', gain('una pigna [B1]'), { replyTo: dave });
+    expect(run.read('get', { path: 'players.4000' })).toMatchObject({ name: 'bob', turns: 1 });
+    expect(run.read('get', { path: 'players.2000' })).toMatchObject({ name: 'bobby', turns: 1 });
+    await run.core.stop();
+  });
+
+  it("moves a ban and a day's purchases kept by name to the id, and keeps the id's if both", () => {
+    // Pure: the state's reducer, on events as the parser publishes them.
+    const at = Date.parse('2026-11-06T12:00:00Z');
+    const ev = (type: string, extra: Record<string, unknown>, t = at) =>
+      ({ type, t, chat: GROUP, owner: false, ...extra }) as never;
+    let s = initialState();
+    s = reduce(
+      s,
+      ev('loregame.ban', { playerName: 'erin', playerId: null, until: at + 3_600_000 })
+    );
+    expect(Object.keys(s.bans)).toEqual(['erin']);
+    s = reduce(s, ev('loregame.profile', { playerName: 'erin', playerId: null, level: 3 }));
+    s = reduce(
+      s,
+      ev('loregame.playerTurn', {
+        playerName: 'Erin',
+        playerId: '5000',
+        command: '/lore',
+        outcome: { kind: 'nothing', bot: 'LoreGameBot', reason: 'lost' },
+        message: '1',
+        answer: '2',
+      })
+    );
+    expect(Object.keys(s.bans)).toEqual(['5000']);
+    expect(Object.keys(s.players)).toEqual(['5000']);
+    expect(s.players['5000']).toMatchObject({ name: 'Erin' });
+    // A name-keyed entry for one already kept by id: the id's wins.
+    const both = {
+      ...s,
+      players: { ...s.players, frank: { ...initialPlayer('x'), name: 'frank', turns: 9 } },
+    };
+    const linked = reduce(
+      { ...both, players: { ...both.players, '6000': { ...initialPlayer('x'), name: 'frank' } } },
+      ev('loregame.neutral', { playerName: 'frank', playerId: '6000', kind: 'neutralized' })
+    );
+    expect(Object.keys(linked.players).sort()).toEqual(['5000', '6000']);
+    expect(linked.players['6000']?.turns).toBe(0);
+  });
+});
+
 describe('gifts, as /give and /dai answer', () => {
   it('moves items and coins from the giver to the receiver, each player’s', async () => {
     const run = await bootState(path.join(dir, 'g1'), { group: true });
@@ -2041,7 +2162,7 @@ describe('gifts, as /give and /dai answer', () => {
     await run.group('alice', '/dai bob sasso', { own: true });
     await run.group('LoreGameBot', 'Hai inviato 2x un sasso [B1] a @BOB!');
     expect(run.of('loregame.gift')).toMatchObject([
-      { player: 'alice', owner: true, kind: 'item', to: 'BOB', toOwner: false, qty: 2 },
+      { playerName: 'alice', owner: true, kind: 'item', toName: 'BOB', toOwner: false, qty: 2 },
     ]);
     expect(run.read('get', { path: 'inventory.items.un sasso' })).toMatchObject({
       qty: 1,
@@ -2056,14 +2177,15 @@ describe('gifts, as /give and /dai answer', () => {
     await run.group('bob', '/give alice 20');
     await run.group('LoreGameBot', 'Hai inviato 20 monete a alice!');
     expect(run.of('loregame.gift').at(-1)).toMatchObject({
-      player: 'bob',
+      playerName: 'bob',
       toOwner: true,
       coins: 20,
     });
     expect(run.read('stat', { stat: 'coins' })).toMatchObject({ value: 70, exact: true });
     expect(run.read('holders', { item: 'un sasso' })).toEqual([
-      { player: 'BOB', qty: 2, exact: false },
-      { player: 'alice', qty: 1, exact: true },
+      // Bob, first named BOB by the giver, under the username he was seen with since.
+      { playerName: 'bob', playerId: null, qty: 2, exact: false },
+      { playerName: 'alice', playerId: null, qty: 1, exact: true },
     ]);
     await run.core.stop();
   });
@@ -2094,9 +2216,9 @@ describe('gifts, as /give and /dai answer', () => {
     expect(run.of('loregame.gift')[0]).toMatchObject({
       chat: GROUP,
       answer: '5001',
-      player: 'alice',
+      playerName: 'alice',
       owner: true,
-      to: 'bob',
+      toName: 'bob',
       t,
     });
     // The owner's /accumulo heard after its answer: paired, the owner's readiness told.
@@ -2143,10 +2265,10 @@ describe('gifts, as /give and /dai answer', () => {
     await run.group('carol', '/paga 6', { replyTo: bobSays });
     await run.group('LoreGameBot', '[N] Hai inviato 6 monete a bob!');
     expect(run.of('loregame.gift').at(-1)).toMatchObject({
-      player: 'carol',
+      playerName: 'carol',
       kind: 'coins',
       coins: 6,
-      to: 'bob',
+      toName: 'bob',
     });
     // Carol's, played in private: the notice alone.
     await run.bot('[N] Hai ricevuto 3x una pigna [B1] da carol!');
@@ -2552,7 +2674,9 @@ describe('the shop, the same for every player (§5.12)', () => {
     // bob asks in the group: the day's items (13:00 in Rome), none bought by alice as far as told.
     const asked = await run.group('bob', '/negozio');
     await run.group('LoreGameBot', SHOP('bob', PIGNA, MESTOLO, GENERATORE), { replyTo: asked });
-    expect(run.of('loregame.shop')).toMatchObject([{ player: 'bob', owner: false, sagra: null }]);
+    expect(run.of('loregame.shop')).toMatchObject([
+      { playerName: 'bob', owner: false, sagra: null },
+    ]);
     let shop = shopNow(run);
     expect(shop).toMatchObject({ day: '2026-11-06', today: true, sagra: null });
     expect(shop.items.map((i) => [i.item, i.price, i.bought])).toEqual([
@@ -2645,7 +2769,7 @@ describe('the shop, the same for every player (§5.12)', () => {
       time,
     });
     expect(run.of('loregame.purchase')).toMatchObject([
-      { player: 'bob', owner: false, item: 'un mestolo', rarity: 'M4', price: 1000, qty: 1 },
+      { playerName: 'bob', owner: false, item: 'un mestolo', rarity: 'M4', price: 1000, qty: 1 },
     ]);
     expect(run.read('inventory', { player: 'bob' })).toMatchObject({
       items: { 'un mestolo': { qty: 1, via: 'purchase', rarity: 'M4' } },
@@ -2676,12 +2800,12 @@ describe('the shop, the same for every player (§5.12)', () => {
       'La tua idea si materializza... hai generato una pigna [B2]!\n\nHai ottenuto 100₭!'
     );
     expect(run.of('loregame.generated')).toMatchObject([
-      { player: 'bob', owner: false, kind: 'item', name: 'una pigna', code: 'B2', reward: 100 },
+      { playerName: 'bob', owner: false, kind: 'item', name: 'una pigna', code: 'B2', reward: 100 },
     ]);
     expect(run.read('catalogue')).toMatchObject({ 'una pigna': { via: 'generated' } });
     await run.group('LoreGameBot', 'bob, apri lo scatolone 📦 e trovi:\n> un mestolo [M4]');
     expect(run.of('loregame.used')).toMatchObject([
-      { player: 'bob', item: 'uno scatolone da trasloco 📦', found: [{ item: 'un mestolo' }] },
+      { playerName: 'bob', item: 'uno scatolone da trasloco 📦', found: [{ item: 'un mestolo' }] },
     ]);
     expect(run.read('inventory', { player: 'bob' })).toMatchObject({
       items: { 'un mestolo': { qty: 1, via: 'used' } },
@@ -2811,8 +2935,8 @@ describe('the catalogue, every item seen in the game (§6)', () => {
       'LoreGameBot',
       '@bob, prendi in mano:\n- una pentola [B2] x1\n- una rapa [B1] x1\n\ne mescoli.\n\nOttieni: il brodo [L1]!'
     );
-    expect(run.of('loregame.recipes')).toMatchObject([{ player: 'bob', owner: false }]);
-    expect(run.of('loregame.recipe')).toMatchObject([{ player: 'bob', name: 'La zuppa' }]);
+    expect(run.of('loregame.recipes')).toMatchObject([{ playerName: 'bob', owner: false }]);
+    expect(run.of('loregame.recipe')).toMatchObject([{ playerName: 'bob', name: 'La zuppa' }]);
     expect(run.of('loregame.recipeMade')).toMatchObject([{ made: { item: 'il brodo' } }]);
     expect(run.read('recipe', { name: 'zuppa', player: 'bob' })).toMatchObject({
       name: 'La zuppa',
