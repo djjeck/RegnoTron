@@ -39,16 +39,20 @@ export type Gift =
 
 const ITEM = String.raw`(\d+)x (.+?) \[([A-Z]+\d*\+?)\]((?: ?\[[a-z][^\]\n]*\])*)`;
 const SENT_ITEMS = new RegExp(String.raw`^(?:\[N\] )?Hai inviato ${ITEM} a @?(\w+)!$`, 'su');
-const SENT_COINS = /^(?:\[N\] )?Hai inviato (\d+) monete a @?(\w+)!$/u;
+/** Coins: "<n> monete", or one, "una moneta" [M: live; the exports gave none]. */
+const SENT_COINS = /^(?:\[N\] )?Hai inviato (\d+ monete|una moneta) a @?(\w+)!$/u;
 const GOT_ITEMS = new RegExp(String.raw`^(?:\[N\] )?Hai ricevuto ${ITEM} da @?(\w+)!$`, 'su');
-const GOT_COINS = /^(?:\[N\] )?Hai ricevuto (\d+) monete da @?(\w+)!$/u;
+const GOT_COINS = /^(?:\[N\] )?Hai ricevuto (\d+ monete|una moneta) da @?(\w+)!$/u;
 const RANGE = /^(.+) \((\d+)(?: - (\d+))?\)$/su;
 
 /** The gift a message tells of, sent or received: what, and the other player. */
 function parseWith(raw: string, items: RegExp, coins: RegExp): Gift | undefined {
   const text = raw.normalize('NFC').trim();
   const c = coins.exec(text);
-  if (c !== null) return { kind: 'coins', coins: Number(c[1]), to: c[2] as string };
+  if (c !== null) {
+    const n = c[1] as string;
+    return { kind: 'coins', coins: n === 'una moneta' ? 1 : parseInt(n, 10), to: c[2] as string };
+  }
   const m = items.exec(text);
   if (m === null) return undefined;
   const range = RANGE.exec(m[2] as string);

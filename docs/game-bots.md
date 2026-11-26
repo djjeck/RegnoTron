@@ -549,11 +549,12 @@ possono ottenere solo livellando o ricevendoli da un altro giocatore con /paga"]
 named or, the usual way, to the one whose message the command replies to (43 of the 45 coin gifts in
 the exports, `/paga <username> <n>` the others):
 `Hai inviato <n>x <item> [<rarity>] [<tag>]… a <username>!`, or
-`Hai inviato <n> monete a <username>!`, at times after `[N] ` (the bot's mark of a notification,
-§5.9). The receiver is named as the giver typed them (an `@`, any case), or by their username. The
-answer names the receiver, not the giver, and since August 2026 it replies to no command (all 209
-since then): the parser pairs it with the command waiting, as the accumulo's answers (§5.2). Its
-refusals (`Formato non valido!`, `Oggetto non trovato!`, `Non possiedi l'oggetto!`,
+`Hai inviato <n> monete a <username>!` (one coin: `Hai inviato una moneta a <username>!` [M: live,
+Nov 2026; the exports had none]), at times after `[N] ` (the bot's mark of a notification, §5.9).
+The receiver is named as the giver typed them (an `@`, any case), or by their username. The answer
+names the receiver, not the giver, and since August 2026 it replies to no command (all 209 since
+then): the parser pairs it with the command waiting, as the accumulo's answers (§5.2). Its refusals
+(`Formato non valido!`, `Oggetto non trovato!`, `Non possiedi l'oggetto!`,
 `Elemento non trovato o utente non registrato!`, `Non hai abbastanza soldi!`, …) change nothing, and
 are not read; each replies to its command (the 370 in the exports), which ends that command's wait,
 so a later answer goes to the next command waiting, another player's, not to the refused one. **All
@@ -563,12 +564,12 @@ are the owner's notices of two of them (below).
 
 **Each side is also told in private** [M]: the giver `[N] Hai inviato …`, the same text as the
 answer, and the receiver `[N] Hai ricevuto <n>x <item> [<rarity>] [<tag>]… da <username>!` (or
-`<n> monete`), the giver by username, seconds after the answer in the group (2 s, in the owner's
-private export). So the owner hears a gift they give or receive in the group twice, its answer there
-and its notice in private, and one given them in private once, its notice. Whether the owner's own
-gift played in private brings a notice besides its answer is not seen [?]; if it did, the rule below
-drops it. **The parser gives each gift of the owner's once**, whichever of its messages it hears, in
-whichever order:
+`<n> monete`, one coin `una moneta` [?]), the giver by username, seconds after the answer in the
+group (2 s, in the owner's private export). So the owner hears a gift they give or receive in the
+group twice, its answer there and its notice in private, and one given them in private once, its
+notice. Whether the owner's own gift played in private brings a notice besides its answer is not
+seen [?]; if it did, the rule below drops it. **The parser gives each gift of the owner's once**,
+whichever of its messages it hears, in whichever order:
 
 - A private `Hai inviato` that answers no command known to wait is the owner's, and a private
   `Hai ricevuto` is a gift to the owner from the player it names.

@@ -25,6 +25,13 @@ describe('/give and /dai', () => {
       to: 'bob',
       coins: 30,
     });
+    // One coin is "una moneta".
+    expect(parseGift('[N] Hai inviato una moneta a bob!')).toEqual({
+      kind: 'coins',
+      to: 'bob',
+      coins: 1,
+    });
+    expect(parseGift('Hai inviato 1 moneta a bob!')).toBeUndefined();
     expect(parseGift("Non possiedi l'oggetto!")).toBeUndefined();
     expect(parseGift('Hai inviato tutto a bob!')).toBeUndefined();
   });
@@ -63,6 +70,10 @@ describe('/give and /dai', () => {
       from: 'bob',
       gift: { kind: 'coins', to: '', coins: 40 },
     });
+    expect(parseReceived('[N] Hai ricevuto una moneta da bob!')).toEqual({
+      from: 'bob',
+      gift: { kind: 'coins', to: '', coins: 1 },
+    });
     expect(parseReceived('Hai ricevuto un rispetto!')).toBeUndefined();
     expect(parseGift('[N] Hai ricevuto 40 monete da bob!')).toBeUndefined();
   });
@@ -100,6 +111,12 @@ describe('/paga, and refusals', () => {
       owner: false,
       toOwner: false,
       reply: { kind: 'coins', coins: 15, to: 'dave' },
+    });
+    // One coin, its answer and the owner's echo alike: "una moneta".
+    hear(w, 'carol', '/paga 1', 1500, '6', '1');
+    expect(hear(w, 'LoreGameBot', '[N] Hai inviato una moneta a dave!', 1800, '7')).toMatchObject({
+      player: 'carol',
+      reply: { kind: 'coins', coins: 1, to: 'dave' },
     });
     // Named, addressed to the bot.
     hear(w, 'carol', '/paga@LoreGameBot @dave 4', 3000, '4');
