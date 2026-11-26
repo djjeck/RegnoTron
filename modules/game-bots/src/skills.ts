@@ -52,8 +52,13 @@ export function parseSkillMenu(raw: string): SkillMenu | undefined {
   return points === undefined || skills.length === 0 ? undefined : { skills, points };
 }
 
-/** The skills a player holds, by name, as the profile lists them: those at a level, with it. */
-export function skillLevels(menu: SkillMenu): Record<string, number> {
+/**
+ * The skills a player holds, by name, as the profile lists them: those at a level, with it. Any
+ * menu's skills do, as read here or as `loregame.skills` carries them.
+ */
+export function skillLevels(menu: {
+  skills: readonly Pick<MenuSkill, 'name' | 'level'>[];
+}): Record<string, number> {
   const levels: Record<string, number> = {};
   for (const s of menu.skills)
     if (s.level > 0)

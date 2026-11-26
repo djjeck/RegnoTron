@@ -1,6 +1,6 @@
 /**
- * @LoreGameBot's bans, as the `loregame` parser watches them and an actor checks them (docs/game-
- * bots.md §5, §6). Pure, but for what a plugin hands it.
+ * @LoreGameBot's bans, as the `loregame` parser watches them (docs/game-bots.md §5, §6). Pure,
+ * but for what a plugin hands it.
  *
  * A banned player gets "Sei stato bannato fino al …" to **every** message of theirs, whatever the
  * command (even another bot's, or no command), so a ban is read off any reply, in the private chat
@@ -107,35 +107,4 @@ export class BanWatch {
     this.banned.delete(player);
     return until > m.time ? { type: 'unban', player, owner: player === owner } : undefined;
   }
-}
-
-/** The ban as a state's `ban` query gives it: when it ends (an ISO time), none if it does not say. */
-export interface BanView {
-  until: string | null;
-}
-
-/** What an actor uses of `loregame-state`: its bans. */
-export interface BansInterface {
-  state: { ban(input: { player?: string }): BanView | null };
-}
-
-/** The members of the contract, as an actor's input names them. */
-export const BANS_MEMBERS = ['state.ban'];
-
-/**
- * Until when the player (the owner, unless named) is banned at `now`, in ms: `Infinity` for a ban
- * with no end stated, undefined for none. An actor calls it as it wakes, before each command: the
- * ban is the account's, whatever the command, and the bot answers a banned player's command with
- * the ban alone.
- *
- * ```ts
- * const ban = bannedUntil(ctx.use<BansInterface>('bans'), ctx.clock.now());
- * if (ban !== undefined) return sleepUntil(ban); // not Infinity: wait for the state to change
- * ```
- */
-export function bannedUntil(bans: BansInterface, now: number, player?: string): number | undefined {
-  const ban = bans.state.ban(player === undefined ? {} : { player });
-  if (ban === null) return undefined;
-  const until = ban.until === null ? Infinity : Date.parse(ban.until);
-  return until > now ? until : undefined;
 }

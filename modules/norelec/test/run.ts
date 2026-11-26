@@ -19,7 +19,7 @@ import { NORELEC_STATE, norelecStatePlugin } from '#src/plugins/norelec-state.ts
 import { withChats } from './graph.ts';
 
 export const T0 = Date.UTC(2026, 10, 14, 12, 0, 0);
-export const CHANNEL = '#lobby';
+const CHANNEL = '#lobby';
 export const OWNER = 'alice';
 
 /** An instance in `dir`, from `at`, its `norelec-state` node configured with `state`. */

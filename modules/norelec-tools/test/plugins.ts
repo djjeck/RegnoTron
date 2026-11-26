@@ -20,7 +20,7 @@ import { withChats } from '@regnotron/norelec/test/graph.ts';
 /** 13:00 in Italy, out of the clock's quiet hours. */
 export const T0 = Date.UTC(2026, 10, 6, 12, 0, 0);
 export const GROUP = '-1001000000001';
-export const CHANNEL = '#lobby';
+const CHANNEL = '#lobby';
 export const RAID =
   'Alfa parti per Bravo: arrivi tra 1 minuto e 31 secondi. Casa tua resta scoperta.';
 
@@ -38,7 +38,7 @@ export interface KitOptions {
 }
 
 /** Bot messages, as the event log keeps them. */
-export const logOf = (messages: readonly { time: number; text: string }[]): LogEntry[] =>
+const logOf = (messages: readonly { time: number; text: string }[]): LogEntry[] =>
   messages.map(({ time, text }) => ({ type: MESSAGE_EVENT, t: time, text }));
 
 /** `plugin` (instance `id`) on a dev kit with the game and the fake connectors. */

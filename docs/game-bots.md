@@ -886,22 +886,22 @@ It is a floor, not the truth, while the turns are all it reads:
   when the parser says the bot served the player again, and one past its end is dropped at the next
   event, by that event's time. `state.ban({ player? })` is a player's (the owner's unless named),
   `state.bans()` every one; `loregame-state.banned` and `loregame-state.unbanned` announce each
-  change, for any player, from live news alone. **An actor** checks the ban as it wakes, before each
-  command, with `bannedUntil` (`src/bans.ts`): a ban is the account's, whatever the command.
+  change, for any player, from live news alone. The owner's ban holds every command of the readiness
+  (§5.1): a ban is the account's, whatever the command.
 - **The accumulo** (§5.2): the turns taken since it was last emptied (`count`), counted here, and
   the bot's own word on it. `count` is an estimate, `exact` once the bot's counter or a use has set
   it, and not charged below the level the bot's gate names. **`ready` is the bot's word alone**: a
   turn's line (one copy), or a counter at its maximum, until a use or a counter below it; our count
-  reaching the maximum is not a go, so an actor that wants `/accumulo` waits for it
-  (`accumuloReady`, `src/accumulo.ts`). Where the two disagree it keeps `drift` (the latest ten) and
-  announces each as `loregame-state.accumuloDrift`, once until something else differs: `count` (the
-  bot's counter is not ours), `early` (the line before our count reaches the maximum, as when the
-  maximum is lower, or a story quotes it), `late` (our count reached it and there is no line),
-  `lapsed` (it was full and the line is gone with no use seen), `not_ready` (a counter below the
-  maximum while we held it full) and `used_early` (used with no line, short of the maximum). A floor
-  says nothing against the bot, so `early`, `late` and `used_early` need an exact count. The bot's
-  word wins: the state follows it, and does not learn the maximum from a line. `state.accumulo()` is
-  the section; `loregame-state.accumuloReady` and `accumuloUsed` announce the rest.
+  reaching the maximum is not a go, so the readiness unlocks `/accumulo` on it alone. Where the two
+  disagree it keeps `drift` (the latest ten) and announces each as `loregame-state.accumuloDrift`,
+  once until something else differs: `count` (the bot's counter is not ours), `early` (the line
+  before our count reaches the maximum, as when the maximum is lower, or a story quotes it), `late`
+  (our count reached it and there is no line), `lapsed` (it was full and the line is gone with no
+  use seen), `not_ready` (a counter below the maximum while we held it full) and `used_early` (used
+  with no line, short of the maximum). A floor says nothing against the bot, so `early`, `late` and
+  `used_early` need an exact count. The bot's word wins: the state follows it, and does not learn
+  the maximum from a line. `state.accumulo()` is the section; `loregame-state.accumuloReady` and
+  `accumuloUsed` announce the rest.
 - **The training** (§5.3): the readiness's, a day after the owner's last training.
 - **A level-up** of the owner's (§5.4), whatever brought it, adds its items to the inventory, and
   opens the accumulo when it reaches its level.

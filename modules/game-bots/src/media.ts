@@ -36,7 +36,6 @@ export const mediaSourceSchema = z.object({
   via: z.enum(MEDIA_VIA).describe('What the message was'),
   at: z.string().describe('When it was said (ISO)'),
 });
-export type MediaSource = z.infer<typeof mediaSourceSchema>;
 
 /**
  * What a picture is: an `image` kept (its bytes in the files); `other`, a message the account's
@@ -163,7 +162,6 @@ export const mediaEventSchema = z.looseObject({
   name: z.string(),
   media: mediaEntrySchema,
 });
-export type MediaEvent = z.infer<typeof mediaEventSchema>;
 
 /**
  * An image's size in pixels, read from its header: a JPEG's frame, a PNG's IHDR; none for another

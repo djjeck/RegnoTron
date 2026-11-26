@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  ACCUMULO_MARK,
-  italianWait,
-  LORE_COMMANDS,
-  parseEpicLorelecBot,
-  parseLoreGameBot,
-} from './replies.ts';
+import { ACCUMULO_MARK, italianWait, parseEpicLorelecBot, parseLoreGameBot } from './replies.ts';
 
 /** A turn's lines as the bot sends them: a header, a story and the rest, a blank line before the ending. */
 const HEADER = 'Lore - Il Bosco Inventato ⛅️ [B1]';
@@ -384,10 +378,6 @@ describe('the accumulo line of a turn', () => {
     const cut = [HEADER, '', 'x'.repeat(1010)].join('\n');
     expect(parseLoreGameBot(cut)).toMatchObject({ kind: 'nothing', reason: 'truncated' });
     expect(parseLoreGameBot(cut)).not.toHaveProperty('accumulo');
-  });
-
-  it('is held back by a ban like the commands of the game, /acc included', () => {
-    expect(LORE_COMMANDS).toEqual(expect.arrayContaining(['/accumulo', '/acc']));
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type BotMessage } from '#src/game/bot-message.ts';
 import { parseMessage } from '#src/game/parse-message.ts';
-import { address, GameState, recent, richest } from './game-state.ts';
+import { address, GameState, recent } from './game-state.ts';
 
 const S = 1000;
 const msg = (time: number, ...lines: string[]): BotMessage => {
@@ -278,25 +278,6 @@ describe('Telegram accounts', () => {
       'Alfa',
       'Nobody',
     ]);
-  });
-});
-
-describe('richest', () => {
-  it('ranks the known balances with the balls on the road, leaving out whom it is told', () => {
-    const g = new GameState();
-    g.player('Alfa').balance = { balls: 100, at: 0 };
-    g.player('Bravo').balance = { balls: 90, at: 0 };
-    g.player('Bravo').trip = {
-      to: 'Alfa',
-      departedAt: 0,
-      arriveAt: 0,
-      arrived: false,
-      carrying: 30,
-    };
-    g.player('Charlie').balance = { balls: 110, at: 0 };
-    g.player('Delta');
-    expect(richest(g, 2)).toEqual(['Bravo', 'Charlie']);
-    expect(richest(g, 5, ['Charlie'])).toEqual(['Bravo', 'Alfa']);
   });
 });
 

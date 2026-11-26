@@ -126,24 +126,6 @@ export function ballsOf(p: Pick<PlayerState, 'balance' | 'trip'>): number | unde
 }
 
 /**
- * The `n` players with the most balls (`ballsOf`), richest first (ties by name), leaving out those
- * in `except` and those whose balance is not known.
- */
-export function richest(
-  state: Pick<GameState, 'players'>,
-  n: number,
-  except: readonly string[] = []
-): string[] {
-  const ranked: { name: string; balls: number }[] = [];
-  for (const p of state.players.values()) {
-    const balls = ballsOf(p);
-    if (balls !== undefined && !except.includes(p.name)) ranked.push({ name: p.name, balls });
-  }
-  ranked.sort((a, b) => b.balls - a.balls || a.name.localeCompare(b.name));
-  return ranked.slice(0, n).map((p) => p.name);
-}
-
-/**
  * The `n` players a bot line named most recently, within `windowMs` of `now`, latest first: those
  * active lately, whatever their balance.
  */

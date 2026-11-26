@@ -14,7 +14,7 @@
  */
 import { type CommandMechanics } from '@megabottron1999/turns/readiness.ts';
 import { type TurnOutcome, type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
-import { AnswerWatch, type PlayerAnswer } from '#src/answer-watch.ts';
+import { AnswerWatch } from '#src/answer-watch.ts';
 import { LOREGAMEBOT, type LoreLevelUp, retryOf, splitLevelUp } from '#src/replies.ts';
 
 /** The training's command, as the parser declares it. */
@@ -90,9 +90,6 @@ export function trainingReading(t: TrainingReply): Exclude<TurnReading, undefine
   const { result: _, ...trained } = t;
   return { outcome: { kind: 'training', bot: LOREGAMEBOT, ...trained } as TurnOutcome };
 }
-
-/** A player's answer to `/allenati`: whose, and what the bot said. */
-export type PlayerTraining = PlayerAnswer<TrainingReply>;
 
 /** The `/allenati` answers, out of everything the parser hears (`src/answer-watch.ts`). */
 export class TrainingWatch extends AnswerWatch<TrainingReply> {

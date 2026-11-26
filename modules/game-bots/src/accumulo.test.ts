@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  ACCUMULO_COMMANDS,
-  accumuloReady,
-  AccumuloWatch,
-  isAccumuloCommand,
-  parseAccumulo,
-} from './accumulo.ts';
-import { ANSWER_WINDOW_MS } from './answer-watch.ts';
+import { ACCUMULO_COMMANDS, AccumuloWatch, parseAccumulo } from './accumulo.ts';
+import { ANSWER_WINDOW_MS, isCommandOf } from './answer-watch.ts';
 import { type Heard } from './bans.ts';
 
 const T = Date.parse('2026-11-06T12:00:00Z');
@@ -73,9 +67,9 @@ describe('what the bot answers to /accumulo', () => {
   it('knows the commands, bare or addressed to its bot', () => {
     expect(ACCUMULO_COMMANDS).toEqual(['/accumulo', '/acc']);
     for (const text of ['/acc', '/accumulo', ' /ACC ', '/accumulo@LoreGameBot', '/acc@loregamebot'])
-      expect(isAccumuloCommand(text, 'LoreGameBot')).toBe(true);
+      expect(isCommandOf(text, ACCUMULO_COMMANDS, 'LoreGameBot')).toBe(true);
     for (const text of ['/acc@OtherBot', '/accumulo 5', '/accu', 'acc', '/lore', '/acc/acc'])
-      expect(isAccumuloCommand(text, 'LoreGameBot')).toBe(false);
+      expect(isCommandOf(text, ACCUMULO_COMMANDS, 'LoreGameBot')).toBe(false);
   });
 });
 
@@ -168,14 +162,6 @@ describe('whose answer it is', () => {
     expect(w.hear(owner(SHORT))).toBeUndefined();
     w.hear(owner('/acc@OtherBot'));
     expect(w.hear(bot(SHORT, { time: T + 1 }))).toEqual({ result: 'short', count: 7, max: 20 });
-  });
-});
-
-describe('when to send /accumulo', () => {
-  it('is when the bot said it is full, and it is not behind a level', () => {
-    expect(accumuloReady({ ready: true, locked: null })).toBe(true);
-    expect(accumuloReady({ ready: false, locked: null })).toBe(false);
-    expect(accumuloReady({ ready: true, locked: 4 })).toBe(false);
   });
 });
 

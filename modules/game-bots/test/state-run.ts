@@ -22,8 +22,8 @@ import { LOREGAME_STATE } from '#src/loregame-state.ts';
 import { loregamePlugin } from '#src/plugins/loregame.ts';
 import { loregameStatePlugin } from '#src/plugins/loregame-state.ts';
 
-export const OWNER = 'alice';
-export const DM = '@LoreGameBot';
+const OWNER = 'alice';
+const DM = '@LoreGameBot';
 export const MIN = 60_000;
 export const T0 = Date.parse('2026-11-06T12:00:00Z');
 /** The game's group, when a test reads it. */

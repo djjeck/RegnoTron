@@ -20,14 +20,13 @@
  *   is an `uncertain` one.
  * - **Its interface:** `state.get`, `state.freshness`, `state.count({ name })` (how many of an
  *   item the owner holds), `state.held()` (every item held, with its count), `state.ban({ player? })`
- *   (a player's ban, the owner's unless named; `bannedUntil` in `src/bans.ts` is the actor's
- *   helper over it) and `state.bans()` (every banned player).
+ *   (a player's ban, the owner's unless named) and `state.bans()` (every banned player).
  * - **The bot's health** (`state.health()`, docs/game-bots.md §5.16): whether it is answering now,
  *   as the parser's `loregame.health` tells each change, with its latest outages.
- * - **The accumulo** (`state.accumulo()`, `accumuloReady` in `src/accumulo.ts` is the actor's
- *   check): the turns counted since it was last emptied, the bot's word that it is full (`ready`),
- *   and the `drift` between the two. `loregame-state.accumuloReady`, `accumuloUsed` and
- *   `accumuloDrift` announce each change from live news.
+ * - **The accumulo** (`state.accumulo()`): the turns counted since it was last emptied, the bot's
+ *   word that it is full (`ready`), and the `drift` between the two.
+ *   `loregame-state.accumuloReady`, `accumuloUsed` and `accumuloDrift` announce each change from
+ *   live news.
  * - **The players** (`state.player({ name })`): every player's turns the account reads, the
  *   owner's included, kept by username: their name and level in the game, their turns seen, those a
  *   "too soon" told of (played in their private chat, which the account does not read), their rest,

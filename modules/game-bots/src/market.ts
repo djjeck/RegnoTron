@@ -304,11 +304,10 @@ function companyOf(text: string): MarketReply | undefined {
   };
 }
 
-/** The market's commands, as a player types them: the market, an investment, a withdrawal, a company. */
+/** The market's commands, as a player types them: the market, an investment, a withdrawal. */
 export const MARKET_COMMANDS: readonly string[] = ['/mercato', '/borsa'];
 export const INVEST_COMMANDS: readonly string[] = ['/punta', '/investi'];
 export const CASHOUT_COMMANDS: readonly string[] = ['/riscuoti', '/ritira'];
-export const COMPANY_COMMANDS: readonly string[] = ['/azienda'];
 /** The developer's, which make an update out of turn. */
 export const FORCE_COMMANDS: readonly string[] = ['/aggiornaborsa', '/aggiornamercato'];
 

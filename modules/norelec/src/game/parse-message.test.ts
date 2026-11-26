@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { BOT_MESSAGES } from '#test/bot-messages.ts';
-import { mentions } from './bot-message.ts';
 import { parseHouse, parseMessage, parseProfile } from './parse-message.ts';
 
 describe('parseMessage', () => {
@@ -155,18 +154,5 @@ describe('parseProfile', () => {
 
   it('is null for anything else', () => {
     expect(parseProfile('Alfa sei in @TheConquister37!')).toBeNull();
-  });
-});
-
-describe('mentions', () => {
-  it('finds a player named by any event', () => {
-    const m = (text: string) => ({ time: 0, text, events: parseMessage(text) });
-    expect(
-      mentions(
-        m('Juno (🎈) hai rubato 641 palle a alice (🎈)! Torni in Juno tra 58 secondi.'),
-        'alice'
-      )
-    ).toBe(true);
-    expect(mentions(m('Juno sei in @TheConquister37!'), 'alice')).toBe(false);
   });
 });

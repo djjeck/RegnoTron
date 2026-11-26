@@ -15,16 +15,3 @@ export interface BotMessage {
   text: string;
   events: GameEvent[];
 }
-
-/** Whether a bot message is about `player`: an event of it names them. */
-export function mentions(m: BotMessage, player: string): boolean {
-  return m.events.some((e) =>
-    Object.values(e).some(
-      (v) =>
-        typeof v === 'object' &&
-        v !== null &&
-        'name' in v &&
-        (v as { name: unknown }).name === player
-    )
-  );
-}

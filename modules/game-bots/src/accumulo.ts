@@ -1,6 +1,6 @@
 /**
- * @LoreGameBot's accumulo, as the `loregame` parser reads it and an actor asks about it
- * (docs/game-bots.md §5.2). Pure, but for what a plugin hands it.
+ * @LoreGameBot's accumulo, as the `loregame` parser reads it (docs/game-bots.md §5.2). Pure, but
+ * for what a plugin hands it.
  *
  * The accumulo charges by one at each `/lore` turn, and when it holds as many as it needs (20, less
  * with the Stoccaggio skill) `/accumulo` zeroes the rest before the next `/lore`. The bot tells its
@@ -19,7 +19,7 @@
  */
 import { type CommandMechanics } from '@megabottron1999/turns/readiness.ts';
 import { type TurnOutcome, type TurnReading } from '@megabottron1999/turns/turn-parser.ts';
-import { AnswerWatch, isCommandOf, type PlayerAnswer } from '#src/answer-watch.ts';
+import { AnswerWatch } from '#src/answer-watch.ts';
 import { LOREGAMEBOT } from '#src/replies.ts';
 
 /** The commands of the accumulo, as a player types them (`/acc` is the one they use most). */
@@ -68,14 +68,6 @@ export function parseAccumulo(raw: string): AccumuloReply | undefined {
   return gate === null ? undefined : { result: 'locked', level: Number(gate[1]) };
 }
 
-/** Whether `text` is the accumulo's command, bare or addressed to `bot`. */
-export function isAccumuloCommand(text: string, bot: string): boolean {
-  return isCommandOf(text, ACCUMULO_COMMANDS, bot);
-}
-
-/** A player's answer to `/accumulo`: whose, and what the bot said. */
-export type PlayerAccumulo = PlayerAnswer<AccumuloReply>;
-
 /**
  * The `/accumulo` answers, out of everything the parser hears (`src/answer-watch.ts`). The level
  * gate is every command's, so in private it counts only as the answer to a command waiting.
@@ -89,33 +81,6 @@ export class AccumuloWatch extends AnswerWatch<AccumuloReply> {
       ownerless: (reply) => reply.result !== 'locked',
     });
   }
-}
-
-/** What an actor uses of the accumulo section: whether it may use it now. */
-export interface AccumuloView {
-  ready: boolean;
-  locked: number | null;
-}
-
-/** What an actor uses of `loregame-state`: the accumulo. */
-export interface AccumuloInterface {
-  state: { accumulo(): AccumuloView };
-}
-
-/** The members of the contract, as an actor's input names them. */
-export const ACCUMULO_MEMBERS = ['state.accumulo'];
-
-/**
- * Whether to send `/accumulo` now: only when the bot said the accumulo is full (a turn's line, or
- * a counter at its maximum), never because the owner's own count says so. The count is the
- * estimate the state checks the bot against (`drift`); the bot's word is the permission.
- *
- * ```ts
- * if (accumuloReady(ctx.use<AccumuloInterface>('state').state.accumulo())) await send('/accumulo');
- * ```
- */
-export function accumuloReady(view: AccumuloView): boolean {
-  return view.ready && view.locked === null;
 }
 
 /** The command a shell player plays, as the parser declares it (its first word). */

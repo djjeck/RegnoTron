@@ -22,7 +22,6 @@
 import { IRC } from '@megabottron1999/connectors/plugins/irc.ts';
 import { type ChannelLine } from '@megabottron1999/connectors/transport/transport.ts';
 import {
-  type BusEvent,
   type ConnectorHandle,
   definePlugin,
   type LogEntry,
@@ -37,12 +36,7 @@ import { EVENT_KINDS, type GameEvent } from '#src/game/events.ts';
 import { parseMessage } from '#src/game/parse-message.ts';
 import { RELAYS, stripZeroWidth } from '#src/transport/relay.ts';
 import { type StoredAccounts, TelegramAccounts } from './norelec-accounts.ts';
-import {
-  type GameDeps,
-  NorelecGame,
-  type NoticeRecord,
-  type TelegramMessage,
-} from './norelec-game.ts';
+import { type GameDeps, NorelecGame, type TelegramMessage } from './norelec-game.ts';
 
 export const NORELEC = 'norelec';
 
@@ -97,11 +91,6 @@ export const answerSchema = z.object({
   /** The event of the message that answers. */
   event: z.looseObject({ kind: z.string() }),
 });
-
-/** A notice as the bus delivers it, in the form the game logged it. */
-export function noticeOf(event: BusEvent): NoticeRecord {
-  return { type: 'notice', t: event.t, notice: event['notice'] as NoticeRecord['notice'] };
-}
 
 /** What the plugin offers the plugins that use it (bot-os-api.md §2 `interface`). */
 export interface NorelecInterface {

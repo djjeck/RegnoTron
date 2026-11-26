@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bannedUntil, BanWatch, type Heard, Senders } from './bans.ts';
+import { BanWatch, type Heard, Senders } from './bans.ts';
 
 const T = Date.parse('2026-11-06T12:00:00Z');
 const HOUR = 3_600_000;
@@ -138,25 +138,5 @@ describe('the bans it watches', () => {
     expect(w.hear(reply(a, END), 'alice')).toMatchObject({ type: 'ban', player: '__proto__' });
     expect(w.until('__proto__', T)).toBe(BANNED_UNTIL);
     expect(w.until('constructor', T)).toBeUndefined();
-  });
-});
-
-describe('the actor’s helper', () => {
-  const state = (ban: { until: string | null } | null) => ({ state: { ban: () => ban } });
-
-  it('tells until when the owner is banned, at the time the actor wakes', () => {
-    expect(bannedUntil(state(null), T)).toBeUndefined();
-    expect(bannedUntil(state({ until: new Date(T + HOUR).toISOString() }), T)).toBe(T + HOUR);
-    // Ended by now: not banned. No end stated: banned for as long as the state says.
-    expect(bannedUntil(state({ until: new Date(T - HOUR).toISOString() }), T)).toBeUndefined();
-    expect(bannedUntil(state({ until: null }), T)).toBe(Infinity);
-  });
-
-  it('asks for the player it is given', () => {
-    const asked: unknown[] = [];
-    const bans = { state: { ban: (q: unknown) => (asked.push(q), null) } };
-    bannedUntil(bans, T);
-    bannedUntil(bans, T, 'bob');
-    expect(asked).toEqual([{}, { player: 'bob' }]);
   });
 });

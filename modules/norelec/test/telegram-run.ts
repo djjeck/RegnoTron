@@ -18,9 +18,9 @@ import { norelecPlugin } from '#src/plugins/norelec.ts';
 import { NORELEC_STATE, norelecStatePlugin } from '#src/plugins/norelec-state.ts';
 
 export const T0 = Date.UTC(2026, 10, 14, 12, 0, 0);
-export const GROUP = '-100123';
+const GROUP = '-100123';
 export const DM = '@ExampleGameBot';
-export const BOT = 'ExampleGameBot';
+const BOT = 'ExampleGameBot';
 export const OWNER = 'alice';
 
 /** An instance in `dir`, from `at`. */

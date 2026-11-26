@@ -19,7 +19,7 @@
  *   `loregame.ban` sets a player's ban with when it ends (`until`; none if the bot does not say),
  *   `loregame.unban` ends it (the bot served them again: it lifts bans early), and one past its end
  *   is dropped at the next event, by that event's time. The state keeps who is banned, not a
- *   history. A ban is the account's, whatever the command: an actor asks `bannedUntil` as it wakes.
+ *   history. A ban is the account's, whatever the command: the owner's holds the readiness.
  *
  * - **The accumulo** (src/accumulo.ts): the turns taken since it was last emptied, counted here
  *   (`count`), against what the bot says of it: the line a turn carries while it is full, and its
@@ -118,6 +118,7 @@ import {
 import { levelForXp, xpForLevel } from '#src/profile.ts';
 import { loreRestMs, type Outcome } from '#src/replies.ts';
 import { SHOP, SHOP_MECHANICS, shopDayOf } from '#src/shop.ts';
+import { skillLevels } from '#src/skills.ts';
 import {
   mismatches,
   move,
@@ -1453,15 +1454,7 @@ function playerAfterSkills(p: Player, e: BusEvent): Player {
   const r = skillsSchema.safeParse(e);
   if (!r.success) return p;
   const at = asIso(e.t);
-  const skills: Record<string, number> = {};
-  for (const s of r.data.skills)
-    if (s.level > 0)
-      Object.defineProperty(skills, s.name, {
-        value: s.level,
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
+  const skills = skillLevels(r.data);
   return {
     ...checked(
       p,
@@ -3389,7 +3382,7 @@ export function statOf(
   return { value: at ?? null, exact: held.exact, as_of: held.as_of };
 }
 
-/** The accumulo as the state keeps it, for an actor to read before it sends `/accumulo`. */
+/** The accumulo as the state keeps it (`state.accumulo()`). */
 export const accumuloOf = (s: LoreState): Accumulo => s.accumulo;
 
 /** The ban of a player (the owner, unless named), if the state holds one: it may have ended by now. */

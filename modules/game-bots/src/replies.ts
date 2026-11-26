@@ -4,7 +4,7 @@
  * chat with each or in the group. Pure: their parser plugins (@megabottron1999/turns/turn-parser.ts)
  * decide which messages answer the owner's turns. The rests between turns are here too, as the bots
  * state them or as measured (docs/game-bots.md §2). @InventoryBot's parser is InventoryBotTron's
- * (https://github.com/djjeck/InventoryBotTron), whose outcomes have this shape too.
+ * (https://github.com/djjeck/InventoryBotTron).
  *
  * - @LoreGameBot replies to the command and names nobody. A turn (`/avventura`, `/lore`, `/l`) reads
  *   "Lore - <place> [<code>]", a story (free text, written by players: nothing in it is trusted),
@@ -27,13 +27,12 @@
  * is read in its composed form (NFC), and the items are kept in it.
  */
 
-export const INVENTORYBOT = 'InventoryBot';
 export const LOREGAMEBOT = 'LoreGameBot';
 export const EPICLORELECBOT = 'EpicLorelecBot';
-export type GameBot = typeof INVENTORYBOT | typeof LOREGAMEBOT | typeof EPICLORELECBOT;
+export type GameBot = typeof LOREGAMEBOT | typeof EPICLORELECBOT;
 
 /**
- * The turn command each of the three bots takes, in private and in the group: each parser's spec
+ * The turn command each of the two bots takes, in private and in the group: each parser's spec
  * names its bot's (`turnCommands`, a fact of the game, MegaBotTron1999's bot-os.md D70), which a
  * shell `player` bound to the parser offers to play. One turn each: the first entry its name, the
  * rest its aliases (D140), in the owner's order of preference, which the player follows on a tie of
@@ -41,41 +40,9 @@ export type GameBot = typeof INVENTORYBOT | typeof LOREGAMEBOT | typeof EPICLORE
  * group, the bare `/avventura` still wins by reach whenever it plays several bots' turns at once.
  */
 export const TURN_COMMANDS: Readonly<Record<GameBot, readonly string[]>> = {
-  [INVENTORYBOT]: ['/avventura'],
   [LOREGAMEBOT]: ['/lore', '/avventura', '/l'],
   [EPICLORELECBOT]: ['/rompimiilcazzo', '/avventura'],
 };
-
-/**
- * The commands of @LoreGameBot (the turn's, and those of the game that move the owner's state) that
- * a ban holds back. It answers a banned player's every message with the ban, whatever the command,
- * so a ban is the account's: the parser declares it a hold on these (MegaBotTron1999's bot-os.md
- * D98), for the commands a node queues. A command the list lacks is not held by the shell: an actor
- * checks the ban itself (`bannedUntil`, `src/bans.ts`).
- */
-export const LORE_COMMANDS: readonly string[] = [
-  ...TURN_COMMANDS[LOREGAMEBOT],
-  '/vai',
-  '/v',
-  '/zaino',
-  '/i',
-  '/z',
-  '/info',
-  '/usa',
-  '/dai',
-  '/give',
-  '/abilita',
-  '/accumulo',
-  '/acc',
-  '/generaoggetto',
-  '/generastoria',
-  '/generaguardiano',
-  '/generautilizzo',
-  '/generaequipaggiamento',
-  '/generastagione',
-  '/generaricetta',
-  '/generablueprint',
-];
 
 const MINUTE = 60_000;
 /** Every bot's rest between turns: 15 minutes [M] (docs/game-bots.md §2). */
@@ -147,7 +114,7 @@ export type Outcome =
       rarity: string;
       /** The tags after the rarity, which start lower-case: `usabile`, `equipaggiabile 🗡`. */
       tags: string[];
-      /** False when the item's name is a guess (@InventoryBot's, from an unknown sentence). */
+      /** False when the item's name is a guess; both bots here name it, so always true. */
       sure: boolean;
       /** @LoreGameBot's "2x": how many of it; 1 without. */
       qty?: number;
