@@ -343,6 +343,8 @@ export class ForcedWatch extends AnswerWatch<MarketReply> {
         return r?.kind === 'update' ? r : undefined;
       },
       ownerless: () => false,
+      // An update is news to everyone as it comes: never held for a command heard late.
+      hold: false,
     });
   }
 }

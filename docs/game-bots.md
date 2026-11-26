@@ -553,8 +553,9 @@ the exports, `/paga <username> <n>` the others):
 Nov 2026; the exports had none]), at times after `[N] ` (the bot's mark of a notification, §5.9).
 The receiver is named as the giver typed them (an `@`, any case), or by their username. The answer
 names the receiver, not the giver, and since August 2026 it replies to no command (all 209 since
-then): the parser pairs it with the command waiting, as the accumulo's answers (§5.2). Its refusals
-(`Formato non valido!`, `Oggetto non trovato!`, `Non possiedi l'oggetto!`,
+then): the parser pairs it with the command waiting, as the accumulo's answers (§5.2), or with the
+command heard a moment after it (§5.15: the owner's own, typed by hand, may reach the account after
+its answer). Its refusals (`Formato non valido!`, `Oggetto non trovato!`, `Non possiedi l'oggetto!`,
 `Elemento non trovato o utente non registrato!`, `Non hai abbastanza soldi!`, …) change nothing, and
 are not read; each replies to its command (the 370 in the exports), which ends that command's wait,
 so a later answer goes to the next command waiting, another player's, not to the refused one. **All
@@ -582,6 +583,9 @@ whichever of its messages it hears, in whichever order:
   answers never pair, each having answered its own command, nor two notices. A gift heard once is
   given; one whose two messages came more than a minute apart would be counted twice (none seen).
 - Other players' gifts have no notice the owner hears, and are given as answered.
+- The group's answer heard before the owner's own command (§5.15) is held and paired with it, so the
+  gift is read from the group's answer (its chat and message) and the private notice that follows is
+  its echo; only a notice heard before the group's answer is paired takes its place.
 
 **`loregame.gift`** carries every gift the parser pairs, or the owner's notice of one, once: the
 giver (`player`, `owner`), `kind` (`item`, with `item`, `qty`, `rarity`, `tags`, `level`; `coins`,
@@ -830,6 +834,18 @@ while the bot is live (its clock current at its last word, a moment before), and
 up as unanswered only once the bot has answered more than 10 s past it, live or in a replay; a watch
 keeps at most 1,000 waiting. An answer more than a minute after its command is marked `replayed`,
 with its command's time (`asked`), in the events that carry it.
+
+**An answer heard before its command** (#16): the account may hear the owner's own command, typed by
+hand in the group, after the bot's answer to it, in the same second (4 of 10 such answers in one
+day's live log, by 4 to 62 ms [M]; a command the shell's player sends is told to the parser before
+it goes out). So in a group a bot message that found no command, an answer of its own or a reply to
+a command not heard, is **held a moment**: up to 2 s by the messages' times, and 5 more messages of
+its chat. A command heard then is paired with it as if it had come first: the one it replies to, or,
+for an answer of its own, one whose message id is smaller than the answer's (Telegram's ids grow in
+each chat; by time where an id is missing). Its event is the answer's, with its chat, id and time; a
+refusal so paired ends its command's wait. Past its bound, a held answer stays no one's, as before.
+In private nothing is held: an answer with no command waiting is the owner's (§5.2). A market's
+update is never held: it is news to everyone as it comes.
 
 ### 5.16 The bot's health
 

@@ -84,13 +84,15 @@ import {
   ACCUMULO,
   ACCUMULO_COMMANDS,
   accumuloReading,
+  type AccumuloReply,
   AccumuloWatch,
   parseAccumulo,
 } from '#src/accumulo.ts';
-import { BanWatch } from '#src/bans.ts';
+import { type PlayerAnswer } from '#src/answer-watch.ts';
+import { BanWatch, type Heard } from '#src/bans.ts';
 import { parseEquip } from '#src/equipment.ts';
 import { BOX, GenerationWatch, parseBox } from '#src/generators.ts';
-import { GiftWatch } from '#src/gifts.ts';
+import { GiftWatch, type PlayerGift } from '#src/gifts.ts';
 import { type Health, HEALTH_STATES, type HealthKept, HealthWatch } from '#src/health.ts';
 import { pageOf, parseInventory } from '#src/inventory.ts';
 import {
@@ -98,6 +100,7 @@ import {
   ForcedWatch,
   INVEST_COMMANDS,
   MARKET_COMMANDS,
+  type MarketReply,
   MarketWatch,
   parseMarket,
 } from '#src/market.ts';
@@ -126,6 +129,7 @@ import {
   TRAINING,
   TRAINING_COMMANDS,
   trainingReading,
+  type TrainingReply,
   TrainingWatch,
 } from '#src/training.ts';
 
@@ -1024,64 +1028,44 @@ export const loregamePlugin: Plugin = {
     const invests = new MarketWatch(LOREGAMEBOT, INVEST_COMMANDS, ['invest']);
     const cashouts = new MarketWatch(LOREGAMEBOT, CASHOUT_COMMANDS, ['cashout', 'cashout-all']);
     const forced = new ForcedWatch(LOREGAMEBOT);
+    /** The playback mark of the message an event is read from: history, not news. */
+    const oldOf = (h: Heard) => (h.playback === true ? { playback: true as const } : {});
+    /** Whose a market answer is, if a player's. */
+    const who = (a: { player: string; owner: boolean } | undefined) =>
+      a === undefined || a.player === '' ? undefined : { player: a.player, owner: a.owner };
     /**
-     * The market (§5.11): every message heard by each watch (a player's command waits; the bot's
-     * answer is paired); the values quoted, anyone's; what is a player's, theirs.
+     * A player's market answer, `h` the bot's message: their investments listed, an investment, a
+     * withdrawal, paired with their command (`a`), as it came or late (#16).
      */
-    const market = (m: Inbound, self: string | undefined): void => {
-      const old = m.playback ? { playback: true as const } : {};
-      const listed = marketAsked.answer(m, self);
-      const invested = invests.answer(m, self);
-      const cashed = cashouts.answer(m, self);
-      const force = forced.answer(m, self);
-      if (m.own === true || m.sender.toLowerCase() !== LOREGAMEBOT.toLowerCase()) return;
-      const r = parseMarket(m.text);
-      if (r === undefined) return;
-      const who = (a: { player: string; owner: boolean } | undefined) =>
-        a === undefined || a.player === '' ? undefined : { player: a.player, owner: a.owner };
-      if (r.kind === 'update' || r.kind === 'market') {
-        // Every company there is, none when none is quoted: one not quoted is gone.
-        if (r.quotes.length > 0 || r.kind === 'market')
-          ctx.bus.publish(
-            MARKET_EVENT,
-            {
-              chat: m.chat,
-              via: r.kind === 'market' ? 'listing' : force === undefined ? 'update' : 'forced',
-              quotes: r.quotes,
-              ...old,
-            },
-            m.time
-          );
-        const of = who(listed);
-        if (r.kind === 'market' && r.positions !== null && of !== undefined)
+    const marketOf = (h: Heard, r: MarketReply, a: PlayerAnswer<MarketReply> | undefined): void => {
+      const of = who(a);
+      if (of === undefined) return;
+      if (r.kind === 'market') {
+        if (r.positions !== null)
           ctx.bus.publish(
             INVESTMENTS_EVENT,
             {
-              chat: m.chat,
+              chat: h.chat,
               ...of,
               positions: r.positions,
               total: r.total,
-              ...lateOf(listed),
-              ...old,
+              ...lateOf(a),
+              ...oldOf(h),
             },
-            m.time
+            h.time
           );
         return;
       }
       if (r.kind === 'invest') {
-        const of = who(invested);
-        if (of === undefined) return;
         const { kind: _, ...made } = r;
         ctx.bus.publish(
           INVEST_EVENT,
-          { chat: m.chat, ...of, ...made, ...lateOf(invested), ...old },
-          m.time
+          { chat: h.chat, ...of, ...made, ...lateOf(a), ...oldOf(h) },
+          h.time
         );
         return;
       }
       if (r.kind === 'cashout' || r.kind === 'cashout-all') {
-        const of = who(cashed);
-        if (of === undefined) return;
         const positions =
           r.kind === 'cashout'
             ? [{ company: r.company, amount: r.amount, cashed: r.cashed, left: r.left }]
@@ -1094,19 +1078,106 @@ export const loregamePlugin: Plugin = {
         ctx.bus.publish(
           CASHOUT_EVENT,
           {
-            chat: m.chat,
+            chat: h.chat,
             ...of,
             all: r.kind === 'cashout-all',
             positions,
-            ...lateOf(cashed),
-            ...old,
+            ...lateOf(a),
+            ...oldOf(h),
           },
-          m.time
+          h.time
         );
+      }
+    };
+    /**
+     * A player's answer to `/accumulo`, `h` the bot's message, as it came or late (#16): any
+     * player's; the owner's also as `loregame.accumulo`, which `loregame-state` reduces into the
+     * owner's readiness, in any chat (D141): a use ends the turns' rest there, and nowhere else
+     * (D142).
+     */
+    const accumuloOf = (h: Heard, any: PlayerAnswer<AccumuloReply>): void => {
+      if (any.player !== '')
+        ctx.bus.publish(
+          PLAYER_ACCUMULO_EVENT,
+          {
+            chat: h.chat,
+            player: any.player,
+            owner: any.owner,
+            ...any.reply,
+            ...lateOf(any),
+            ...oldOf(h),
+          },
+          h.time
+        );
+      if (any.owner)
+        ctx.bus.publish(
+          ACCUMULO_EVENT,
+          { chat: h.chat, ...any.reply, ...lateOf(any), ...oldOf(h) },
+          h.time
+        );
+    };
+    /** A player's training, `h` the bot's message, as it came or late (#16). */
+    const trainingOf = (h: Heard, t: PlayerAnswer<TrainingReply>): void => {
+      const { player, owner, reply } = t;
+      ctx.bus.publish(
+        TRAINING_EVENT,
+        { chat: h.chat, player, owner, ...reply, ...lateOf(t), ...oldOf(h) },
+        h.time
+      );
+    };
+    /** A gift, `h` the bot's message it was read from, as it came or late (#16). */
+    const giftOf = (h: Heard, gift: PlayerGift): void => {
+      const { player, owner, reply, toOwner } = gift;
+      ctx.bus.publish(
+        GIFT_EVENT,
+        {
+          chat: h.chat,
+          player,
+          owner,
+          ...reply,
+          toOwner,
+          answer: h.id ?? null,
+          ...lateOf(gift),
+          ...oldOf(h),
+        },
+        h.time
+      );
+    };
+    /**
+     * The market (§5.11): every message heard by each watch (a player's command waits; the bot's
+     * answer is paired); the values quoted, anyone's; what is a player's, theirs, as it came or,
+     * its command heard after it, late (#16).
+     */
+    const market = (m: Inbound, self: string | undefined): void => {
+      const listed = marketAsked.answer(m, self);
+      const invested = invests.answer(m, self);
+      const cashed = cashouts.answer(m, self);
+      const force = forced.answer(m, self);
+      for (const w of [marketAsked, invests, cashouts])
+        for (const late of w.takeLate()) marketOf(late.message, late.answer.reply, late.answer);
+      if (m.own === true || m.sender.toLowerCase() !== LOREGAMEBOT.toLowerCase()) return;
+      const r = parseMarket(m.text);
+      if (r === undefined) return;
+      if (r.kind === 'update' || r.kind === 'market') {
+        // Every company there is, none when none is quoted: one not quoted is gone.
+        if (r.quotes.length > 0 || r.kind === 'market')
+          ctx.bus.publish(
+            MARKET_EVENT,
+            {
+              chat: m.chat,
+              via: r.kind === 'market' ? 'listing' : force === undefined ? 'update' : 'forced',
+              quotes: r.quotes,
+              ...oldOf(m),
+            },
+            m.time
+          );
+        if (r.kind === 'market') marketOf(m, r, listed);
         return;
       }
+      if (r.kind === 'invest') return marketOf(m, r, invested);
+      if (r.kind === 'cashout' || r.kind === 'cashout-all') return marketOf(m, r, cashed);
       const { kind: _, ...page } = r;
-      ctx.bus.publish(COMPANY_EVENT, { chat: m.chat, ...page, ...old }, m.time);
+      ctx.bus.publish(COMPANY_EVENT, { chat: m.chat, ...page, ...oldOf(m) }, m.time);
     };
     chat.onMessage((m) => {
       const old = m.playback ? { playback: true as const } : {};
@@ -1137,33 +1208,12 @@ export const loregamePlugin: Plugin = {
       if (turn !== undefined)
         ctx.bus.publish(PLAYER_TURN_EVENT, { chat: m.chat, ...turn, ...old }, m.time);
       const any = asked.answer(m, self);
-      if (any !== undefined && any.player !== '')
-        ctx.bus.publish(
-          PLAYER_ACCUMULO_EVENT,
-          {
-            chat: m.chat,
-            player: any.player,
-            owner: any.owner,
-            ...any.reply,
-            ...lateOf(any),
-            ...old,
-          },
-          m.time
-        );
-      const answer = any?.owner === true ? any.reply : undefined;
+      if (any !== undefined) accumuloOf(m, any);
+      for (const late of asked.takeLate()) accumuloOf(late.message, late.answer);
       const logHeard = (made: string): void =>
         ctx.log.info(
           `heard the bot's #${m.id ?? '?'} in ${m.chat} (${m.replyTo === undefined ? 'standalone' : `replying to #${m.replyTo}`}) while ${waiting.join(', ')} waited: ${made}`
         );
-      if (answer !== undefined) {
-        // `loregame-state` reduces it into the owner's readiness, in any chat (D141): a use ends
-        // the turns' rest there, and nowhere else (D142).
-        ctx.bus.publish(
-          ACCUMULO_EVENT,
-          { chat: m.chat, ...answer, ...lateOf(any), ...old },
-          m.time
-        );
-      }
       // Any player's training, the owner's in any chat: `loregame-state` folds the owner's success
       // into the readiness (the shell pairs it in private alone).
       const training = trained.answer(m, self);
@@ -1175,35 +1225,14 @@ export const loregamePlugin: Plugin = {
               ? `/allenati ${training.reply.result}, ${training.owner ? 'the owner' : training.player}'s`
               : 'no answer of theirs'
         );
-      if (training !== undefined) {
-        const { player: who, owner, reply } = training;
-        ctx.bus.publish(
-          TRAINING_EVENT,
-          { chat: m.chat, player: who, owner, ...reply, ...lateOf(training), ...old },
-          m.time
-        );
-      }
+      if (training !== undefined) trainingOf(m, training);
+      for (const late of trained.takeLate()) trainingOf(late.message, late.answer);
       market(m, self);
       // A gift, its giver's (the answer names the receiver alone, and replies to nothing), or the
       // owner's notice of one received; each of the owner's once, answer and notice (§5.10).
       const gift = gifts.answer(m, self);
-      if (gift !== undefined) {
-        const { player: giver, owner: mine, reply, toOwner } = gift;
-        ctx.bus.publish(
-          GIFT_EVENT,
-          {
-            chat: m.chat,
-            player: giver,
-            owner: mine,
-            ...reply,
-            toOwner,
-            answer: m.id ?? null,
-            ...lateOf(gift),
-            ...old,
-          },
-          m.time
-        );
-      }
+      if (gift !== undefined) giftOf(m, gift);
+      for (const late of gifts.takeLate()) giftOf(late.message, late.answer);
       // A profile, its player's: it names them (§5.5).
       const profile = bots ? parseProfile(m.text) : undefined;
       if (profile !== undefined)
@@ -1405,6 +1434,13 @@ export const loregamePlugin: Plugin = {
             trained.sent(sent);
             gifts.sent(sent);
             for (const w of [marketAsked, invests, cashouts]) w.sent(sent);
+            // An answer heard before its send was told (#16): paired now.
+            for (const late of asked.takeLate()) accumuloOf(late.message, late.answer);
+            for (const late of trained.takeLate()) trainingOf(late.message, late.answer);
+            for (const late of gifts.takeLate()) giftOf(late.message, late.answer);
+            for (const w of [marketAsked, invests, cashouts])
+              for (const late of w.takeLate())
+                marketOf(late.message, late.answer.reply, late.answer);
             if (asked.isCommand(sent.command ?? '') || trained.isCommand(sent.command ?? ''))
               ctx.log.info(
                 `waits for the answer to ${sent.command} #${sent.id ?? '?'} in ${sent.chat}`

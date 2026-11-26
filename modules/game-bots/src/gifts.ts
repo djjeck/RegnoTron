@@ -20,7 +20,7 @@
  * or once, when it was played in private: `GiftWatch` gives each gift of the owner's once.
  */
 import { isPrivate } from '@megabottron1999/turns/turn-parser.ts';
-import { AnswerWatch, type PlayerAnswer } from '#src/answer-watch.ts';
+import { AnswerWatch, type LateAnswer, type PlayerAnswer } from '#src/answer-watch.ts';
 import { type Heard } from '#src/bans.ts';
 import { type Listed } from '#src/inventory.ts';
 
@@ -125,8 +125,26 @@ export class GiftWatch extends AnswerWatch<Gift> {
     const sent = super.answer(m, self);
     const gift: PlayerGift | undefined =
       sent === undefined ? this.received(m, self) : { ...sent, toOwner: same(sent.reply.to, self) };
-    if (gift === undefined || !(gift.owner || gift.toOwner)) return gift;
-    return this.once(gift, m.time);
+    return gift === undefined ? undefined : this.owned(gift, m.time);
+  }
+
+  /**
+   * The gifts paired late, with a command heard after their answer (#16), each with its answer's
+   * message: the owner's once, as `answer`'s.
+   */
+  override takeLate(): (LateAnswer<Gift> & { answer: PlayerGift })[] {
+    return super.takeLate().flatMap(({ message, answer }) => {
+      const gift = this.owned(
+        { ...answer, toOwner: same(answer.reply.to, this.self) },
+        message.time
+      );
+      return gift === undefined ? [] : [{ message, answer: gift }];
+    });
+  }
+
+  /** `gift`, the owner's once (`once`), anyone else's as it is. */
+  private owned(gift: PlayerGift, time: number): PlayerGift | undefined {
+    return gift.owner || gift.toOwner ? this.once(gift, time) : gift;
   }
 
   /** The owner's notice of a gift received, in private: its giver's, to the owner. */

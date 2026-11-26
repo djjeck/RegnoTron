@@ -14,6 +14,11 @@
  * to days, then answers everything it missed, in order, the replies to the commands they answer
  * (docs/game-bots.md §5.15). A command waits while the bot is silent, and is given up only once the
  * bot has answered past it.
+ *
+ * The account may hear the owner's own command in the group after the bot's answer to it, in the
+ * same second (#16): a bot message that found no command (an answer of its own, or a reply to a
+ * command not heard) is held a moment (`HOLD_MS`, `HOLD_MESSAGES`), and a command heard then pairs
+ * with it as if it had come first; its pairing is given by `takeLate`, with the answer's message.
  */
 import { isPrivate } from '@megabottron1999/turns/turn-parser.ts';
 import { type Heard } from '#src/bans.ts';
@@ -26,6 +31,18 @@ export const ANSWER_WINDOW_MS = 10_000;
  * stall. 98% of answers come within 2 s [M] (docs/game-bots.md §5.15).
  */
 export const REPLAY_MS = 60_000;
+
+/**
+ * How long, on the messages' times, a bot message that found no command is held for one heard late
+ * (#16): the account heard the owner's own command after its answer by 4 to 62 ms [M].
+ */
+export const HOLD_MS = 2_000;
+
+/** How many more messages of its chat a held message waits, at most. */
+export const HOLD_MESSAGES = 5;
+
+/** How many held messages a watch keeps, the oldest given up first. */
+const KEPT_HELD = 50;
 
 /** How many commands a watch keeps waiting, the oldest given up first: the bot may stay down days. */
 export const KEPT_ASKED = 1000;
@@ -114,6 +131,11 @@ export interface AnswerWatchSpec<R> {
    * gives other commands too (a level gate) is not.
    */
   ownerless?(reply: R): boolean;
+  /**
+   * Whether an answer that found no command waiting, in a group, is held for one heard late (#16):
+   * by default, yes. Not for an answer that is news to everyone as it comes (a market's update).
+   */
+  hold?: boolean;
 }
 
 /** A command heard, waiting for its answer. */
@@ -138,6 +160,32 @@ export interface PlayerAnswer<R> {
   replayed?: true;
 }
 
+/** An answer paired late: with a command heard after it (#16). */
+export interface LateAnswer<R> {
+  /** The bot's message that answered: its chat, id and time are the answer's. */
+  message: Heard;
+  answer: PlayerAnswer<R>;
+}
+
+/** A bot message held for a command heard late: what it said (none: a refusal, a reply). */
+interface Held<R> {
+  m: Heard;
+  reply: R | undefined;
+  /** How many messages of its chat were heard since. */
+  after: number;
+}
+
+/**
+ * Whether the command `a` came before the bot's message `m`, in its chat: by their ids, which grow
+ * per chat on Telegram, or by their times where either has none.
+ */
+function before(a: { id: string | undefined; time: number }, m: Heard): boolean {
+  const digits = /^\d+$/u;
+  if (a.id !== undefined && m.id !== undefined && digits.test(a.id) && digits.test(m.id))
+    return BigInt(a.id) < BigInt(m.id);
+  return a.time <= m.time;
+}
+
 /**
  * Whether `text` is one of `commands`, bare or addressed to `bot`: alone, or with its arguments
  * after it when `args` (a gift names its receiver and its item).
@@ -158,6 +206,10 @@ export class AnswerWatch<R> {
   private readonly bot: string;
   private readonly spec: AnswerWatchSpec<R>;
   private asked: Asked[] = [];
+  private held: Held<R>[] = [];
+  private late: LateAnswer<R>[] = [];
+  /** The owner's username, as last told (`answer`): a late pairing names them so. */
+  protected self: string | undefined;
   private readonly clock: BotClock;
 
   constructor(spec: AnswerWatchSpec<R>) {
@@ -192,8 +244,57 @@ export class AnswerWatch<R> {
    */
   private wait(a: Asked): void {
     if (a.id !== undefined && this.asked.some((x) => x.chat === a.chat && x.id === a.id)) return;
+    if (this.claim(a)) return;
     this.asked.push(a);
     if (this.asked.length > KEPT_ASKED) this.asked.shift();
+  }
+
+  /**
+   * A command heard after the bot's message that answered it (#16): the reply to it, or an answer
+   * of its own whose message came after it. Paired, it waits no more (a refusal ends it too).
+   */
+  private claim(a: Asked): boolean {
+    const i = this.held.findIndex(
+      (h) =>
+        h.m.chat === a.chat &&
+        (h.m.replyTo === undefined ? h.reply !== undefined && before(a, h.m) : h.m.replyTo === a.id)
+    );
+    if (i < 0) return false;
+    const [h] = this.held.splice(i, 1) as [Held<R>];
+    const answer = h.reply === undefined ? undefined : this.whose(a, h.reply, h.m.time);
+    if (answer !== undefined) this.late.push({ message: h.m, answer });
+    return true;
+  }
+
+  /** The answers paired late since last asked, each with the bot's message it was (#16). */
+  takeLate(): LateAnswer<R>[] {
+    const late = this.late;
+    this.late = [];
+    return late;
+  }
+
+  /** The answer `reply` to `command`, said at `time`: whose, if a player's or the owner's. */
+  private whose(command: Asked, reply: R, time: number): PlayerAnswer<R> | undefined {
+    const player = command.owner ? (this.self ?? '') : command.player;
+    if (player === '' && !command.owner) return undefined;
+    const late = time - command.time > REPLAY_MS ? { replayed: true as const } : {};
+    return { player, owner: command.owner, reply, asked: command.time, ...late };
+  }
+
+  /** Holds the bot's message `m`, which found no command, for one heard late (#16). */
+  private hold(m: Heard, reply: R | undefined): void {
+    if (this.spec.hold === false || isPrivate(m)) return;
+    this.held.push({ m, reply, after: 0 });
+    if (this.held.length > KEPT_HELD) this.held.shift();
+  }
+
+  /** Ages the held messages of `m`'s chat by `m`, and gives up those past their bounds. */
+  private age(m: Heard): void {
+    this.held = this.held.filter((h) => {
+      if (h.m.chat !== m.chat) return true;
+      h.after += 1;
+      return h.after <= HOLD_MESSAGES && m.time - h.m.time <= HOLD_MS;
+    });
   }
 
   /**
@@ -217,8 +318,10 @@ export class AnswerWatch<R> {
    * `self` (their username once the account knows it), a player without a username no one's.
    */
   answer(m: Heard, self: string | undefined): PlayerAnswer<R> | undefined {
+    this.self = self;
     this.clock.hear(m);
     this.asked = this.asked.filter((a) => !this.past(a));
+    this.age(m);
     const inPrivate = isPrivate(m);
     if (m.own === true || m.sender.toLowerCase() !== this.bot) {
       if (this.isCommand(m.text)) {
@@ -233,12 +336,8 @@ export class AnswerWatch<R> {
       }
       return undefined;
     }
-    const whose = (command: Asked, reply: R): PlayerAnswer<R> | undefined => {
-      const player = command.owner ? (self ?? '') : command.player;
-      if (player === '' && !command.owner) return undefined;
-      const late = m.time - command.time > REPLAY_MS ? { replayed: true as const } : {};
-      return { player, owner: command.owner, reply, asked: command.time, ...late };
-    };
+    const whose = (command: Asked, reply: R): PlayerAnswer<R> | undefined =>
+      this.whose(command, reply, m.time);
     // A reply to a command waiting ends its wait, whatever it says (a ban, a gate).
     const to =
       m.replyTo === undefined
@@ -249,6 +348,8 @@ export class AnswerWatch<R> {
       const [command] = this.asked.splice(to, 1) as [Asked];
       return reply === undefined ? undefined : whose(command, reply);
     }
+    // A reply to a command not heard yet: held, in case it is heard late (#16).
+    if (m.replyTo !== undefined) this.hold(m, reply);
     if (reply === undefined) return undefined;
     if (m.replyTo === undefined) {
       // A message of its own: the oldest command waiting in that chat is the one it answers.
@@ -259,9 +360,12 @@ export class AnswerWatch<R> {
       }
     }
     // No command known to be waiting: in private it is the owner's all the same, when it says what
-    // it is. In the group it is no one's.
-    return inPrivate && (this.spec.ownerless?.(reply) ?? true)
-      ? { player: self ?? '', owner: true, reply }
-      : undefined;
+    // it is. In the group it is no one's, unless its command is heard in a moment (#16).
+    if (inPrivate)
+      return (this.spec.ownerless?.(reply) ?? true)
+        ? { player: self ?? '', owner: true, reply }
+        : undefined;
+    if (m.replyTo === undefined) this.hold(m, reply);
+    return undefined;
   }
 }

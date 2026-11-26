@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { AccumuloWatch } from './accumulo.ts';
-import { ANSWER_WINDOW_MS, BotClock, KEPT_ASKED, REPLAY_MS } from './answer-watch.ts';
+import {
+  ANSWER_WINDOW_MS,
+  BotClock,
+  HOLD_MESSAGES,
+  HOLD_MS,
+  KEPT_ASKED,
+  REPLAY_MS,
+} from './answer-watch.ts';
 import { type Heard } from './bans.ts';
+import { ForcedWatch, MarketWatch } from './market.ts';
+import { TrainingWatch } from './training.ts';
 
 const T = Date.parse('2026-11-06T12:00:00Z');
 const GROUP = '-1001';
@@ -155,5 +164,125 @@ describe('a watch across an outage', () => {
     const w = new AccumuloWatch('LoreGameBot');
     for (let i = 0; i <= KEPT_ASKED; i++) w.answer(said(`p${i}`, '/acc', T + i), 'alice');
     expect(w.answer(bot(SHORT, T + HOUR), 'alice')).toMatchObject({ player: 'p1' });
+  });
+});
+
+describe('an answer heard before its command (#16)', () => {
+  /** A message with the id given: the group's ids grow with each message. */
+  const at = (sender: string, text: string, time: number, id: string, m: Partial<Heard> = {}) =>
+    said(sender, text, time, { id, ...m });
+
+  it("pairs the owner's own command heard after its answer, by their ids", () => {
+    const w = new AccumuloWatch('LoreGameBot');
+    // The answer (#11) comes first, then the owner's command (#10), in the same second.
+    expect(w.answer(at('LoreGameBot', SHORT, T, '11'), 'alice')).toBeUndefined();
+    expect(w.takeLate()).toEqual([]);
+    expect(w.answer(at('alice', '/acc', T, '10', { own: true }), 'alice')).toBeUndefined();
+    const late = w.takeLate();
+    expect(late).toEqual([
+      {
+        message: expect.objectContaining({ id: '11', chat: GROUP }) as unknown,
+        answer: {
+          player: 'alice',
+          owner: true,
+          reply: { result: 'short', count: 7, max: 20 },
+          asked: T,
+        },
+      },
+    ]);
+    expect(w.takeLate()).toEqual([]);
+    // Paired, the command waits no more: the next answer is no one's.
+    expect(w.answer(at('LoreGameBot', SHORT, T + 500, '12'), 'alice')).toBeUndefined();
+    expect(w.takeLate()).toEqual([]);
+  });
+
+  it("pairs any player's, and only a command that came before the answer", () => {
+    const w = new TrainingWatch('LoreGameBot');
+    const TRAINED = '🏋🏼 Ti sei allenato! Hai imparato qualcosa di nuovo... (+10)';
+    w.answer(at('LoreGameBot', TRAINED, T, '21'), 'alice');
+    // A command after the answer (#22) is not its own: it waits for its answer.
+    w.answer(at('bob', '/allenati', T, '22'), 'alice');
+    expect(w.takeLate()).toEqual([]);
+    w.answer(at('carol', '/allenati', T + 100, '20'), 'alice');
+    expect(w.takeLate()).toMatchObject([{ message: { id: '21' }, answer: { player: 'carol' } }]);
+    // Bob's still waits, and gets the next answer.
+    expect(w.answer(at('LoreGameBot', TRAINED, T + 1000, '23'), 'alice')).toMatchObject({
+      player: 'bob',
+    });
+  });
+
+  it("pairs a market's answer, but never holds an update", () => {
+    const w = new MarketWatch('LoreGameBot', ['/punta'], ['invest']);
+    const INVEST =
+      'Hai puntato 30 ₭ su Pinco Spa 🍕.\nTotale investito: 30 ₭ al valore iniziale 101.\nTi rimangono 82 ₭.';
+    w.answer(at('LoreGameBot', INVEST, T, '31'), 'alice');
+    w.answer(at('bob', '/punta 30 pinco', T, '30'), 'alice');
+    expect(w.takeLate()).toMatchObject([
+      { message: { id: '31' }, answer: { player: 'bob', reply: { kind: 'invest', amount: 30 } } },
+    ]);
+    const f = new ForcedWatch('LoreGameBot');
+    f.answer(
+      at(
+        'LoreGameBot',
+        '📈 Mercato Fazionario 📉 aggiornato!\n\n→ Tizio Srl: 50 (0, 0.00%)',
+        T,
+        '41'
+      ),
+      'alice'
+    );
+    f.answer(at('bob', '/aggiornaborsa', T, '40'), 'alice');
+    expect(f.takeLate()).toEqual([]);
+  });
+
+  it('ends the wait of a command whose refusal came first', () => {
+    const w = new AccumuloWatch('LoreGameBot');
+    // Bob's command is refused before the account hears it: the refusal replies to it.
+    w.answer(
+      at('LoreGameBot', 'Devi essere almeno di livello quattro!', T, '51', { replyTo: '50' }),
+      'alice'
+    );
+    w.answer(at('bob', '/acc', T, '50'), 'alice');
+    w.answer(at('carol', '/acc', T + 1000, '52'), 'alice');
+    // The next answer is Carol's: Bob's command was answered.
+    expect(w.answer(at('LoreGameBot', SHORT, T + 2000, '53'), 'alice')).toMatchObject({
+      player: 'carol',
+    });
+    expect(w.takeLate()).toEqual([]);
+  });
+
+  it("gives up a held answer past its time or its messages: no one's, as before", () => {
+    const w = new AccumuloWatch('LoreGameBot');
+    w.answer(at('LoreGameBot', SHORT, T, '61'), 'alice');
+    w.answer(at('alice', '/acc', T + HOLD_MS + 1, '60', { own: true }), 'alice');
+    expect(w.takeLate()).toEqual([]);
+    const v = new AccumuloWatch('LoreGameBot');
+    v.answer(at('LoreGameBot', SHORT, T, '71'), 'alice');
+    for (let i = 0; i < HOLD_MESSAGES; i++) v.answer(at('dave', 'ciao', T + 10, `8${i}`), 'alice');
+    v.answer(at('alice', '/acc', T + 20, '70', { own: true }), 'alice');
+    expect(v.takeLate()).toEqual([]);
+    // In private, an answer with no command is the owner's at once, and never held.
+    const p = new AccumuloWatch('LoreGameBot');
+    expect(
+      p.answer(at('LoreGameBot', SHORT, T, '91', { chat: '@LoreGameBot', private: true }), 'alice')
+    ).toMatchObject({ owner: true });
+    p.answer(
+      at('alice', '/acc', T, '90', { chat: '@LoreGameBot', private: true, own: true }),
+      'alice'
+    );
+    expect(p.takeLate()).toEqual([]);
+  });
+
+  it('compares the times where an id is missing, and pairs a command the player told of', () => {
+    const w = new AccumuloWatch('LoreGameBot');
+    w.answer({ chat: GROUP, sender: 'LoreGameBot', text: SHORT, time: T }, 'alice');
+    w.answer({ chat: GROUP, sender: 'bob', text: '/acc', time: T }, 'alice');
+    expect(w.takeLate()).toMatchObject([{ answer: { player: 'bob' } }]);
+    w.answer({ chat: GROUP, sender: 'LoreGameBot', text: SHORT, time: T + 5000 }, 'alice');
+    w.answer({ chat: GROUP, sender: 'bob', text: '/acc', time: T + 5001 }, 'alice');
+    expect(w.takeLate()).toEqual([]);
+    const s = new AccumuloWatch('LoreGameBot');
+    s.answer(at('LoreGameBot', SHORT, T + 6000, '101'), 'alice');
+    s.sent({ chat: GROUP, id: '100', t: T + 6000, command: '/acc' });
+    expect(s.takeLate()).toMatchObject([{ answer: { owner: true, player: 'alice' } }]);
   });
 });

@@ -2068,6 +2068,60 @@ describe('gifts, as /give and /dai answer', () => {
     await run.core.stop();
   });
 
+  it("reads the owner's gift from the group's answer when the account heard it first (#16)", async () => {
+    const run = await bootState(path.join(dir, 'g4'), { group: true });
+    const t = run.clock.now();
+    // The answer (#5001) reaches the account before the owner's own command (#5000), as live.
+    run.account.hear({
+      chat: GROUP,
+      sender: 'LoreGameBot',
+      text: '[N] Hai inviato 1x un sasso [B1] a @bob!',
+      time: t,
+      id: '5001',
+    });
+    run.account.hear({
+      chat: GROUP,
+      sender: 'alice',
+      own: true,
+      text: '/dai@LoreGameBot @bob 1 sasso',
+      time: t,
+      id: '5000',
+    });
+    await run.settle();
+    run.clock.advance(1000);
+    await run.bot('[N] Hai inviato 1x un sasso [B1] a @bob!');
+    expect(run.of('loregame.gift')).toHaveLength(1);
+    expect(run.of('loregame.gift')[0]).toMatchObject({
+      chat: GROUP,
+      answer: '5001',
+      player: 'alice',
+      owner: true,
+      to: 'bob',
+      t,
+    });
+    // The owner's /accumulo heard after its answer: paired, the owner's readiness told.
+    run.account.hear({
+      chat: GROUP,
+      sender: 'LoreGameBot',
+      text: 'Accumulo non ancora sufficiente!\n\nIl tuo accumulo: 7/20',
+      time: t + 5000,
+      id: '5003',
+    });
+    run.account.hear({
+      chat: GROUP,
+      sender: 'alice',
+      own: true,
+      text: '/acc',
+      time: t + 5000,
+      id: '5002',
+    });
+    await run.settle();
+    expect(run.of('loregame.accumulo')).toMatchObject([
+      { chat: GROUP, result: 'short', count: 7, max: 20 },
+    ]);
+    await run.core.stop();
+  });
+
   it("applies the owner's gift once, its answer in the group and its echo in private", async () => {
     const run = await bootState(path.join(dir, 'g2'), { group: true });
     await run.owner('/me');

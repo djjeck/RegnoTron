@@ -20,7 +20,8 @@ The turns of the group's game bots, read on the turn plugins of `@megabottron199
 - `src/skills.ts`: the `/abilita` menu (`parseSkillMenu`); `src/equipment.ts`: the answers to
   `/equipaggia` (`parseEquip`); `src/stats.ts`: a player's stats now, and their mismatches;
 - `src/answer-watch.ts`: whose answer a message of the bot's own is, in the group, where it replies
-  to no command (`AnswerWatch`, which the accumulo's and the training's watches are);
+  to no command (`AnswerWatch`, which the accumulo's, the training's, the gifts' and the market's
+  watches are), an answer heard before its command held a moment and paired late (`takeLate`);
 - `src/plugins/`: the parser plugins of @LoreGameBot and @EpicLorelecBot (`loregame`,
   `epiclorelec`), `loregame-state`, the state plugin on @LoreGameBot's turns (with the owner's
   readiness), and `epiclorelec-ready`, @EpicLorelecBot's readiness state.
@@ -367,7 +368,10 @@ to it. An answer paired in order (`loregame.accumulo`, `loregame.playerAccumulo`
 `loregame.training`, `loregame.gift` and the market's) that came more than a minute after its
 command carries `replayed: true` and the command's time (`asked`): the bot replayed it after an
 outage, or stalled (docs/game-bots.md §5.15). Its event is at the answer's time, when the bot
-applied it.
+applied it. In a group, an answer heard before its command (the owner's own, typed by hand, may
+reach the account a few milliseconds after it) is held up to 2 s and 5 messages, and paired with a
+command heard then whose message id is smaller: its event is still the answer's, in its chat and at
+its time, published as the command is heard.
 
 `loregame-state.accumuloReady` (`count`, `max`, `via`: `turn` or `reading`), `accumuloUsed` (`turns`
 since the last use, `exact`) and `accumuloDrift` (`kind`, `counted`, `said`, `max`) announce each

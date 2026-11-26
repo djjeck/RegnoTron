@@ -45,7 +45,7 @@ export type BanNews =
 export type Heard = Pick<
   Inbound,
   'chat' | 'sender' | 'text' | 'time' | 'id' | 'replyTo' | 'own' | 'private'
->;
+> & { playback?: boolean };
 
 /**
  * The bans of the players it heard of, as the bot told them: `hear` is given every message of the
