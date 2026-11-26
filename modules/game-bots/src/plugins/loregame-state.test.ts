@@ -2077,16 +2077,27 @@ describe('gifts, as /give and /dai answer', () => {
       buttons: [['🔒', '🔒']],
     });
     await run.group('alice', '/dai bob sasso', { own: true });
-    await run.group('LoreGameBot', '[N] Hai inviato 1x un sasso [B1] a bob!');
+    const answered = await run.group('LoreGameBot', '[N] Hai inviato 1x un sasso [B1] a bob!');
     run.clock.advance(2000);
     await run.bot('[N] Hai inviato 1x un sasso [B1] a bob!');
     // Bob's gift to the owner: its answer in the group, then the owner's notice in private.
     await run.group('bob', '/dai alice pigna');
     await run.group('LoreGameBot', '[N] Hai inviato 1x una pigna [B1] a alice!');
     await run.bot('[N] Hai ricevuto 1x una pigna [B1] da bob!');
+    // Carol pays Bob, replying to his message: coins move between two other players.
+    const bobSays = await run.group('bob', 'ciao');
+    await run.group('carol', '/paga 6', { replyTo: bobSays });
+    await run.group('LoreGameBot', '[N] Hai inviato 6 monete a bob!');
+    expect(run.of('loregame.gift').at(-1)).toMatchObject({
+      player: 'carol',
+      kind: 'coins',
+      coins: 6,
+      to: 'bob',
+    });
     // Carol's, played in private: the notice alone.
     await run.bot('[N] Hai ricevuto 3x una pigna [B1] da carol!');
-    expect(run.of('loregame.gift')).toHaveLength(3);
+    expect(run.of('loregame.gift')).toHaveLength(4);
+    expect(run.of('loregame.gift')[0]).toMatchObject({ chat: '-1001', answer: answered });
     expect(run.read('inventory', { player: 'bob' })).toMatchObject({
       items: { 'un sasso': { qty: 1 } },
     });

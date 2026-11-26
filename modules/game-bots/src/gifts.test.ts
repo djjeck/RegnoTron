@@ -68,6 +68,71 @@ describe('/give and /dai', () => {
   });
 });
 
+describe('/paga, and refusals', () => {
+  const T = Date.parse('2026-11-06T12:00:00Z');
+  const GROUP = '-1001';
+  const hear = (
+    w: GiftWatch,
+    sender: string,
+    text: string,
+    at: number,
+    id: string,
+    replyTo?: string
+  ) =>
+    w.answer(
+      {
+        chat: GROUP,
+        sender,
+        text,
+        time: T + at,
+        id,
+        ...(replyTo === undefined ? {} : { replyTo }),
+      },
+      'alice'
+    );
+
+  it("pairs a coin gift with its /paga, in reply to the receiver's message", () => {
+    const w = new GiftWatch('LoreGameBot');
+    hear(w, 'dave', 'grazie per il sasso', 0, '1');
+    hear(w, 'carol', '/paga 15', 1000, '2', '1');
+    expect(hear(w, 'LoreGameBot', '[N] Hai inviato 15 monete a dave!', 2000, '3')).toMatchObject({
+      player: 'carol',
+      owner: false,
+      toOwner: false,
+      reply: { kind: 'coins', coins: 15, to: 'dave' },
+    });
+    // Named, addressed to the bot.
+    hear(w, 'carol', '/paga@LoreGameBot @dave 4', 3000, '4');
+    expect(hear(w, 'LoreGameBot', '[N] Hai inviato 4 monete a dave!', 4000, '5')).toMatchObject({
+      player: 'carol',
+      reply: { coins: 4 },
+    });
+  });
+
+  it("ends a refused command's wait: a later answer is the next player's", () => {
+    const w = new GiftWatch('LoreGameBot');
+    hear(w, 'carol', '/paga dave 500', 0, '1');
+    expect(hear(w, 'LoreGameBot', 'Non hai abbastanza soldi!', 500, '2', '1')).toBeUndefined();
+    // Erin pays within 10 s of Carol's command: the answer is Erin's, not the refused Carol's.
+    hear(w, 'erin', '/paga 7', 3000, '3', '99');
+    expect(hear(w, 'LoreGameBot', '[N] Hai inviato 7 monete a dave!', 4000, '4')).toMatchObject({
+      player: 'erin',
+      reply: { coins: 7 },
+    });
+    // The same for an item's refusal.
+    hear(w, 'carol', '/dai dave', 10_000, '5');
+    expect(hear(w, 'LoreGameBot', 'Formato non valido!', 10_200, '6', '5')).toBeUndefined();
+    hear(w, 'erin', '/dai dave sasso', 11_000, '7');
+    expect(
+      hear(w, 'LoreGameBot', 'Hai inviato 1x un sasso [B1] a dave!', 12_000, '8')
+    ).toMatchObject({ player: 'erin' });
+    // Nothing is left waiting for a stray answer.
+    expect(
+      hear(w, 'LoreGameBot', 'Hai inviato 1x un sasso [B1] a dave!', 13_000, '9')
+    ).toBeUndefined();
+  });
+});
+
 describe("the owner's gifts, once whichever of their messages come", () => {
   const T = Date.parse('2026-11-06T12:00:00Z');
   const GROUP = '-1001';

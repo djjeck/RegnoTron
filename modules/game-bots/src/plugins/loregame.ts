@@ -44,8 +44,8 @@
  * `loregame.requirements`, with the guardians made where it tells them. A
  * neutralizing ticket used (its answer names its player) and, in private, the owner's neutrality
  * ended, as `loregame.neutral`.
- * A gift (`/give`, `/dai`, §5.10), paired with its giver as the accumulo's answers are, or the
- * owner's notice in private of one received, as `loregame.gift`: each of the owner's once, its
+ * A gift (`/give`, `/dai`, `/paga`, §5.10), paired with its giver as the accumulo's answers are, or
+ * the owner's notice in private of one received, as `loregame.gift`: each of the owner's once, its
  * answer and its notice being one gift.
  *
  * **The market** (docs/game-bots.md §5.11): every company's value, from each update (the bot's own,
@@ -172,7 +172,7 @@ const TRAVEL_ALIAS = '/v';
 /** The events of every player's move or place (§5.9), and of every place's requirements. */
 export const TRAVEL_EVENT = `${LOREGAME_PARSER}.travel`;
 export const REQUIREMENTS_EVENT = `${LOREGAME_PARSER}.requirements`;
-/** The event of every player's gift (`/give`, `/dai`, §5.10). */
+/** The event of every player's gift (`/give`, `/dai`, `/paga`, §5.10). */
 export const GIFT_EVENT = `${LOREGAME_PARSER}.gift`;
 /** The event of a player neutralized by a ticket, or of the owner's neutrality ended (§5.9). */
 export const NEUTRAL_EVENT = `${LOREGAME_PARSER}.neutral`;
@@ -516,10 +516,14 @@ const giftEvent = z
     tags: z.array(z.string()).optional(),
     level: z.object({ low: z.number(), high: z.number() }).nullable().optional(),
     coins: z.number().optional(),
+    answer: z
+      .string()
+      .nullable()
+      .describe("The bot's message it was read from (its answer, or the owner's notice), if known"),
     ...lateFields,
     playback: z.literal(true).optional().describe('Read from history, not news: act on none'),
   })
-  .describe("A player's gift of items or coins (/give, /dai), as @LoreGameBot answered it");
+  .describe("A player's gift of items or coins (/give, /dai, /paga), as @LoreGameBot answered it");
 const inventoryEvent = z
   .object({
     chat: z.string(),
@@ -1193,6 +1197,7 @@ export const loregamePlugin: Plugin = {
             owner: mine,
             ...reply,
             toOwner,
+            answer: m.id ?? null,
             ...lateOf(gift),
             ...old,
           },

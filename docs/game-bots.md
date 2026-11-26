@@ -1,6 +1,6 @@
 # The game bots RegnoTron reads
 
-Documented as of 25 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
+Documented as of 26 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
 has other game bots, each with its own game played one turn at a time. RegnoTron reads the turns of
 two of them, @LoreGameBot and @EpicLorelecBot, in `modules/game-bots/`: their reply grammars
 (`src/replies.ts`) and their parser plugins in `src/plugins/`. @InventoryBot's parser, the plugin
@@ -544,15 +544,22 @@ above `N1` lands (the state guesses the same step of their faction's ladder).
 
 ### 5.10 Gifts
 
-`/give` and `/dai` [M] send items or coins to another player:
+`/give` and `/dai` [M] send items, and **`/paga <n>`** coins [S: the bot's help, "Per ora i soldi si
+possono ottenere solo livellando o ricevendoli da un altro giocatore con /paga"], each to the player
+named or, the usual way, to the one whose message the command replies to (43 of the 45 coin gifts in
+the exports, `/paga <username> <n>` the others):
 `Hai inviato <n>x <item> [<rarity>] [<tag>]… a <username>!`, or
 `Hai inviato <n> monete a <username>!`, at times after `[N] ` (the bot's mark of a notification,
-§5.9). The receiver is named as the giver typed them (an `@`, any case). The answer names the
-receiver, not the giver, and since August 2026 it replies to no command (all 209 since then): the
-parser pairs it with the command waiting, as the accumulo's answers (§5.2). Its refusals
-(`Formato non valido!`, `Oggetto non trovato!`, `Non possiedi l'oggetto!`,
-`Elemento non trovato o utente non registrato!`, …) change nothing, and are not read. All 388 gifts
-in the group's exports are read, 45 of coins.
+§5.9). The receiver is named as the giver typed them (an `@`, any case), or by their username. The
+answer names the receiver, not the giver, and since August 2026 it replies to no command (all 209
+since then): the parser pairs it with the command waiting, as the accumulo's answers (§5.2). Its
+refusals (`Formato non valido!`, `Oggetto non trovato!`, `Non possiedi l'oggetto!`,
+`Elemento non trovato o utente non registrato!`, `Non hai abbastanza soldi!`, …) change nothing, and
+are not read; each replies to its command (the 370 in the exports), which ends that command's wait,
+so a later answer goes to the next command waiting, another player's, not to the refused one. **All
+386 gifts answered in the group's exports are read**, 45 of coins (until 0.54.0 the coin gifts were
+not: `/paga` was not taken for a gift's command); the exports' 2 other `Hai inviato`, in private,
+are the owner's notices of two of them (below).
 
 **Each side is also told in private** [M]: the giver `[N] Hai inviato …`, the same text as the
 answer, and the receiver `[N] Hai ricevuto <n>x <item> [<rarity>] [<tag>]… da <username>!` (or
@@ -578,9 +585,10 @@ whichever order:
 **`loregame.gift`** carries every gift the parser pairs, or the owner's notice of one, once: the
 giver (`player`, `owner`), `kind` (`item`, with `item`, `qty`, `rarity`, `tags`, `level`; `coins`,
 with `coins`), `to` and `toOwner` (a notice received names the owner as `to`), from whichever of its
-messages came first (`chat`). The state moves the items from the giver's inventory to the
-receiver's, or the coins from the one's `coins` to the other's; the receiver known whatever the case
-of their name.
+messages came first: its `chat`, and `answer`, the id of the bot's message it was read from (the
+answer, or the owner's notice; `null` if the message had none). The state moves the items from the
+giver's inventory to the receiver's, or the coins from the one's `coins` to the other's; the
+receiver known whatever the case of their name.
 
 ### 5.11 The market
 

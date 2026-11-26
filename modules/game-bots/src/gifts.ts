@@ -1,13 +1,18 @@
 /**
- * @LoreGameBot's answers to `/give` and `/dai` (docs/game-bots.md §5.10), as the `loregame` parser
- * reads them. Pure.
+ * @LoreGameBot's answers to `/give`, `/dai` and `/paga` (docs/game-bots.md §5.10), as the
+ * `loregame` parser reads them. Pure.
+ *
+ * `/give` and `/dai` send items, `/paga <n>` coins [S: the bot's help], each to the player named or
+ * to the one whose message the command replies to (the usual way to pay).
  *
  * A gift sent: "Hai inviato <n>x <item> [<rarity>] [<tag>]… a <username>!", or coins, "Hai inviato
  * <n> monete a <username>!"; at times after "[N] ", the bot's mark of a notification. The receiver
  * is named as the giver typed them, an `@` and any case at times. The answer names the receiver,
  * not the giver, and since August 2026 it is a message of its own, not a reply [M]: `GiftWatch`
  * pairs it with the command waiting (`src/answer-watch.ts`). Its refusals (a format, an item not
- * found or not held, a user unknown) change nothing, and are not read.
+ * found or not held, a user unknown, too few coins) change nothing, and are not read; each replies
+ * to its command [M: the 370 in the exports], which ends that command's wait, so no later answer is
+ * credited to it.
  *
  * The bot also tells each side of a gift in private [S]: the giver, "[N] Hai inviato …" as the
  * answer; the receiver, "[N] Hai ricevuto <n>x <item> … da <username>!" (or "<n> monete"). So the
@@ -20,7 +25,7 @@ import { type Heard } from '#src/bans.ts';
 import { type Listed } from '#src/inventory.ts';
 
 /** The commands of a gift, as a player types them. */
-export const GIFT_COMMANDS: readonly string[] = ['/give', '/dai'];
+export const GIFT_COMMANDS: readonly string[] = ['/give', '/dai', '/paga'];
 
 /**
  * How far apart, on the messages' times, a gift's answer and its notice to the owner may be: the
@@ -90,8 +95,8 @@ const same = (a: string, b: string | undefined): boolean =>
   b !== undefined && a.toLowerCase() === b.toLowerCase();
 
 /**
- * The answers to `/give` and `/dai`, paired with their givers (`src/answer-watch.ts`), and the
- * owner's notices of a gift received, in private; each gift of the owner's once.
+ * The answers to `/give`, `/dai` and `/paga`, paired with their givers (`src/answer-watch.ts`),
+ * and the owner's notices of a gift received, in private; each gift of the owner's once.
  *
  * A gift the owner gives or receives may come as two messages: the answer to its command (paired
  * with it, in the group or in private) and the bot's notice in private, which answers none (a
