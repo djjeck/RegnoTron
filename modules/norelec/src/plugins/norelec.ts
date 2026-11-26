@@ -196,7 +196,6 @@ export function messagesOf(records: readonly LogEntry[]): { time: number; text: 
 export const norelecPlugin: Plugin = definePlugin({
   manifest: {
     id: NORELEC,
-    version: '0.1.0',
     kinds: ['parser'],
     description: "NorelecBot's game: its messages read, and the game state they make",
     config: norelecConfig,

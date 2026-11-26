@@ -244,7 +244,6 @@ type Kept = GameRecord & Record<string, unknown>;
 /** The state plugin's spec, with the record's options. */
 const specOf = (options: RecordOptions): StateSpec<Kept> => ({
   id: NORELEC_STATE,
-  version: '0.1.0',
   description:
     "NorelecBot's game, kept: houses, babies and locks, trips, the ⚽ and its hold times, bans",
   schema: recordSchema,

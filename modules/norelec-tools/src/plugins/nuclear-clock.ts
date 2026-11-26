@@ -91,7 +91,6 @@ export const CLOCK_COMMANDS = {
 export const nuclearClockPlugin: Plugin = definePlugin({
   manifest: {
     id: NUCLEAR_CLOCK,
-    version: '0.1.0',
     kinds: ['stats'],
     description: 'The nuclear clock: the balls in the game, posted at each 50,000',
     inputs: {

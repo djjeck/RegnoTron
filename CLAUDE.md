@@ -83,6 +83,7 @@ formatting. Address every error before marking a sub-task complete.
 - **@InventoryBot is read elsewhere:** its parser plugin, `inventorybot`, and its grammar live in
   [InventoryBotTron](https://github.com/djjeck/InventoryBotTron); nothing here imports it.
 - A module's version lives only in its module version, bumped in its commit; nothing is tagged.
+- A plugin's manifest carries no `version`: a module's version alone counts (MegaBotTron1999 D166).
 - **Coverage stays at or above 90%** on statements, branches, functions and lines, for the whole and
   for each module's `src/` on its own (`vitest.config.ts` sets a threshold per module).
 - **Dependencies:** the root has dev dependencies only, as few as possible, each justified in the

@@ -1,6 +1,6 @@
 {
   "id": "norelec-tools",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "api": "1",
   "provides": "@regnotron/norelec-tools",
   "imports": { "@regnotron/norelec": "^0.4.0" },

@@ -1,6 +1,6 @@
 {
   "id": "norelec",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "api": "1",
   "provides": "@regnotron/norelec",
   "imports": {},

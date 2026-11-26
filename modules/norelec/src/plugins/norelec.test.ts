@@ -103,7 +103,6 @@ function setup(
     definePlugin({
       manifest: {
         id: 'follower',
-        version: '0.1.0',
         kinds: ['stats'],
         description: 'follows the bot messages',
         requires: ['norelec'],
@@ -233,7 +232,6 @@ describe('the norelec plugin', () => {
       definePlugin({
         manifest: {
           id: 'listener',
-          version: '0.1.0',
           kinds: ['actor'],
           description: 'listens',
           requires: ['norelec'],
@@ -282,7 +280,6 @@ describe('the norelec plugin', () => {
       definePlugin({
         manifest: {
           id: 'listener',
-          version: '0.1.0',
           kinds: ['actor'],
           description: 'listens',
           requires: ['norelec'],
@@ -344,7 +341,6 @@ describe("the bot's answers to the owner's commands (D93, D98)", () => {
       definePlugin({
         manifest: {
           id: 'raider',
-          version: '0.1.0',
           kinds: ['actor'],
           description: 'sends commands to the channel',
           outputs: { chat: { type: 'chat-out', network: 'irc', bind: { node: 'irc', sends: [] } } },

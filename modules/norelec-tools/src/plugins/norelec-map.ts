@@ -57,7 +57,6 @@ export const MAP_COMMANDS = {
 export const norelecMapPlugin: Plugin = definePlugin({
   manifest: {
     id: NORELEC_MAP,
-    version: '0.1.0',
     kinds: ['stats'],
     description: "The map of the players' homes, fitted to the trip times NorelecBot announces",
     inputs: {
