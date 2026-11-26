@@ -11,9 +11,9 @@ const USED =
 
 let n = 0;
 /** A message heard: a player's, in the group, unless it says otherwise. */
-const said = (sender: string, text: string, m: Partial<Heard> = {}): Heard => ({
+const said = (senderUsername: string, text: string, m: Partial<Heard> = {}): Heard => ({
   chat: GROUP,
-  sender,
+  senderUsername,
   text,
   time: T,
   id: String(n++),
@@ -173,14 +173,14 @@ describe('the accumulo watch, told a send twice', () => {
     w.sent({ chat: G, id: '7', t: T0, command: '/accumulo' });
     w.sent({ chat: G, id: '7', t: T0, command: '/accumulo' });
     w.answer(
-      { chat: G, sender: 'alice', own: true, text: '/accumulo', time: T0, id: '7' },
+      { chat: G, senderUsername: 'alice', own: true, text: '/accumulo', time: T0, id: '7' },
       'alice'
     );
     expect(w.ownerWaiting(G)).toEqual(['#7']);
     const used =
       '🔋 IL TUO ACCUMULO SI ATTIVA! Ti senti di nuovo pronto per vivere una nuova storia! /lore';
     expect(
-      w.answer({ chat: G, sender: 'LoreGameBot', text: used, time: T0 + 1000 }, 'alice')
+      w.answer({ chat: G, senderUsername: 'LoreGameBot', text: used, time: T0 + 1000 }, 'alice')
     ).toMatchObject({
       owner: true,
       reply: { result: 'used' },
@@ -188,7 +188,7 @@ describe('the accumulo watch, told a send twice', () => {
     // Nothing left waiting to claim the next player's answer.
     expect(w.ownerWaiting(G)).toEqual([]);
     expect(
-      w.answer({ chat: G, sender: 'LoreGameBot', text: used, time: T0 + 2000 }, 'alice')
+      w.answer({ chat: G, senderUsername: 'LoreGameBot', text: used, time: T0 + 2000 }, 'alice')
     ).toBeUndefined();
   });
 });

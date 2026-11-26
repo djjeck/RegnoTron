@@ -99,7 +99,7 @@ export async function kitWith(id: string, plugin: Plugin, o: KitOptions = {}) {
   };
   /** A line of NorelecBot's on the channel. */
   const say = (text: string, time = now()): void =>
-    irc.hear({ chat: CHANNEL, sender: 'NorelecBot', text, time });
+    irc.hear({ chat: CHANNEL, senderUsername: 'NorelecBot', text, time });
   return { k, irc, bot, sends, lines, game, command, say };
 }
 

@@ -68,9 +68,9 @@ export class PlayerWatch {
    * owner's username, once the account knows it.
    */
   hear(m: Heard, self: string | undefined): PlayerTurn | undefined {
-    if (m.own === true || m.sender.toLowerCase() !== this.bot) {
+    if (m.own === true || m.senderUsername?.toLowerCase() !== this.bot) {
       const owner = m.own === true || isPrivate(m);
-      const player = owner ? (self ?? '') : m.sender;
+      const player = owner ? (self ?? '') : (m.senderUsername ?? '');
       if (m.id !== undefined && (player !== '' || owner))
         this.remember(`${m.chat}\n${m.id}`, {
           player,

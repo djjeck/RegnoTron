@@ -76,7 +76,7 @@ const SAME_CHAT_AT = 10;
  * its messages with, `SAME_CHAT_AT` at least; its own otherwise.
  */
 export function chatNames(inbounds: readonly Inbound[]): Map<string, string> {
-  const key = (m: Inbound): string => `${m.id ?? ''}\n${m.sender}\n${m.text}`;
+  const key = (m: Inbound): string => `${m.id ?? ''}\n${m.senderUsername ?? ''}\n${m.text}`;
   const byChat = new Map<string, Set<string>>();
   const first = new Map<string, number>();
   for (const m of inbounds) {

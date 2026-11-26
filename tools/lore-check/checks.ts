@@ -93,7 +93,7 @@ const tally = (keys: readonly string[]): string =>
     .join(', ') || 'none';
 
 const bot = LOREGAMEBOT.toLowerCase();
-const isBot = (m: Inbound): boolean => m.own !== true && m.sender.toLowerCase() === bot;
+const isBot = (m: Inbound): boolean => m.own !== true && m.senderUsername?.toLowerCase() === bot;
 const TWO_MIN = 2 * 60_000;
 
 /**

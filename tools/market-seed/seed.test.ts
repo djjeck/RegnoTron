@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { seedOf, usernames } from './seed.ts';
 
 // Invented players and companies.
-const at = (id: number, sender: string, text: string, replyTo?: number): Inbound => ({
+const at = (id: number, senderUsername: string, text: string, replyTo?: number): Inbound => ({
   account: 'telegram:alice',
   network: 'telegram',
   chat: '-1001',
-  sender,
+  senderUsername,
   text,
   time: id * 1000,
   id: String(id),

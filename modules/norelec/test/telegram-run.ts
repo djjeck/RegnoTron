@@ -58,18 +58,29 @@ export async function bootTelegram(dir: string, o: { at?: number } = {}) {
   };
   /** A message of the bot, in the group unless it says otherwise. */
   const bot = async (text: string, m: Partial<Heard> = {}): Promise<void> => {
-    account.hear({ chat: GROUP, sender: BOT, time: clock.now(), id: String(n++), text, ...m });
-    await settle();
-  };
-  /** A message of someone in the group: `sender`'s, or the owner's own. */
-  const say = async (sender: string, text: string, m: Partial<Heard> = {}): Promise<void> => {
     account.hear({
       chat: GROUP,
-      sender,
+      senderUsername: BOT,
       time: clock.now(),
       id: String(n++),
       text,
-      ...(sender === OWNER ? { own: true } : {}),
+      ...m,
+    });
+    await settle();
+  };
+  /** A message of someone in the group: `sender`'s, or the owner's own. */
+  const say = async (
+    senderUsername: string,
+    text: string,
+    m: Partial<Heard> = {}
+  ): Promise<void> => {
+    account.hear({
+      chat: GROUP,
+      senderUsername,
+      time: clock.now(),
+      id: String(n++),
+      text,
+      ...(senderUsername === OWNER ? { own: true } : {}),
       ...m,
     });
     await settle();

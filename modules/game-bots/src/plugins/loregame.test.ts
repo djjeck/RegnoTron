@@ -13,11 +13,11 @@ const MIN = 60_000;
 describe('the loregame parser', () => {
   it("reads replies to alice's turns, by hand or sent by the actor, with the rests", async () => {
     const p = await run(GROUP);
-    const lore = { sender: 'LoreGameBot' };
+    const lore = { senderUsername: 'LoreGameBot' };
     // By hand in the group, addressed to it.
     const hand = p.hear({
       chat: GROUP,
-      sender: 'alice',
+      senderUsername: 'alice',
       own: true,
       text: '/avventura@LoreGameBot',
     });
@@ -79,8 +79,8 @@ describe('the loregame parser', () => {
 
   it('reads the shop’s listing as the answer to /negozio, not drift (#12)', async () => {
     const p = await run(GROUP);
-    const lore = { sender: 'LoreGameBot' };
-    p.hear({ chat: '@LoreGameBot', sender: 'alice', own: true, text: '/negozio' });
+    const lore = { senderUsername: 'LoreGameBot' };
+    p.hear({ chat: '@LoreGameBot', senderUsername: 'alice', own: true, text: '/negozio' });
     p.hear({
       ...lore,
       chat: '@LoreGameBot',
@@ -88,28 +88,33 @@ describe('the loregame parser', () => {
     });
     expect(p.drift()).toMatchObject({ unread: 0 });
     // By its alias, an answer that is no listing: drift, as for any command it names.
-    p.hear({ chat: '@LoreGameBot', sender: 'alice', own: true, text: '/shop' });
+    p.hear({ chat: '@LoreGameBot', senderUsername: 'alice', own: true, text: '/shop' });
     p.hear({ ...lore, chat: '@LoreGameBot', text: 'Un messaggio qualunque' });
     expect(p.drift()).toMatchObject({ unread: 1 });
   });
 
   it('counts /lore as a turn, as /avventura, in the group and in private', async () => {
     const p = await run(GROUP);
-    const lore = { sender: 'LoreGameBot' };
-    const hand = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/lore@LoreGameBot' });
+    const lore = { senderUsername: 'LoreGameBot' };
+    const hand = p.hear({
+      chat: GROUP,
+      senderUsername: 'alice',
+      own: true,
+      text: '/lore@LoreGameBot',
+    });
     p.hear({ ...lore, chat: GROUP, replyTo: hand, text: "Hai ottenuto un'ampolla di nebbia [C]!" });
     // In private, the first answer to a /lore it cannot read is a turn's (drift); to another
     // command, not its business.
-    p.hear({ chat: '@LoreGameBot', sender: 'alice', own: true, text: '/inventario' });
+    p.hear({ chat: '@LoreGameBot', senderUsername: 'alice', own: true, text: '/inventario' });
     p.hear({ ...lore, chat: '@LoreGameBot', text: 'Il tuo inventario: …' });
-    p.hear({ chat: '@LoreGameBot', sender: 'alice', own: true, text: '/lore' });
+    p.hear({ chat: '@LoreGameBot', senderUsername: 'alice', own: true, text: '/lore' });
     p.hear({ ...lore, chat: '@LoreGameBot', text: 'Un messaggio qualunque' });
     expect(p.outcomes()).toEqual(['gain', 'unknown']);
   });
 
   it('rests a cut-off turn 15 minutes, 30 when the fight it kept was lost', async () => {
     const p = await run(GROUP);
-    const lore = { sender: 'LoreGameBot' };
+    const lore = { senderUsername: 'LoreGameBot' };
     const cut = (fight: string): string =>
       [
         'Lore - Il Bosco Inventato ⛅️ [B1]',
@@ -121,7 +126,12 @@ describe('the loregame parser', () => {
       ]
         .join('\n')
         .padEnd(1024, '.');
-    const first = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/lore@LoreGameBot' });
+    const first = p.hear({
+      chat: GROUP,
+      senderUsername: 'alice',
+      own: true,
+      text: '/lore@LoreGameBot',
+    });
     p.hear({
       ...lore,
       chat: GROUP,
@@ -129,7 +139,12 @@ describe('the loregame parser', () => {
       text: cut('alice [L6] sconfigge un orso di burro 🧈 [L4]!'),
     });
     expect(p.iface.rest()).toMatchObject({ until: T0 + 15 * MIN });
-    const second = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/lore@LoreGameBot' });
+    const second = p.hear({
+      chat: GROUP,
+      senderUsername: 'alice',
+      own: true,
+      text: '/lore@LoreGameBot',
+    });
     p.hear({
       ...lore,
       chat: GROUP,
@@ -143,10 +158,15 @@ describe('the loregame parser', () => {
 
   it('counts /l, the short alias, as a turn too, in the group and in private', async () => {
     const p = await run(GROUP);
-    const lore = { sender: 'LoreGameBot' };
-    const hand = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/l@LoreGameBot' });
+    const lore = { senderUsername: 'LoreGameBot' };
+    const hand = p.hear({
+      chat: GROUP,
+      senderUsername: 'alice',
+      own: true,
+      text: '/l@LoreGameBot',
+    });
     p.hear({ ...lore, chat: GROUP, replyTo: hand, text: "Hai ottenuto un'ampolla di nebbia [C]!" });
-    p.hear({ chat: '@LoreGameBot', sender: 'alice', own: true, text: '/l' });
+    p.hear({ chat: '@LoreGameBot', senderUsername: 'alice', own: true, text: '/l' });
     p.hear({
       ...lore,
       chat: '@LoreGameBot',

@@ -130,7 +130,7 @@ export class HealthWatch {
 
   /** A message heard, anyone's, live (never one played back from history): the new health, if any. */
   hear(m: Heard): Health | undefined {
-    if (m.own === true || m.sender.toLowerCase() !== this.bot) {
+    if (m.own === true || m.senderUsername?.toLowerCase() !== this.bot) {
       this.remember(m.chat, m.id, m.time);
       if (this.isCommand(m.text)) this.asked(m.time);
       if (m.own === true && isPrivate(m)) this.privateSends.set(m.chat, m.time);

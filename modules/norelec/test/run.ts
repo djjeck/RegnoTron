@@ -59,7 +59,7 @@ export async function bootRun(
   const bot = async (text: string, m: Partial<Heard> = {}): Promise<void> => {
     account.hear({
       chat: CHANNEL,
-      sender: 'NorelecBot',
+      senderUsername: 'NorelecBot',
       time: clock.now(),
       text: text.split('\n').join(' · '),
       ...m,
@@ -67,13 +67,13 @@ export async function bootRun(
     await settle();
   };
   /** A player's line on the channel: `sender`'s, or the owner's own. */
-  const say = async (sender: string, text: string): Promise<void> => {
+  const say = async (senderUsername: string, text: string): Promise<void> => {
     account.hear({
       chat: CHANNEL,
-      sender,
+      senderUsername,
       time: clock.now(),
       text,
-      ...(sender === OWNER ? { own: true } : {}),
+      ...(senderUsername === OWNER ? { own: true } : {}),
     });
     await settle();
   };

@@ -9,9 +9,9 @@ const BANNED_UNTIL = Date.parse('2026-11-06T17:00:00Z');
 
 let n = 0;
 /** A message heard: a player's, in the group, unless it says otherwise. */
-const said = (sender: string, text: string, m: Partial<Heard> = {}): Heard => ({
+const said = (senderUsername: string, text: string, m: Partial<Heard> = {}): Heard => ({
   chat: GROUP,
-  sender,
+  senderUsername,
   text,
   time: T,
   id: String(n++),
@@ -109,7 +109,7 @@ describe('the bans it watches', () => {
       until: BANNED_UNTIL,
       owner: true,
     });
-    // The owner's own messages in the group are theirs, whatever the sender field says.
+    // The owner's own messages in the group are theirs, whatever its sender says.
     const mine = said('', '/lore', { own: true });
     w.hear(mine, 'alice');
     expect(

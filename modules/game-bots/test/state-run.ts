@@ -104,7 +104,7 @@ export async function bootState(
   const bot = async (text: string, m: Partial<Heard> = {}): Promise<void> => {
     account.hear({
       chat: DM,
-      sender: 'LoreGameBot',
+      senderUsername: 'LoreGameBot',
       time: clock.now(),
       id: String(n++),
       text,
@@ -114,7 +114,14 @@ export async function bootState(
   };
   /** A command of the owner's, in private. */
   const owner = async (text: string): Promise<void> => {
-    account.hear({ chat: DM, sender: OWNER, own: true, time: clock.now(), id: String(n++), text });
+    account.hear({
+      chat: DM,
+      senderUsername: OWNER,
+      own: true,
+      time: clock.now(),
+      id: String(n++),
+      text,
+    });
     await settle();
   };
   /** A turn of the owner's and the bot's answer to it, a rest later (the next turn is allowed). */
@@ -133,14 +140,14 @@ export async function bootState(
    * with `photo`, the photo the account fetches for it (a why: refused).
    */
   const group = async (
-    sender: string,
+    senderUsername: string,
     text: string,
     m: { replyTo?: string; own?: boolean; buttons?: string[][]; photo?: Media | string } = {}
   ): Promise<string> => {
     const id = String(n++);
     const { photo, ...heard } = m;
     if (photo !== undefined) account.givePhoto(GROUP, id, photo);
-    account.hear({ chat: GROUP, sender, time: clock.now(), id, text, ...heard });
+    account.hear({ chat: GROUP, senderUsername, time: clock.now(), id, text, ...heard });
     await settle();
     return id;
   };
@@ -159,7 +166,7 @@ export async function bootState(
   ): Promise<void> => {
     account.hearEdit({
       chat: m.chat ?? GROUP,
-      sender: 'LoreGameBot',
+      senderUsername: 'LoreGameBot',
       time: m.time,
       id,
       text,

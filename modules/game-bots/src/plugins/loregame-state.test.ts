@@ -2074,14 +2074,14 @@ describe('gifts, as /give and /dai answer', () => {
     // The answer (#5001) reaches the account before the owner's own command (#5000), as live.
     run.account.hear({
       chat: GROUP,
-      sender: 'LoreGameBot',
+      senderUsername: 'LoreGameBot',
       text: '[N] Hai inviato 1x un sasso [B1] a @bob!',
       time: t,
       id: '5001',
     });
     run.account.hear({
       chat: GROUP,
-      sender: 'alice',
+      senderUsername: 'alice',
       own: true,
       text: '/dai@LoreGameBot @bob 1 sasso',
       time: t,
@@ -2102,14 +2102,14 @@ describe('gifts, as /give and /dai answer', () => {
     // The owner's /accumulo heard after its answer: paired, the owner's readiness told.
     run.account.hear({
       chat: GROUP,
-      sender: 'LoreGameBot',
+      senderUsername: 'LoreGameBot',
       text: 'Accumulo non ancora sufficiente!\n\nIl tuo accumulo: 7/20',
       time: t + 5000,
       id: '5003',
     });
     run.account.hear({
       chat: GROUP,
-      sender: 'alice',
+      senderUsername: 'alice',
       own: true,
       text: '/acc',
       time: t + 5000,

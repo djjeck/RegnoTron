@@ -69,7 +69,7 @@ export class BotClock {
 
   /** A message heard, anyone's: the others' remembered, the bot's read. */
   hear(m: Heard): void {
-    if (m.own === true || m.sender.toLowerCase() !== this.bot) {
+    if (m.own === true || m.senderUsername?.toLowerCase() !== this.bot) {
       this.said(m.chat, m.id, m.time);
       return;
     }
@@ -323,14 +323,14 @@ export class AnswerWatch<R> {
     this.asked = this.asked.filter((a) => !this.past(a));
     this.age(m);
     const inPrivate = isPrivate(m);
-    if (m.own === true || m.sender.toLowerCase() !== this.bot) {
+    if (m.own === true || m.senderUsername?.toLowerCase() !== this.bot) {
       if (this.isCommand(m.text)) {
         const owner = m.own === true || inPrivate;
         this.wait({
           chat: m.chat,
           id: m.id,
           owner,
-          player: owner ? '' : m.sender,
+          player: owner ? '' : (m.senderUsername ?? ''),
           time: m.time,
         });
       }

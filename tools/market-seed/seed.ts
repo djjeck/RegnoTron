@@ -28,11 +28,13 @@ export function usernames(inbounds: readonly Inbound[], bot: string): Map<string
   for (const m of inbounds) if (m.id !== undefined) byId.set(`${m.chat}\n${m.id}`, m);
   const names = new Map<string, string>();
   for (const m of inbounds) {
-    if (m.sender.toLowerCase() !== bot.toLowerCase() || m.replyTo === undefined) continue;
+    if (m.senderUsername?.toLowerCase() !== bot.toLowerCase() || m.replyTo === undefined) continue;
     const asked = byId.get(`${m.chat}\n${m.replyTo}`);
     if (asked === undefined || !/^\/(?:info|me)(?:@\w+)?$/iu.test(asked.text.trim())) continue;
     const profile = parseProfile(m.text);
-    if (profile !== undefined && !names.has(asked.sender)) names.set(asked.sender, profile.player);
+    const who = asked.senderUsername;
+    if (profile !== undefined && who !== undefined && !names.has(who))
+      names.set(who, profile.player);
   }
   return names;
 }

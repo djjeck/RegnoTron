@@ -39,12 +39,15 @@ describe('/give and /dai', () => {
   it('gives each answer, a message of its own, to the command waiting', () => {
     const w = new GiftWatch('LoreGameBot');
     const T = Date.parse('2026-11-06T12:00:00Z');
-    w.answer({ chat: '-1001', sender: 'carol', text: '/dai bob sasso', time: T, id: '1' }, 'alice');
+    w.answer(
+      { chat: '-1001', senderUsername: 'carol', text: '/dai bob sasso', time: T, id: '1' },
+      'alice'
+    );
     expect(
       w.answer(
         {
           chat: '-1001',
-          sender: 'LoreGameBot',
+          senderUsername: 'LoreGameBot',
           text: 'Hai inviato 1x un sasso [B1] a bob!',
           time: T + 1000,
         },
@@ -84,7 +87,7 @@ describe('/paga, and refusals', () => {
   const GROUP = '-1001';
   const hear = (
     w: GiftWatch,
-    sender: string,
+    senderUsername: string,
     text: string,
     at: number,
     id: string,
@@ -93,7 +96,7 @@ describe('/paga, and refusals', () => {
     w.answer(
       {
         chat: GROUP,
-        sender,
+        senderUsername,
         text,
         time: T + at,
         id,
@@ -160,14 +163,14 @@ describe("the owner's gifts, once whichever of their messages come", () => {
     let n = 1;
     const feed = (
       chat: string,
-      sender: string,
+      senderUsername: string,
       text: string,
       at: number,
       m: { own?: boolean } = {}
     ) => {
       const priv = chat === DM ? { private: true } : {};
       return w.answer(
-        { chat, sender, text, time: T + at, id: String(n++), ...priv, ...m },
+        { chat, senderUsername, text, time: T + at, id: String(n++), ...priv, ...m },
         'alice'
       );
     };

@@ -9,7 +9,7 @@ describe('the epiclorelec parser', () => {
   it('reads its count in private and its cooldown where it answers a turn', async () => {
     // With its readiness state, which keeps its rest (MegaBotTron1999's D141).
     const p = await run(epiclorelecPlugin, {}, GROUP, undefined, epiclorelecReadyPlugin);
-    const epic = { sender: 'EpicLorelecBot' };
+    const epic = { senderUsername: 'EpicLorelecBot' };
     p.hear({
       ...epic,
       chat: '@EpicLorelecBot',
@@ -17,7 +17,12 @@ describe('the epiclorelec parser', () => {
     });
     // In the group the count names a display name: not alice's for sure.
     p.hear({ ...epic, chat: GROUP, text: 'Complimenti 7, Juno, mi hai rotto il cazzo 3 volte!' });
-    const hand = p.hear({ chat: GROUP, sender: 'alice', own: true, text: '/rompimiilcazzo' });
+    const hand = p.hear({
+      chat: GROUP,
+      senderUsername: 'alice',
+      own: true,
+      text: '/rompimiilcazzo',
+    });
     const cooldown =
       "(🎲 un inciso) Non è passato abbastanza tempo dall'ultima rottura! Riprova fra 1 minuto e 22 secondi.";
     p.hear({ ...epic, chat: GROUP, replyTo: hand, text: cooldown });
@@ -30,7 +35,7 @@ describe('the epiclorelec parser', () => {
     expect(p.outcomes()).toEqual(['count', 'nothing', 'nothing']);
     expect(p.iface.rest()).toMatchObject({ until: T0 + 15 * MIN });
     // A turn's first answer in private that it cannot read is drift.
-    p.hear({ chat: '@EpicLorelecBot', sender: 'alice', own: true, text: '/avventura' });
+    p.hear({ chat: '@EpicLorelecBot', senderUsername: 'alice', own: true, text: '/avventura' });
     p.hear({ ...epic, chat: '@EpicLorelecBot', text: 'Turno 1\n\nBasi - 1000 HP' });
     p.hear({ ...epic, chat: '@EpicLorelecBot', text: 'Turno 2' });
     expect(p.outcomes()).toEqual(['count', 'nothing', 'nothing', 'unknown']);

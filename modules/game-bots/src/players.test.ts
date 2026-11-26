@@ -9,9 +9,9 @@ const TURN = 'Lore - Il Bosco Inventato ⛅️ [B1]\n\nUna storia.\nHai ottenuto
 const SOON = 'Non è passato abbastanza tempo! Riprova fra 5 minuti.';
 
 let n = 0;
-const said = (sender: string, text: string, m: Partial<Heard> = {}): Heard => ({
+const said = (senderUsername: string, text: string, m: Partial<Heard> = {}): Heard => ({
   chat: GROUP,
-  sender,
+  senderUsername,
   text,
   time: T,
   id: String(n++),
@@ -54,7 +54,7 @@ describe('whose turn the bot answered', () => {
     expect(w.hear(said('LoreGameBot', TURN, { replyTo: 'unheard' }), 'alice')).toBeUndefined();
     expect(w.hear(said('LoreGameBot', TURN), 'alice')).toBeUndefined();
     // A sender the connector gives no username is no one.
-    const nameless = said('', '/lore');
+    const { senderUsername: _, ...nameless } = said('', '/lore', { senderId: '7' });
     w.hear(nameless, 'alice');
     expect(w.hear(reply(nameless, TURN), 'alice')).toBeUndefined();
     // A ban, or something it cannot read, is no turn.

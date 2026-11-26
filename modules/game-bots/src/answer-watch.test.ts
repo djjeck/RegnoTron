@@ -22,9 +22,14 @@ const CALM = 'Stai calmo maschio...';
 
 let n = 100;
 /** A message heard at `time`: a player's, in the group, unless it says otherwise. */
-const said = (sender: string, text: string, time: number, m: Partial<Heard> = {}): Heard => ({
+const said = (
+  senderUsername: string,
+  text: string,
+  time: number,
+  m: Partial<Heard> = {}
+): Heard => ({
   chat: GROUP,
-  sender,
+  senderUsername,
   text,
   time,
   id: String(n++),
@@ -169,8 +174,13 @@ describe('a watch across an outage', () => {
 
 describe('an answer heard before its command (#16)', () => {
   /** A message with the id given: the group's ids grow with each message. */
-  const at = (sender: string, text: string, time: number, id: string, m: Partial<Heard> = {}) =>
-    said(sender, text, time, { id, ...m });
+  const at = (
+    senderUsername: string,
+    text: string,
+    time: number,
+    id: string,
+    m: Partial<Heard> = {}
+  ) => said(senderUsername, text, time, { id, ...m });
 
   it("pairs the owner's own command heard after its answer, by their ids", () => {
     const w = new AccumuloWatch('LoreGameBot');
@@ -274,11 +284,11 @@ describe('an answer heard before its command (#16)', () => {
 
   it('compares the times where an id is missing, and pairs a command the player told of', () => {
     const w = new AccumuloWatch('LoreGameBot');
-    w.answer({ chat: GROUP, sender: 'LoreGameBot', text: SHORT, time: T }, 'alice');
-    w.answer({ chat: GROUP, sender: 'bob', text: '/acc', time: T }, 'alice');
+    w.answer({ chat: GROUP, senderUsername: 'LoreGameBot', text: SHORT, time: T }, 'alice');
+    w.answer({ chat: GROUP, senderUsername: 'bob', text: '/acc', time: T }, 'alice');
     expect(w.takeLate()).toMatchObject([{ answer: { player: 'bob' } }]);
-    w.answer({ chat: GROUP, sender: 'LoreGameBot', text: SHORT, time: T + 5000 }, 'alice');
-    w.answer({ chat: GROUP, sender: 'bob', text: '/acc', time: T + 5001 }, 'alice');
+    w.answer({ chat: GROUP, senderUsername: 'LoreGameBot', text: SHORT, time: T + 5000 }, 'alice');
+    w.answer({ chat: GROUP, senderUsername: 'bob', text: '/acc', time: T + 5001 }, 'alice');
     expect(w.takeLate()).toEqual([]);
     const s = new AccumuloWatch('LoreGameBot');
     s.answer(at('LoreGameBot', SHORT, T + 6000, '101'), 'alice');

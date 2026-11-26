@@ -149,7 +149,7 @@ export class GiftWatch extends AnswerWatch<Gift> {
 
   /** The owner's notice of a gift received, in private: its giver's, to the owner. */
   private received(m: Heard, self: string | undefined): PlayerGift | undefined {
-    if (m.own === true || m.sender.toLowerCase() !== this.giftBot || !isPrivate(m))
+    if (m.own === true || m.senderUsername?.toLowerCase() !== this.giftBot || !isPrivate(m))
       return undefined;
     const got = parseReceived(m.text);
     if (got === undefined) return undefined;

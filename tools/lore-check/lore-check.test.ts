@@ -14,11 +14,16 @@ const TURN = 'Lore - Il Bosco Inventato ⛅️ [B1]\n\nUna storia.\nHai ottenuto
 const SOON = (min: number) => `Non è passato abbastanza tempo! Riprova fra ${min} minuti.`;
 
 let n = 0;
-const say = (at: number, sender: string, text: string, m: Partial<Inbound> = {}): Inbound => ({
+const say = (
+  at: number,
+  senderUsername: string,
+  text: string,
+  m: Partial<Inbound> = {}
+): Inbound => ({
   account: 'telegram:owner',
   network: 'telegram',
   chat: GROUP,
-  sender,
+  senderUsername,
   text,
   time: T0 + at * MIN,
   id: String(++n),
@@ -28,12 +33,12 @@ const say = (at: number, sender: string, text: string, m: Partial<Inbound> = {})
 /** A command and the bot's reply to it, a second later (the bot's own, whatever the command). */
 const asked = (
   at: number,
-  sender: string,
+  senderUsername: string,
   command: string,
   answer: string,
   m: Partial<Inbound> = {}
 ): Inbound[] => {
-  const q = say(at, sender, command, m);
+  const q = say(at, senderUsername, command, m);
   const { own: _, ...where } = m;
   return [
     q,
@@ -354,7 +359,9 @@ describe('the lore check', () => {
         'Lore - Il Bosco Inventato ⛅️ [B1]\n\nUna storia.\n\nDurante il tuo cammino compare Gino [L2]!\nIl combattimento inizia...\nbob [L3] sconfigge Gino [L2]!\nHai ottenuto un sasso [B1]!'
       ),
     ];
-    const bot = inbounds.filter((m) => m.sender === 'LoreGameBot').map((m) => m.id as string);
+    const bot = inbounds
+      .filter((m) => m.senderUsername === 'LoreGameBot')
+      .map((m) => m.id as string);
     const picture = (n: number): ExportPhoto => ({
       file: `p${n}.jpg`,
       id: `sha256:${n}`,

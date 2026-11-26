@@ -162,9 +162,9 @@ describe('the market', () => {
 
   it('pairs each answer with the command waiting, and an update made out of turn with its own', () => {
     const watch = new MarketWatch('LoreGameBot', ['/punta', '/investi'], ['invest']);
-    const at = (sender: string, text: string, time: number, chat = '-100') => ({
+    const at = (senderUsername: string, text: string, time: number, chat = '-100') => ({
       chat,
-      sender,
+      senderUsername,
       text,
       time,
       id: String(time),

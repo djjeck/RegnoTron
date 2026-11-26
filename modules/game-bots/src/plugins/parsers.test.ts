@@ -84,12 +84,12 @@ describe('the game bots’ parsers', () => {
       // In private, an unreadable first answer to a turn is claimed: only to a turn it counts.
       for (const [, bot] of bots) {
         const chat = `@${bot}`;
-        const own = { chat, sender: 'alice', own: true, time: T0 };
+        const own = { chat, senderUsername: 'alice', own: true, time: T0 };
         account.hear({ ...own, text: '/play' });
-        account.hear({ chat, sender: bot, time: T0, text: 'Nothing like a turn.' });
+        account.hear({ chat, senderUsername: bot, time: T0, text: 'Nothing like a turn.' });
         for (const command of TURN_COMMANDS[bot]) {
           account.hear({ ...own, text: command });
-          account.hear({ chat, sender: bot, time: T0, text: 'Nothing like a turn.' });
+          account.hear({ chat, senderUsername: bot, time: T0, text: 'Nothing like a turn.' });
         }
       }
       expect(turns).toEqual([

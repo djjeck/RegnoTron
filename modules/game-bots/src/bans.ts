@@ -44,7 +44,7 @@ export type BanNews =
 /** The fields of a message the watch reads. */
 export type Heard = Pick<
   Inbound,
-  'chat' | 'sender' | 'text' | 'time' | 'id' | 'replyTo' | 'own' | 'private'
+  'chat' | 'senderId' | 'senderUsername' | 'text' | 'time' | 'id' | 'replyTo' | 'own' | 'private'
 > & { playback?: boolean };
 
 /**
@@ -81,8 +81,8 @@ export class BanWatch {
 
   hear(m: Heard, self: string | undefined): BanNews | undefined {
     const owner = BanWatch.owner(self);
-    if (m.own === true || m.sender.toLowerCase() !== this.bot) {
-      const who = m.own === true ? owner : m.sender;
+    if (m.own === true || m.senderUsername?.toLowerCase() !== this.bot) {
+      const who = m.own === true ? owner : (m.senderUsername ?? '');
       if (!isPrivate(m) && m.id !== undefined && who !== '')
         this.senders.remember(m.chat, m.id, who);
       return undefined;

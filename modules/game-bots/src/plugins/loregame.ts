@@ -1155,7 +1155,7 @@ export const loregamePlugin: Plugin = {
       const force = forced.answer(m, self);
       for (const w of [marketAsked, invests, cashouts])
         for (const late of w.takeLate()) marketOf(late.message, late.answer.reply, late.answer);
-      if (m.own === true || m.sender.toLowerCase() !== LOREGAMEBOT.toLowerCase()) return;
+      if (m.own === true || m.senderUsername?.toLowerCase() !== LOREGAMEBOT.toLowerCase()) return;
       const r = parseMarket(m.text);
       if (r === undefined) return;
       if (r.kind === 'update' || r.kind === 'market') {
@@ -1185,7 +1185,7 @@ export const loregamePlugin: Plugin = {
       // While an owner's /accumulo or /allenati waits for its answer, each message of the bot's in
       // that chat is logged (its id, a reply or not, never its text), with what the watch made of
       // it: an answer the parser does not pair shows whether it arrived at all.
-      const bots = m.own !== true && m.sender.toLowerCase() === LOREGAMEBOT.toLowerCase();
+      const bots = m.own !== true && m.senderUsername?.toLowerCase() === LOREGAMEBOT.toLowerCase();
       const waiting = bots ? [...asked.ownerWaiting(m.chat), ...trained.ownerWaiting(m.chat)] : [];
       const news = watch.hear(m, chat.self());
       if (news !== undefined) {
@@ -1247,7 +1247,7 @@ export const loregamePlugin: Plugin = {
           m.time
         );
       // A level-up, whatever brought it, for the player the message is about (§5.4).
-      if (m.own !== true && m.sender.toLowerCase() === LOREGAMEBOT.toLowerCase()) {
+      if (m.own !== true && m.senderUsername?.toLowerCase() === LOREGAMEBOT.toLowerCase()) {
         const { levelUp } = splitLevelUp(m.text.normalize('NFC'));
         const by = isPrivate(m)
           ? { player: self ?? '', owner: true }
@@ -1404,7 +1404,7 @@ export const loregamePlugin: Plugin = {
     // edit's time; every other edit is ignored, as the game ignores them (a command edited is not
     // played again). A shell before D144 offers no edits: the next menu or profile tells instead.
     chat.onEdit?.((m) => {
-      if (m.own === true || m.sender.toLowerCase() !== LOREGAMEBOT.toLowerCase()) return;
+      if (m.own === true || m.senderUsername?.toLowerCase() !== LOREGAMEBOT.toLowerCase()) return;
       listed(m, chat.self());
       shop(m, chat.self(), m.edited ?? m.time);
       const menu = parseSkillMenu(m.text);

@@ -65,12 +65,12 @@ describe('the training’s answers', () => {
 });
 
 describe('the training watch', () => {
-  const said = (sender: string, text: string, m: Partial<Heard> = {}): Heard => ({
+  const said = (senderUsername: string, text: string, m: Partial<Heard> = {}): Heard => ({
     chat: GROUP,
-    sender,
+    senderUsername,
     text,
     time: T,
-    id: `${sender}-${text}`,
+    id: `${senderUsername}-${text}`,
     ...m,
   });
 

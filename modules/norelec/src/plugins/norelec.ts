@@ -337,7 +337,12 @@ export const norelecPlugin: Plugin = definePlugin({
           off.push(
             irc.onMessage((m) => {
               if (m.chat.toLowerCase() !== channel) return;
-              const line = { nick: m.sender, text: m.text, time: m.time, playback: m.playback };
+              const line = {
+                nick: m.senderUsername ?? '',
+                text: m.text,
+                time: m.time,
+                playback: m.playback,
+              };
               if (waiting === undefined) game.line(line);
               else waiting.push(line);
             }),
@@ -351,7 +356,7 @@ export const norelecPlugin: Plugin = definePlugin({
           off.push(
             telegram.onMessage((m) => {
               const message = {
-                sender: m.sender,
+                sender: m.senderUsername ?? '',
                 text: m.text,
                 time: m.time,
                 private: m.private === true,

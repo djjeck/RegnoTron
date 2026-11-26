@@ -11,9 +11,14 @@ const CALM = 'Stai calmo maschio...';
 
 let n = 100;
 /** A message heard at `time`: a player's, in the group, unless it says otherwise. */
-const said = (sender: string, text: string, time: number, m: Partial<Heard> = {}): Heard => ({
+const said = (
+  senderUsername: string,
+  text: string,
+  time: number,
+  m: Partial<Heard> = {}
+): Heard => ({
   chat: GROUP,
-  sender,
+  senderUsername,
   text,
   time,
   id: String(n++),
