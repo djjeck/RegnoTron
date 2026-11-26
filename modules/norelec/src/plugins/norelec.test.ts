@@ -201,8 +201,8 @@ describe('the norelec plugin', () => {
         type: 'core.drift',
         t: T0 + 2000,
         plugin: 'norelec',
-        // The plugin's version, which the core records with its drift since MegaBotTron1999 0.1.40.
-        version: '0.1.0',
+        // No version: a plugin's own is ignored since MegaBotTron1999 0.1.68 (D166), and a plugin
+        // registered outside a module has none.
         event: 'unread',
         text: odd,
         lines: [odd],
