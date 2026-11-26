@@ -1145,10 +1145,30 @@ a message the account read, and one turn not seen (its XP and its episode); the 
 each a purchase the next menu explains.
 
 What it keeps of a player is a floor of what they did, and better as they play in the group. A
-player is known by the username the connector gives; one without a username is not kept (the
-connector gives `''`). **Their inventory** is kept as the owner's is (their drops, their level-ups,
-their listings: `inventory`, the owner's being the state's own), so that `state.holders({ item })`
-tells who holds an item, and how many.
+player is known by their id and username (§6.3); one without a username is not kept. **Their
+inventory** is kept as the owner's is (their drops, their level-ups, their listings: `inventory`,
+the owner's being the state's own), so that `state.holders({ item })` tells who holds an item, and
+how many.
+
+**Each player's high-water mark** (#18, game-bots 0.57.0): the highest **ladder step** they have
+been seen at this season, never lower. A step is the number of a ladder's place code (`B3`, `M3`,
+`N3`: 3), compared across the three ladders; an `X` is none. A player is seen at a step by what puts
+them there: a turn's header (`Lore - <place> [<code>]`, any player's), an arrival
+(`WOOSH! Sei arrivato alla Stagione …`), `/v`'s answer (`Ti trovi nella stagione …`) and a profile's
+`Attualmente in …`; not a refusal, `/requisiti`, a place listed among the exits, nor a level gate. A
+faction's player at `N1` with a ticket is at step 1.
+
+- **`players.<key>.high_water`**: `{ step, code, as_of }` (the code with its ladder's letter, and
+  when they were last seen there), none until a step is seen; `players.<key>.steps_seen`, each code
+  with when it was last seen, what the mark is drawn from. `state.player({ name })` gives both, by
+  username or id; a rise is a change of `players` (`loregame-state.changed`).
+- **The season** is the owner's to tell: **the node's `season_start`** (a date, `2026-08-17`, read
+  as UTC midnight, or an ISO time). A sighting before it never counts; with none, every one does.
+  The state shows it as `season.since`. **Set it at each reset of the game** (§5.9: the reset of 17
+  August 2026): nothing in the bot's answers is read as one. When it changes, every mark is drawn
+  again at the next start, from the steps seen since it; one seen only before it is left out, so a
+  mark may be none until the player is seen again.
+- The migration to 0.57.0 starts every mark empty: they fill in from the next sightings.
 
 ### 6.2 The pictures
 

@@ -73,7 +73,8 @@
  *   whether they are the owner) and `loregame-state.unbanned` (ended: `lifted`, as the bot served
  *   them again, or `expired`), each for any player, from live news alone (not history).
  * - **Its config:** `pin`, by default `inventory.held` (how many items the owner holds) and
- *   `owner.as_of` (when it last changed), the line of its card.
+ *   `owner.as_of` (when it last changed), the line of its card; `season_start`, when the game's
+ *   season began, which the players' high-water marks count from (#18, `season.since`).
  *
  * It never sends, and announces each change as `loregame-state.changed`, the sections changed; an
  * event its reducer refuses is recorded as `loregame-state.refused`.
@@ -129,6 +130,7 @@ import {
   recipeOf,
   recipesOf,
   reduce,
+  SEASON_EVENT,
   shopOf,
   stateSchema,
   statOf,
@@ -776,6 +778,26 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.57.0 keeps each player's high-water mark (#18): none yet, nothing seen; the season's start
+    // none, until the node's config gives it.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined) return;
+      const players = (kept.state['players'] ?? {}) as Record<string, Record<string, unknown>>;
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          season: kept.state['season'] ?? { since: null },
+          players: Object.fromEntries(
+            Object.entries(players).map(([key, p]) => [
+              key,
+              { high_water: null, steps_seen: {}, ...p },
+            ])
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -971,7 +993,18 @@ const config = (base.manifest.config as Config).extend({
     .describe(
       'Paths of the state (dotted: inventory.held) drawn first in its panel; the first two make the line on its card'
     ),
+  season_start: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)), 'not a date')
+    .optional()
+    .describe(
+      "When the game's current season began (a date, 2026-08-17, read as UTC midnight, or an ISO time): the players' high-water marks count only what was seen since. Set it at each reset of the game; none: everything counts"
+    ),
 });
+
+/** The season's start a node's config gives, as the state keeps it (ISO), none if not set. */
+export const seasonStartOf = (c: { season_start?: string | undefined }): string | null =>
+  c.season_start === undefined ? null : new Date(Date.parse(c.season_start)).toISOString();
 
 /** Its input to the account's `photo` (MegaBotTron1999's D151): optional, its edge the leave. */
 export const PHOTO_INPUT = 'photo';
@@ -1212,6 +1245,10 @@ async function create(ctx: PluginContext): Promise<Instance> {
       await inner.start?.();
       live = true;
       seed();
+      // The season's start the owner set, if the state holds another: every mark drawn again.
+      const since = seasonStartOf(ctx.config as { season_start?: string });
+      const held = (reads['get']?.({ path: 'season.since' }) ?? null) as string | null;
+      if (since !== held) deliver?.({ type: SEASON_EVENT, t: ctx.clock.now(), since }, undefined);
     },
     async stop() {
       live = false;

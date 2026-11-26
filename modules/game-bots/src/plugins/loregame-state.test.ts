@@ -521,8 +521,8 @@ describe("the bot's health, kept by 0.50.0", () => {
     kept.state.health = { ...kept.state.health, state: 'slow', reason: 'the probe was answered' };
     fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
     const meta = JSON.parse(fs.readFileSync(path.join(docs, '_meta.json'), 'utf8'));
-    // Back before 0.50.1's migration (and 0.56.0's after it), which run again.
-    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 2 }));
+    // Back before 0.50.1's migration (and 0.56.0's and 0.57.0's after it), which run again.
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 3 }));
     const migrated = await bootState(dir2);
     expect(migrated.read('health')).toMatchObject({
       state: 'up',
@@ -2012,6 +2012,36 @@ describe('neutrality, as a ticket gives it and its end takes it', () => {
   });
 });
 
+describe("each player's high-water mark (#18)", () => {
+  it("keeps the highest step seen since the season's start the node's config gives", async () => {
+    const d = path.join(dir, 'season');
+    const run = await bootState(d, { group: true, config: { season_start: '2026-11-06' } });
+    expect(run.read('get', { path: 'season' })).toEqual({ since: '2026-11-06T00:00:00.000Z' });
+    const bobs = await run.group('bob', '/lore');
+    await run.group('LoreGameBot', gain('una pigna [B1]').replace('[B1]\n', '[B3]\n'), {
+      replyTo: bobs,
+    });
+    expect(run.read('get', { path: 'players.bob.high_water' })).toEqual({
+      step: 3,
+      code: 'B3',
+      as_of: new Date(run.clock.now()).toISOString(),
+    });
+    // A rise is a change of the players' section.
+    expect(run.of('loregame-state.changed').at(-1)).toMatchObject({
+      sections: expect.arrayContaining(['players']) as unknown,
+    });
+    await run.core.stop();
+    // The owner moves the start past it: no mark; then unsets it: everything counts again.
+    const later = await bootState(d, { group: true, config: { season_start: '2026-11-07' } });
+    expect(later.read('get', { path: 'players.bob.high_water' })).toBeNull();
+    await later.core.stop();
+    const none = await bootState(d, { group: true });
+    expect(none.read('get', { path: 'season' })).toEqual({ since: null });
+    expect(none.read('get', { path: 'players.bob.high_water' })).toMatchObject({ code: 'B3' });
+    await none.core.stop();
+  });
+});
+
 describe('people, kept by 0.55 by their username (#17)', () => {
   it('are kept by their username, their `name`, until an event links it to an id', async () => {
     const dir2 = path.join(dir, 'by-name');
@@ -2027,7 +2057,8 @@ describe('people, kept by 0.55 by their username (#17)', () => {
     delete kept.state.players.bob.name;
     fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
     const meta = JSON.parse(fs.readFileSync(path.join(docs, '_meta.json'), 'utf8'));
-    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 1 }));
+    // Back before 0.56.0's migration (and 0.57.0's after it), which run again.
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 2 }));
     const migrated = await bootState(dir2, { group: true, ids: true });
     expect(migrated.read('get', { path: 'owner' })).toMatchObject({ id: null });
     expect(migrated.read('get', { path: 'players.bob' })).toMatchObject({ name: 'bob', turns: 1 });

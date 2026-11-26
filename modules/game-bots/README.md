@@ -296,10 +296,13 @@ their `/accumulo` answers, their trainings, any player's shop listing and the bo
 command held until its health moves on, since 0.52.0) folded in (`foldReadiness`), which a shell
 player reads before each command (`state.ready`, `state.commands`, `state.bot`).
 
-Its config is `pin` alone, the paths of the state its panel draws first (the first two make the line
-on its card; by default `inventory.held` and `owner.as_of`). It survives restarts, resumes from its
-cursor in the event log, so each turn is applied once (those the parser published while it was down
-included), and announces each change as `loregame-state.changed`.
+Its config is `pin`, the paths of the state its panel draws first (the first two make the line on
+its card; by default `inventory.held` and `owner.as_of`), and `season_start`, when the game's
+current season began: each player's **high-water mark** (`players.<key>.high_water`, the highest
+ladder step seen at since then, docs/game-bots.md §6.1) counts only what was seen since. The owner
+sets it at each reset of the game; without it, everything counts. It survives restarts, resumes from
+its cursor in the event log, so each turn is applied once (those the parser published while it was
+down included), and announces each change as `loregame-state.changed`.
 
 It keeps the **bans** of every player the parser heard of, with when each ends (below), the owner's
 **accumulo** (below), and the **inventory**: what the owner's turns gained (a drop with its `2x`

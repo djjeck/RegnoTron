@@ -16,7 +16,9 @@ import {
   recipeOf,
   recipesOf,
   reduce,
+  SEASON_EVENT,
   stateSchema,
+  stepOf,
 } from './loregame-state.ts';
 
 const T = Date.parse('2026-11-06T12:00:00Z');
@@ -63,6 +65,7 @@ describe('the loregame state', () => {
       'loregame.requirements',
       'loregame.gift',
       'loregame.renamed',
+      'loregame.season',
       'loregame.neutral',
       'loregame.market',
       'loregame.investments',
@@ -1354,5 +1357,109 @@ describe('the owner’s readiness, with what the state knows besides (MegaBotTro
     // A turn without the line: still not full.
     const not = foldReadiness(LORE_READINESS.reduce(asked, turn()), turn());
     expect(ready(not, T + 5 * MIN)['/accumulo']).toMatchObject({ ready: false });
+  });
+});
+
+describe('the high-water mark (#18)', () => {
+  const at = Date.parse('2026-11-06T12:00:00Z');
+  const H = 3_600_000;
+  const ev = (type: string, extra: Record<string, unknown>, t: number) =>
+    ({
+      type,
+      t,
+      chat: '-1001',
+      playerName: 'bob',
+      playerId: '2000',
+      owner: false,
+      ...extra,
+    }) as unknown as BusEvent;
+  const turnAt = (code: string, t: number) =>
+    ev(
+      'loregame.playerTurn',
+      {
+        command: '/lore',
+        outcome: {
+          kind: 'nothing',
+          bot: 'LoreGameBot',
+          reason: 'lost',
+          place: { name: 'Un Posto', code },
+        },
+        message: '1',
+        answer: '2',
+      },
+      t
+    );
+  const mark = (s: ReturnType<typeof initialState>) => s.players['2000']?.high_water ?? null;
+
+  it('reads a step from a ladder place code alone', () => {
+    expect([stepOf('B3'), stepOf('M10'), stepOf('N1')]).toEqual([3, 10, 1]);
+    expect([stepOf('X'), stepOf('B'), stepOf('L4'), stepOf('b3')]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it('rises with each higher step seen at, across ladders, and never goes down', () => {
+    let s = reduce(initialState(), turnAt('B2', at));
+    expect(mark(s)).toEqual({ step: 2, code: 'B2', as_of: '2026-11-06T12:00:00.000Z' });
+    // A profile's whereabouts, on another ladder: higher.
+    s = reduce(s, ev('loregame.profile', { location: { name: 'Altrove', code: 'M3' } }, at + H));
+    expect(mark(s)).toMatchObject({ step: 3, code: 'M3' });
+    // A lower step, then a refusal, an X and an arrival at the same step: no rise.
+    s = reduce(s, turnAt('N1', at + 2 * H));
+    s = reduce(
+      s,
+      ev('loregame.travel', { kind: 'refused', place: { name: 'Su', code: 'B9' } }, at + 3 * H)
+    );
+    s = reduce(s, turnAt('X', at + 4 * H));
+    expect(mark(s)).toMatchObject({ step: 3, code: 'M3' });
+    s = reduce(
+      s,
+      ev('loregame.travel', { kind: 'arrived', place: { name: 'Su', code: 'B4' } }, at + 5 * H)
+    );
+    s = reduce(
+      s,
+      ev('loregame.travel', { kind: 'here', place: { name: 'Giù', code: 'B1' } }, at + 6 * H)
+    );
+    expect(mark(s)).toMatchObject({ step: 4, code: 'B4' });
+    expect(Object.keys(s.players['2000']?.steps_seen ?? {}).sort()).toEqual([
+      'B1',
+      'B2',
+      'B4',
+      'M3',
+      'N1',
+    ]);
+    expect(stateSchema.safeParse(s).success).toBe(true);
+  });
+
+  it("counts only what was seen since the season's start, drawn again when it moves", () => {
+    let s = reduce(initialState(), turnAt('B5', at));
+    s = reduce(s, turnAt('B2', at + 2 * H));
+    // The start set after the B5: the mark is the B2, seen since.
+    s = reduce(s, {
+      type: SEASON_EVENT,
+      t: at + 3 * H,
+      since: '2026-11-06T13:00:00.000Z',
+    } as never);
+    expect(s.season).toEqual({ since: '2026-11-06T13:00:00.000Z' });
+    expect(mark(s)).toMatchObject({ step: 2, code: 'B2' });
+    // A sighting before the start never counts, whenever it is read.
+    s = reduce(s, turnAt('M9', at));
+    expect(mark(s)).toMatchObject({ step: 2 });
+    // No start: everything counts.
+    s = reduce(s, { type: SEASON_EVENT, t: at + 4 * H, since: null } as never);
+    expect(mark(s)).toMatchObject({ step: 9, code: 'M9' });
+    // A start after everything seen: no mark until the next sighting.
+    s = reduce(s, {
+      type: SEASON_EVENT,
+      t: at + 5 * H,
+      since: '2026-11-07T00:00:00.000Z',
+    } as never);
+    expect(mark(s)).toBeNull();
+    expect(
+      reduce(s, { type: SEASON_EVENT, t: at + 6 * H, since: '2026-11-07T00:00:00.000Z' } as never)
+    ).toBe(s);
   });
 });

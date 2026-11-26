@@ -137,6 +137,12 @@ import { TRAINING, TRAINING_COOLDOWN_MIN, TRAINING_MECHANICS } from '#src/traini
 export const LOREGAME_STATE = 'loregame-state';
 
 /**
+ * The season's start set (#18), as the node's config gives it (`season_start`): never published,
+ * handed to the reducer by the node when it differs from the state's.
+ */
+export const SEASON_EVENT = `${LOREGAME_PARSER}.season`;
+
+/**
  * The parser's events it applies: the owner's turns, the bans, the accumulo, the trainings, the
  * level-ups, the profiles, the skills menus and the equipment, every player's.
  */
@@ -158,6 +164,7 @@ export const CONSUMES: readonly string[] = [
   REQUIREMENTS_EVENT,
   GIFT_EVENT,
   RENAMED_EVENT,
+  SEASON_EVENT,
   NEUTRAL_EVENT,
   MARKET_EVENT,
   INVESTMENTS_EVENT,
@@ -380,6 +387,19 @@ const player = z.object({
     .string()
     .nullable()
     .describe('Their username, as last seen; none if not known (#17: kept by id, else by name)'),
+  high_water: z
+    .object({
+      step: z.number().describe('The highest step: the number of a place code (B3: 3)'),
+      code: z.string().describe("The place's code, its ladder's letter included (B3)"),
+      as_of: z.string().describe('When they were last seen there'),
+    })
+    .nullable()
+    .describe(
+      'Their high-water mark (#18): the highest ladder step seen at since the season began, never lower; none yet'
+    ),
+  steps_seen: z
+    .record(z.string(), z.string())
+    .describe('Each ladder step seen at, by its place code: when last (the mark is drawn from it)'),
   game: z
     .object({
       name: z.string().nullable().describe('Their name in the game, as a fight names them'),
@@ -644,6 +664,11 @@ export const stateSchema = z.object({
     })
     .describe('Owner'),
   bans: z.record(z.string(), ban).describe('Banned players'),
+  season: z
+    .object({
+      since: date.describe("The season's start, as the owner set it (none: every sighting counts)"),
+    })
+    .describe('The season the high-water marks are of (#18)'),
   accumulo: accumulo.describe('Accumulo'),
   players: z.record(z.string(), player).describe('Players'),
   inventory: inventorySchema.describe('Inventory'),
@@ -793,6 +818,7 @@ export function initialState(): LoreState {
   return {
     owner: { as_of: null, name: null, id: null },
     bans: {},
+    season: { since: null },
     accumulo: initialAccumulo(),
     players: {},
     inventory: initialInventory(),
@@ -827,6 +853,8 @@ export function initialPlayer(at: string): Player {
   return {
     as_of: at,
     name: null,
+    high_water: null,
+    steps_seen: {},
     game: { name: null, level: null },
     turns: 0,
     unseen: 0,
@@ -1814,7 +1842,81 @@ const STEPS: readonly ((s: LoreState, e: BusEvent) => LoreState)[] = [
   reduceCatalogue,
   reduceMedia,
   reduceHealth,
+  reduceHighWater,
 ];
+
+/** A ladder step: a place code of a ladder (B, M, N) and its number. `X` and others are none. */
+export function stepOf(code: string): number | undefined {
+  const m = /^[BMN](\d+)$/u.exec(code);
+  return m === null ? undefined : Number(m[1]);
+}
+
+/**
+ * A player's high-water mark from the steps they were seen at (#18): the highest step seen at or
+ * after `since` (all, without one), the latest seen of those at it; none if none.
+ */
+export function highWaterOf(
+  seen: Record<string, string>,
+  since: string | null
+): Player['high_water'] {
+  let best: Player['high_water'] = null;
+  for (const [code, at] of Object.entries(seen)) {
+    const step = stepOf(code);
+    if (step === undefined || (since !== null && Date.parse(at) < Date.parse(since))) continue;
+    if (best === null || step > best.step || (step === best.step && at > best.as_of))
+      best = { step, code, as_of: at };
+  }
+  return best;
+}
+
+/** The place code an event sees its player at, if one (a turn, an arrival, a `/v`, a profile). */
+function sightingOf(e: BusEvent): string | undefined {
+  const code = (p: unknown): string | undefined =>
+    typeof p === 'object' && p !== null && typeof (p as { code?: unknown }).code === 'string'
+      ? (p as { code: string }).code
+      : undefined;
+  if (e.type === PLAYER_TURN_EVENT) return code(outcomeOf(e)?.place);
+  if (e.type === TRAVEL_EVENT) return e['kind'] === 'refused' ? undefined : code(e['place']);
+  if (e.type === PROFILE_EVENT) return code(e['location']);
+  return undefined;
+}
+
+/**
+ * Each player's high-water mark (#18, docs/game-bots.md §6.1): a turn's place, an arrival, a `/v`
+ * or a profile's whereabouts is a step they were seen at, kept by its code with when last seen; the
+ * mark is the highest seen since the season's start. A new start draws every mark again from what
+ * was seen, those seen before it left out.
+ */
+function reduceHighWater(state: LoreState, e: BusEvent): LoreState {
+  if (e.type === SEASON_EVENT) {
+    const since = typeof e['since'] === 'string' ? e['since'] : null;
+    if (since === state.season.since) return state;
+    const players = Object.fromEntries(
+      Object.entries(state.players).map(([k, p]) => [
+        k,
+        { ...p, high_water: highWaterOf(p.steps_seen, since) },
+      ])
+    );
+    return { ...state, season: { since }, players };
+  }
+  const code = sightingOf(e);
+  if (code === undefined || stepOf(code) === undefined) return state;
+  const player = e['player'];
+  const key =
+    typeof player === 'string' && player !== ''
+      ? player
+      : e['owner'] === true
+        ? ownerKey(state)
+        : null;
+  if (key === null || key === '') return state;
+  const at = asIso(e.t);
+  const p = Object.hasOwn(state.players, key) ? (state.players[key] as Player) : initialPlayer(at);
+  const was = Object.hasOwn(p.steps_seen, code) ? p.steps_seen[code] : undefined;
+  if (was !== undefined && was >= at) return state;
+  const steps_seen = withKey(p.steps_seen, code, at);
+  const high_water = highWaterOf(steps_seen, state.season.since);
+  return { ...state, players: withKey(state.players, key, { ...p, steps_seen, high_water }) };
+}
 
 /**
  * The bot's health, as the parser tells each change (src/health.ts): the state, and each outage, from
