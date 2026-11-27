@@ -1169,6 +1169,18 @@ faction's player at `N1` with a ticket is at step 1.
   again at the next start, from the steps seen since it; one seen only before it is left out, so a
   mark may be none until the player is seen again.
 - The migration to 0.57.0 starts every mark empty: they fill in from the next sightings.
+- **The marks through time** (#19, game-bots 0.58.0): each step's sightings are kept by when
+  **first** and **last** seen (`steps_seen.<code>: { first, last }`), so that the mark a player held
+  at any time this season is known: the highest step first seen by then.
+  **`state.mark({ name?, at? })`** answers it (`name` a username or an id, the owner's without one;
+  `at` an ISO time or ms, now without one): `{ step, code, since }`, `since` when they first reached
+  it, or none before any. A step first seen before the season's start and seen again since counts
+  from the start. The migration to 0.58.0 takes a step kept by 0.57.0 as first seen when last.
+- **Seeded from the exports** (tools/sightings-seed): the players' steps seen in them, by Telegram
+  id, merged at the next start into those kept (the earliest first, the latest last: a second seed,
+  or what the live log holds already, adds nothing). An export gives ids and display names, never
+  usernames: a player the state keeps by username alone is kept apart under their id until an event
+  links the two (§6.3), then merged. The seed writes no picture and no file.
 
 ### 6.2 The pictures
 

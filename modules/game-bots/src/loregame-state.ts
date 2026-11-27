@@ -143,6 +143,13 @@ export const LOREGAME_STATE = 'loregame-state';
 export const SEASON_EVENT = `${LOREGAME_PARSER}.season`;
 
 /**
+ * Sightings of the exports (#19, tools/sightings-seed): each player's steps, first and last seen,
+ * by their id; never published, handed to the reducer from its seed. They add to what is kept: a
+ * sighting it holds already, or an earlier last, changes nothing.
+ */
+export const SIGHTINGS_EVENT = `${LOREGAME_PARSER}.sightings`;
+
+/**
  * The parser's events it applies: the owner's turns, the bans, the accumulo, the trainings, the
  * level-ups, the profiles, the skills menus and the equipment, every player's.
  */
@@ -165,6 +172,7 @@ export const CONSUMES: readonly string[] = [
   GIFT_EVENT,
   RENAMED_EVENT,
   SEASON_EVENT,
+  SIGHTINGS_EVENT,
   NEUTRAL_EVENT,
   MARKET_EVENT,
   INVESTMENTS_EVENT,
@@ -398,8 +406,16 @@ const player = z.object({
       'Their high-water mark (#18): the highest ladder step seen at since the season began, never lower; none yet'
     ),
   steps_seen: z
-    .record(z.string(), z.string())
-    .describe('Each ladder step seen at, by its place code: when last (the mark is drawn from it)'),
+    .record(
+      z.string(),
+      z.object({
+        first: z.string().describe('When first seen there'),
+        last: z.string().describe('When last seen there'),
+      })
+    )
+    .describe(
+      'Each ladder step seen at, by its place code: when first and last (the mark is drawn from it, #19)'
+    ),
   game: z
     .object({
       name: z.string().nullable().describe('Their name in the game, as a fight names them'),
@@ -1851,26 +1867,95 @@ export function stepOf(code: string): number | undefined {
   return m === null ? undefined : Number(m[1]);
 }
 
+/** When a player was seen at a step: first and last (#19). */
+export type Seen = { first: string; last: string };
+
+/**
+ * When a step's sightings count since `since` (#18, #19): from its first, or from the season's
+ * start when it was first seen before it and seen again since; none if last seen before it.
+ */
+function countedFrom(seen: Seen, since: string | null): string | undefined {
+  if (since === null) return seen.first;
+  if (Date.parse(seen.last) < Date.parse(since)) return undefined;
+  return Date.parse(seen.first) < Date.parse(since) ? since : seen.first;
+}
+
 /**
  * A player's high-water mark from the steps they were seen at (#18): the highest step seen at or
  * after `since` (all, without one), the latest seen of those at it; none if none.
  */
 export function highWaterOf(
-  seen: Record<string, string>,
+  seen: Record<string, Seen>,
   since: string | null
 ): Player['high_water'] {
   let best: Player['high_water'] = null;
   for (const [code, at] of Object.entries(seen)) {
     const step = stepOf(code);
-    if (step === undefined || (since !== null && Date.parse(at) < Date.parse(since))) continue;
-    if (best === null || step > best.step || (step === best.step && at > best.as_of))
-      best = { step, code, as_of: at };
+    if (step === undefined || countedFrom(at, since) === undefined) continue;
+    if (best === null || step > best.step || (step === best.step && at.last > best.as_of))
+      best = { step, code, as_of: at.last };
   }
   return best;
 }
 
+/** A player's mark as of a time (#19): its step, its code, and since when they held it. */
+export interface MarkAt {
+  step: number;
+  code: string;
+  since: string;
+}
+
+/**
+ * The mark a player held at `at` (ms; now, without one) this season (#19): the highest step first
+ * seen this season at or before it, and when they first reached it; none before any.
+ */
+export function markAt(
+  seen: Record<string, Seen>,
+  since: string | null,
+  at?: number
+): MarkAt | null {
+  let best: MarkAt | null = null;
+  for (const [code, s] of Object.entries(seen)) {
+    const step = stepOf(code);
+    const from = countedFrom(s, since);
+    if (step === undefined || from === undefined) continue;
+    if (at !== undefined && Date.parse(from) > at) continue;
+    if (best === null || step > best.step || (step === best.step && from < best.since))
+      best = { step, code, since: from };
+  }
+  return best;
+}
+
+/** `seen` with `code` seen from `first` to `last`, each kept the earliest and latest (#19). */
+function seenAt(seen: Record<string, Seen>, code: string, first: string, last: string) {
+  const was = Object.hasOwn(seen, code) ? seen[code] : undefined;
+  const next = {
+    first: was === undefined || first < was.first ? first : was.first,
+    last: was === undefined || last > was.last ? last : was.last,
+  };
+  return was !== undefined && was.first === next.first && was.last === next.last
+    ? seen
+    : withKey(seen, code, next);
+}
+
+/** The player `ref` names, by key (#17) or as the owner, with their steps seen merged with `steps`. */
+function withSteps(
+  state: LoreState,
+  key: string,
+  steps: Record<string, Seen>,
+  at: string
+): LoreState {
+  const p = Object.hasOwn(state.players, key) ? (state.players[key] as Player) : initialPlayer(at);
+  let steps_seen = p.steps_seen;
+  for (const [code, s] of Object.entries(steps))
+    if (stepOf(code) !== undefined) steps_seen = seenAt(steps_seen, code, s.first, s.last);
+  if (steps_seen === p.steps_seen && Object.hasOwn(state.players, key)) return state;
+  const high_water = highWaterOf(steps_seen, state.season.since);
+  return { ...state, players: withKey(state.players, key, { ...p, steps_seen, high_water }) };
+}
+
 /** The place code an event sees its player at, if one (a turn, an arrival, a `/v`, a profile). */
-function sightingOf(e: BusEvent): string | undefined {
+export function sightingOf(e: BusEvent): string | undefined {
   const code = (p: unknown): string | undefined =>
     typeof p === 'object' && p !== null && typeof (p as { code?: unknown }).code === 'string'
       ? (p as { code: string }).code
@@ -1899,6 +1984,7 @@ function reduceHighWater(state: LoreState, e: BusEvent): LoreState {
     );
     return { ...state, season: { since }, players };
   }
+  if (e.type === SIGHTINGS_EVENT) return reduceSightings(state, e);
   const code = sightingOf(e);
   if (code === undefined || stepOf(code) === undefined) return state;
   const player = e['player'];
@@ -1910,12 +1996,36 @@ function reduceHighWater(state: LoreState, e: BusEvent): LoreState {
         : null;
   if (key === null || key === '') return state;
   const at = asIso(e.t);
-  const p = Object.hasOwn(state.players, key) ? (state.players[key] as Player) : initialPlayer(at);
-  const was = Object.hasOwn(p.steps_seen, code) ? p.steps_seen[code] : undefined;
-  if (was !== undefined && was >= at) return state;
-  const steps_seen = withKey(p.steps_seen, code, at);
-  const high_water = highWaterOf(steps_seen, state.season.since);
-  return { ...state, players: withKey(state.players, key, { ...p, steps_seen, high_water }) };
+  return withSteps(state, key, { [code]: { first: at, last: at } }, at);
+}
+
+const sightingsSchema = z.looseObject({
+  owner: z.string().nullable().optional(),
+  players: z.record(
+    z.string(),
+    z.object({ steps: z.record(z.string(), z.object({ first: z.string(), last: z.string() })) })
+  ),
+});
+
+/**
+ * A seed's sightings merged (#19): each player's by their id, kept under it, or under the owner's
+ * key for the owner's id (the owner's id then known). A player the state keeps by username alone is
+ * matched once an event links the name to the id (`relink`), the two then merged.
+ */
+function reduceSightings(state: LoreState, e: BusEvent): LoreState {
+  const r = sightingsSchema.safeParse(e);
+  if (!r.success) return state;
+  let s = state;
+  const owner = r.data.owner ?? null;
+  if (owner !== null && s.owner.id === null) {
+    s = { ...s, owner: { ...s.owner, id: owner } };
+    if (s.owner.name !== null) s = relink(s, { id: owner, name: s.owner.name });
+  }
+  for (const [id, p] of Object.entries(r.data.players)) {
+    const key = id === owner || id === s.owner.id ? (ownerKey(s) ?? id) : (keyIn(s, id) ?? id);
+    s = withSteps(s, key, p.steps, asIso(e.t));
+  }
+  return s;
 }
 
 /**
@@ -2039,8 +2149,18 @@ function relink(s: LoreState, ref: Ref): LoreState {
   let next = s;
   const k = byName(s.players);
   if (k !== undefined) {
-    const kept = Object.hasOwn(s.players, ref.id) ? s.players[ref.id] : s.players[k];
-    next = { ...next, players: withKey(withoutKey(s.players, k), ref.id, kept as Player) };
+    const named = s.players[k] as Player;
+    const byId = Object.hasOwn(s.players, ref.id) ? (s.players[ref.id] as Player) : undefined;
+    // Both kept: the later of the two, with every step either was seen at (a seed's, #19).
+    let kept = byId === undefined || named.as_of > byId.as_of ? named : byId;
+    if (byId !== undefined) {
+      const other = kept === named ? byId : named;
+      let steps_seen = kept.steps_seen;
+      for (const [code, seen] of Object.entries(other.steps_seen))
+        steps_seen = seenAt(steps_seen, code, seen.first, seen.last);
+      kept = { ...kept, steps_seen, high_water: highWaterOf(steps_seen, s.season.since) };
+    }
+    next = { ...next, players: withKey(withoutKey(s.players, k), ref.id, kept) };
   }
   const b = byName(s.bans);
   if (b !== undefined) {

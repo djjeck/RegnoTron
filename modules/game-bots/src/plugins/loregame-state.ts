@@ -120,9 +120,11 @@ import {
   LORE_READINESS,
   LOREGAME_STATE,
   type LoreState,
+  markAt,
   marketHistory,
   marketNow,
   mediaEntryOf,
+  ownerKey,
   PINS,
   placesOf,
   playerOf,
@@ -132,6 +134,7 @@ import {
   reduce,
   SEASON_EVENT,
   shopOf,
+  SIGHTINGS_EVENT,
   stateSchema,
   statOf,
 } from '#src/loregame-state.ts';
@@ -798,6 +801,31 @@ const base = statePlugin<Kept>({
         },
       });
     },
+    // 0.58.0 keeps when each step was first seen too (#19): one kept by 0.57.0 was first seen when
+    // last, as far as it knows.
+    (store: Store) => {
+      const kept = store.read<{ state?: Record<string, unknown> }>('state');
+      if (kept?.state === undefined) return;
+      const players = (kept.state['players'] ?? {}) as Record<string, Record<string, unknown>>;
+      store.write('state', {
+        ...kept,
+        state: {
+          ...kept.state,
+          players: Object.fromEntries(
+            Object.entries(players).map(([key, p]) => {
+              const seen = (p['steps_seen'] ?? {}) as Record<string, unknown>;
+              const steps = Object.fromEntries(
+                Object.entries(seen).map(([code, at]) => [
+                  code,
+                  typeof at === 'string' ? { first: at, last: at } : at,
+                ])
+              );
+              return [key, { ...p, steps_seen: steps }];
+            })
+          ),
+        },
+      });
+    },
   ],
   queries: {
     ban: {
@@ -819,6 +847,23 @@ const base = statePlugin<Kept>({
         drift: z.array(z.looseObject({ kind: z.string(), at: z.string() })),
       }),
       run: (s): Accumulo => accumuloOf(s),
+    },
+    mark: {
+      help: "A player's high-water mark as of a time this season (the owner's unless named, by username or id): the highest ladder step they had been seen at by then, its code, and since when they held it; now without `at`; none before any",
+      input: z.object({
+        name: z.string().optional(),
+        at: z
+          .union([z.string(), z.number()])
+          .optional()
+          .describe('When: an ISO time or ms; now without it'),
+      }),
+      output: z.object({ step: z.number(), code: z.string(), since: z.string() }).nullable(),
+      run: (s, input: { name?: string; at?: string | number }) => {
+        const p =
+          input.name === undefined ? playerOf(s, ownerKey(s) ?? '') : playerOf(s, input.name);
+        const at = typeof input.at === 'string' ? Date.parse(input.at) : input.at;
+        return p === null ? null : markAt(p.steps_seen, s.season.since, at);
+      },
     },
     player: {
       help: 'A player as the turns and answers the account reads tell (by username or id): their name and level in the game, their turns seen and unseen, their rest, their accumulo, their trainings, the XP seen and their level-ups; none if never heard of',
@@ -1013,11 +1058,28 @@ export const PHOTO_INPUT = 'photo';
  * requirements, taken at the next start.
  */
 export const MEDIA_SEED = 'media-seed';
+/**
+ * The document a seed of the players' sightings from the exports is put in (#19,
+ * tools/sightings-seed): taken at the next start, then removed. Its own, apart from the pictures'.
+ */
+export const SIGHTINGS_SEED = 'sightings-seed';
 
 /**
  * What a seed holds: each place's pictures, and each picture's bytes (base64), by id; and each
  * place's requirements as last told in the exports (`as_of`), if any (0.46.0's seeds).
  */
+/** What a sightings seed holds (#19): the owner's id, and each player's steps by their id. */
+export const sightingsSeedSchema = z.object({
+  owner: z.string().nullable(),
+  players: z.record(
+    z.string(),
+    z.object({
+      name: z.string().nullable().describe('Their display name in the exports, for a reader'),
+      steps: z.record(z.string(), z.object({ first: z.string(), last: z.string() })),
+    })
+  ),
+});
+
 const seedSchema = z.object({
   places: z.record(z.string(), z.object({ name: z.string(), media: z.array(mediaEntrySchema) })),
   files: z.record(z.string(), z.string()),
@@ -1150,6 +1212,28 @@ async function create(ctx: PluginContext): Promise<Instance> {
   };
 
   /** A seed of pictures in its store (tools/media-seed): taken, then removed. */
+  /**
+   * The players' sightings of a seed (#19), handed to the reducer as one event, then the seed
+   * removed: they add to the steps kept, and touch nothing else (no picture, no file).
+   */
+  const sightings = (): void => {
+    const kept = ctx.store.read<{ owner?: string | null; players?: unknown }>(SIGHTINGS_SEED);
+    if (kept === undefined) return;
+    const r = sightingsSeedSchema.safeParse(kept);
+    if (!r.success) {
+      ctx.log.warn(`${SIGHTINGS_SEED} not taken: ${r.error.message}`);
+      return;
+    }
+    deliver?.(
+      { type: SIGHTINGS_EVENT, t: ctx.clock.now(), owner: r.data.owner, players: r.data.players },
+      undefined
+    );
+    queueMicrotask(() => ctx.store.remove(SIGHTINGS_SEED));
+    const n = Object.values(r.data.players).reduce((a, p) => a + Object.keys(p.steps).length, 0);
+    ctx.log.info(
+      `${SIGHTINGS_SEED} taken: ${Object.keys(r.data.players).length} player(s), ${n} step(s) seen`
+    );
+  };
   const seed = (): void => {
     const kept = ctx.store.read(MEDIA_SEED);
     if (kept === undefined) return;
@@ -1245,6 +1329,7 @@ async function create(ctx: PluginContext): Promise<Instance> {
       await inner.start?.();
       live = true;
       seed();
+      sightings();
       // The season's start the owner set, if the state holds another: every mark drawn again.
       const since = seasonStartOf(ctx.config as { season_start?: string });
       const held = (reads['get']?.({ path: 'season.since' }) ?? null) as string | null;

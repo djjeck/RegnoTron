@@ -102,6 +102,9 @@ replays them the same way and writes the market's history, for `loregame-state` 
 instance's volume. `npm run media-seed -- <export folders> … --out <file>` writes the places'
 pictures the exports hold, for `loregame-state` to take at its next start:
 [tools/media-seed/README.md](tools/media-seed/README.md); the same.
+`npm run sightings-seed -- <export folders> … --since <the season's start> --out <file>` writes each
+player's ladder steps seen, by Telegram id, for `loregame-state` to take at its next start:
+[tools/sightings-seed/README.md](tools/sightings-seed/README.md); the same.
 
 To take newer shell code, move the submodule to a newer tag of MegaBotTron1999 and commit the new
 pin with the lockfile.

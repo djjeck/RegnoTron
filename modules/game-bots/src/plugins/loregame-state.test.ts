@@ -59,6 +59,7 @@ describe('the loregame-state node', () => {
       'freshness',
       'ban',
       'accumulo',
+      'mark',
       'player',
       'stat',
       'profile',
@@ -521,8 +522,8 @@ describe("the bot's health, kept by 0.50.0", () => {
     kept.state.health = { ...kept.state.health, state: 'slow', reason: 'the probe was answered' };
     fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
     const meta = JSON.parse(fs.readFileSync(path.join(docs, '_meta.json'), 'utf8'));
-    // Back before 0.50.1's migration (and 0.56.0's and 0.57.0's after it), which run again.
-    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 3 }));
+    // Back before 0.50.1's migration (and those after it), which run again.
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 4 }));
     const migrated = await bootState(dir2);
     expect(migrated.read('health')).toMatchObject({
       state: 'up',
@@ -2042,6 +2043,29 @@ describe("each player's high-water mark (#18)", () => {
   });
 });
 
+describe('the steps seen, kept by 0.57 by when last (#19)', () => {
+  it('are first seen when last, as far as it knows', async () => {
+    const d = path.join(dir, 'steps-057');
+    const run = await bootState(d, { group: true });
+    const bobs = await run.group('bob', '/lore');
+    await run.group('LoreGameBot', gain('una pigna [B1]'), { replyTo: bobs });
+    await run.core.stop();
+    const docs = path.join(d, 'data', 'instances', 'loregame-state');
+    const file = fs.readdirSync(docs).find((f) => f.startsWith('state')) as string;
+    const kept = JSON.parse(fs.readFileSync(path.join(docs, file), 'utf8'));
+    const when = kept.state.players.bob.steps_seen.B1.last;
+    kept.state.players.bob.steps_seen = { B1: when };
+    fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
+    const meta = JSON.parse(fs.readFileSync(path.join(docs, '_meta.json'), 'utf8'));
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 1 }));
+    const migrated = await bootState(d, { group: true });
+    expect(migrated.read('get', { path: 'players.bob.steps_seen' })).toEqual({
+      B1: { first: when, last: when },
+    });
+    await migrated.core.stop();
+  });
+});
+
 describe('people, kept by 0.55 by their username (#17)', () => {
   it('are kept by their username, their `name`, until an event links it to an id', async () => {
     const dir2 = path.join(dir, 'by-name');
@@ -2057,8 +2081,8 @@ describe('people, kept by 0.55 by their username (#17)', () => {
     delete kept.state.players.bob.name;
     fs.writeFileSync(path.join(docs, file), JSON.stringify(kept));
     const meta = JSON.parse(fs.readFileSync(path.join(docs, '_meta.json'), 'utf8'));
-    // Back before 0.56.0's migration (and 0.57.0's after it), which run again.
-    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 2 }));
+    // Back before 0.56.0's migration (and those after it), which run again.
+    fs.writeFileSync(path.join(docs, '_meta.json'), JSON.stringify({ version: meta.version - 3 }));
     const migrated = await bootState(dir2, { group: true, ids: true });
     expect(migrated.read('get', { path: 'owner' })).toMatchObject({ id: null });
     expect(migrated.read('get', { path: 'players.bob' })).toMatchObject({ name: 'bob', turns: 1 });
@@ -3159,6 +3183,60 @@ describe('the pictures of the places', () => {
       { id: null, kind: 'unknown', source: { via: 'arrival' } },
     ]);
     await run.core.stop();
+  });
+
+  it("takes a seed of the players' sightings, and leaves the pictures and files as they are (#19)", async () => {
+    const d = path.join(dir, 'sightings');
+    const run = await bootState(d, { photos: true, ids: true });
+    const asked = await run.group('bob', '/vai bosco', { senderId: '2000' });
+    await run.group('LoreGameBot', ARRIVED('Il Bosco Inventato ⛅️ [B1]'), {
+      replyTo: asked,
+      photo: { data: jpeg(1), mime: 'image/jpeg' },
+    });
+    await run.fetched();
+    const pictures = mediaOf(run, 'B1');
+    expect(pictures).toHaveLength(1);
+    await run.core.stop();
+    const docs = path.join(d, 'data', 'instances', 'loregame-state');
+    const files = filesOf(d);
+    const bytes = files.map((f) =>
+      fs.readFileSync(path.join(d, 'data', 'instances', 'loregame-state', 'files', f))
+    );
+    // A media seed it cannot read stays where it is, untouched by the sightings' seed.
+    fs.writeFileSync(path.join(docs, 'media-seed.json'), JSON.stringify({ places: [] }));
+    const seed = {
+      owner: OWNER_ID,
+      players: {
+        '2000': {
+          name: 'Bob Rossi',
+          steps: { B3: { first: '2026-09-01T10:00:00.000Z', last: '2026-09-02T10:00:00.000Z' } },
+        },
+        '3000': {
+          name: 'Carla',
+          steps: { M2: { first: '2026-09-05T10:00:00.000Z', last: '2026-09-05T10:00:00.000Z' } },
+        },
+      },
+    };
+    fs.writeFileSync(path.join(docs, 'sightings-seed.json'), JSON.stringify(seed));
+    // Without its photo edge: no picture is fetched, none dropped.
+    const again = await bootState(d, { group: true, ids: true });
+    await again.settle();
+    expect(fs.existsSync(path.join(docs, 'sightings-seed.json'))).toBe(false);
+    expect(fs.readFileSync(path.join(docs, 'media-seed.json'), 'utf8')).toBe('{"places":[]}');
+    expect(mediaOf(again, 'B1')).toEqual(pictures);
+    expect(filesOf(d)).toEqual(files);
+    expect(files.map((f) => fs.readFileSync(path.join(docs, 'files', f)))).toEqual(bytes);
+    // Bob's mark through time: the seed's B3 from 1 September, by id or username.
+    expect(again.read('mark', { name: 'bob', at: '2026-09-01T12:00:00.000Z' })).toEqual({
+      step: 3,
+      code: 'B3',
+      since: '2026-09-01T10:00:00.000Z',
+    });
+    expect(again.read('mark', { name: '2000', at: '2026-08-31T00:00:00.000Z' })).toBeNull();
+    expect(again.read('mark', { name: '3000' })).toMatchObject({ code: 'M2' });
+    expect(again.read('mark', { name: 'nobody' })).toBeNull();
+    expect(again.read('get', { path: 'owner.id' })).toBe(OWNER_ID);
+    await again.core.stop();
   });
 
   it('takes a seed of the exports’ pictures at its next start, once', async () => {

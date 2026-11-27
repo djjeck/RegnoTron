@@ -11,12 +11,14 @@ import {
   initialState,
   LORE_READINESS,
   type LoreState,
+  markAt,
   playerOf,
   recipeMadeOf,
   recipeOf,
   recipesOf,
   reduce,
   SEASON_EVENT,
+  SIGHTINGS_EVENT,
   stateSchema,
   stepOf,
 } from './loregame-state.ts';
@@ -66,6 +68,7 @@ describe('the loregame state', () => {
       'loregame.gift',
       'loregame.renamed',
       'loregame.season',
+      'loregame.sightings',
       'loregame.neutral',
       'loregame.market',
       'loregame.investments',
@@ -1461,5 +1464,126 @@ describe('the high-water mark (#18)', () => {
     expect(
       reduce(s, { type: SEASON_EVENT, t: at + 6 * H, since: '2026-11-07T00:00:00.000Z' } as never)
     ).toBe(s);
+  });
+});
+
+describe('the marks through time, and a seed of sightings (#19)', () => {
+  const at = Date.parse('2026-11-06T12:00:00Z');
+  const H = 3_600_000;
+  const iso = (t: number) => new Date(t).toISOString();
+  const turnAt = (code: string, t: number, who = { playerName: 'bob', playerId: '2000' }) =>
+    ({
+      type: 'loregame.playerTurn',
+      t,
+      chat: '-1001',
+      ...who,
+      owner: false,
+      command: '/lore',
+      outcome: { kind: 'nothing', bot: 'LoreGameBot', reason: 'lost', place: { name: 'P', code } },
+      message: '1',
+      answer: '2',
+    }) as unknown as BusEvent;
+  const seed = (
+    players: Record<string, Record<string, [number, number]>>,
+    owner: string | null = null
+  ) =>
+    ({
+      type: SIGHTINGS_EVENT,
+      t: at + 100 * H,
+      owner,
+      players: Object.fromEntries(
+        Object.entries(players).map(([id, steps]) => [
+          id,
+          {
+            name: null,
+            steps: Object.fromEntries(
+              Object.entries(steps).map(([c, [f, l]]) => [c, { first: iso(f), last: iso(l) }])
+            ),
+          },
+        ])
+      ),
+    }) as unknown as BusEvent;
+
+  it('keeps when each step was first and last seen, and the mark as of any time', () => {
+    let s = reduce(initialState(), turnAt('B1', at));
+    s = reduce(s, turnAt('B2', at + H));
+    s = reduce(s, turnAt('B1', at + 2 * H));
+    s = reduce(s, turnAt('B3', at + 3 * H));
+    const seen = s.players['2000']?.steps_seen ?? {};
+    expect(seen['B1']).toEqual({ first: iso(at), last: iso(at + 2 * H) });
+    expect(markAt(seen, null, at - 1)).toBeNull();
+    expect(markAt(seen, null, at + 90 * 60_000)).toEqual({
+      step: 2,
+      code: 'B2',
+      since: iso(at + H),
+    });
+    // Back at B1 later: the mark held is still B2's.
+    expect(markAt(seen, null, at + 2 * H)).toMatchObject({ code: 'B2' });
+    expect(markAt(seen, null)).toEqual({ step: 3, code: 'B3', since: iso(at + 3 * H) });
+    // A season that began after B2 was first seen, before it was seen again: held from the start.
+    expect(markAt(seen, iso(at + 30 * 60_000), at + 45 * 60_000)).toEqual({
+      step: 1,
+      code: 'B1',
+      since: iso(at + 30 * 60_000),
+    });
+  });
+
+  it('merges a seed by id, adds nothing a second time, and ties a name to it once linked', () => {
+    let s = reduce(initialState(), turnAt('B3', at + 50 * H));
+    // The seed: Bob's earlier steps, and Carol's, kept by her username alone so far.
+    s = reduce(s, turnAt('M1', at + 50 * H, { playerName: 'carol', playerId: null } as never));
+    const one = seed({
+      '2000': { B1: [at, at + 10 * H], B3: [at + 20 * H, at + 30 * H] },
+      '3000': { M4: [at, at] },
+    });
+    const merged = reduce(s, one);
+    expect(merged.players['2000']?.steps_seen['B3']).toEqual({
+      first: iso(at + 20 * H),
+      last: iso(at + 50 * H),
+    });
+    expect(markAt(merged.players['2000']?.steps_seen ?? {}, null, at + 25 * H)).toMatchObject({
+      code: 'B3',
+    });
+    expect(reduce(merged, one)).toBe(merged);
+    expect(merged.players['3000']).toMatchObject({ name: null, high_water: { code: 'M4' } });
+    // Carol seen with her id: her entry by name and the seed's merged, every step of both.
+    const linked = reduce(
+      merged,
+      turnAt('M1', at + 60 * H, { playerName: 'carol', playerId: '3000' })
+    );
+    expect(Object.keys(linked.players).sort()).toEqual(['2000', '3000']);
+    expect(Object.keys(linked.players['3000']?.steps_seen ?? {}).sort()).toEqual(['M1', 'M4']);
+    expect(linked.players['3000']).toMatchObject({ name: 'carol', high_water: { code: 'M4' } });
+    expect(stateSchema.safeParse(linked).success).toBe(true);
+  });
+
+  it("takes the owner's id from a seed, and the owner's steps under their key", () => {
+    let s: ReturnType<typeof initialState> = {
+      ...initialState(),
+      owner: { as_of: null, name: 'alice', id: null },
+    };
+    s = reduce(s, {
+      type: 'loregame.playerTurn',
+      t: at,
+      chat: '-1001',
+      playerName: 'alice',
+      playerId: null,
+      owner: true,
+      command: '/lore',
+      outcome: {
+        kind: 'nothing',
+        bot: 'LoreGameBot',
+        reason: 'lost',
+        place: { name: 'P', code: 'B1' },
+      },
+      message: '1',
+      answer: '2',
+    } as never);
+    s = reduce(s, seed({ '1000': { B2: [at - H, at - H] } }, '1000'));
+    expect(s.owner.id).toBe('1000');
+    expect(Object.keys(s.players)).toEqual(['1000']);
+    expect(s.players['1000']).toMatchObject({ high_water: { code: 'B2' } });
+    // A seed that does not fit changes nothing.
+    expect(reduce(s, { type: SIGHTINGS_EVENT, t: at, players: 'no' } as never)).toBe(s);
   });
 });

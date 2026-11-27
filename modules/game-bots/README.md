@@ -300,9 +300,12 @@ Its config is `pin`, the paths of the state its panel draws first (the first two
 its card; by default `inventory.held` and `owner.as_of`), and `season_start`, when the game's
 current season began: each player's **high-water mark** (`players.<key>.high_water`, the highest
 ladder step seen at since then, docs/game-bots.md §6.1) counts only what was seen since. The owner
-sets it at each reset of the game; without it, everything counts. It survives restarts, resumes from
-its cursor in the event log, so each turn is applied once (those the parser published while it was
-down included), and announces each change as `loregame-state.changed`.
+sets it at each reset of the game; without it, everything counts. `state.mark({ name?, at? })` gives
+a player's mark as of any time this season (`{ step, code, since }`), and a seed of the exports'
+sightings (tools/sightings-seed, `sightings-seed.json` in its store) reaches it back before the live
+log. It survives restarts, resumes from its cursor in the event log, so each turn is applied once
+(those the parser published while it was down included), and announces each change as
+`loregame-state.changed`.
 
 It keeps the **bans** of every player the parser heard of, with when each ends (below), the owner's
 **accumulo** (below), and the **inventory**: what the owner's turns gained (a drop with its `2x`
