@@ -116,11 +116,14 @@ describe('whose answer it is', () => {
     // The answer in the group is bob's, not the owner's of the other chat.
     expect(w.hear(bot(SHORT))).toBeUndefined();
     w.hear(owner('/acc'));
-    // The bot answers live, past it: it never answered; a later answer is not that command's.
-    const lore = said('bob', '/lore', { time: T + ANSWER_WINDOW_MS });
+    // The bot answers a message sent past it: it never answered; a later answer is not that command's.
+    const lore = said('bob', '/lore', { time: T + ANSWER_WINDOW_MS + 1 });
     w.hear(lore);
     w.hear(
-      bot('Hai ottenuto un sasso [B1]!', { time: T + ANSWER_WINDOW_MS, replyTo: lore.id as string })
+      bot('Hai ottenuto un sasso [B1]!', {
+        time: T + ANSWER_WINDOW_MS + 1,
+        replyTo: lore.id as string,
+      })
     );
     expect(w.hear(bot(SHORT, { time: T + ANSWER_WINDOW_MS + 1 }))).toBeUndefined();
     w.hear(owner('/acc', { time: T + ANSWER_WINDOW_MS + 5 }));

@@ -10,10 +10,11 @@
  * gives each answer to the command it belongs to: the one it replies to, else the oldest waiting in
  * that chat. It therefore needs the group's chat edge to deliver every sender.
  *
- * The wait is counted on the bot's clock (`BotClock`), not the time's: the bot goes down for minutes
- * to days, then answers everything it missed, in order, the replies to the commands they answer
- * (docs/game-bots.md §5.15). A command waits while the bot is silent, and is given up only once the
- * bot has answered past it.
+ * The wait is counted on the bot's clock (`BotClock`), not the time's: the bot is often slow while
+ * live, and goes down for minutes to days, then answers everything it missed, in order, the replies
+ * to the commands they answer (docs/game-bots.md §5.15). A command waits while the bot has not
+ * answered past it, however long that takes, and is given up only once the bot has answered a
+ * message sent more than `ANSWER_WINDOW_MS` after it.
  *
  * The account may hear the owner's own command in the group after the bot's answer to it, in the
  * same second (#16): a bot message that found no command (an answer of its own, or a reply to a
@@ -23,7 +24,10 @@
 import { isPrivate } from '@megabottron1999/turns/turn-parser.ts';
 import { type Heard } from '#src/bans.ts';
 
-/** How long a command waits for its answer, on the bot's clock: it answers within seconds [M]. */
+/**
+ * How far past a command, on the bot's clock, the bot may answer before the command is given up:
+ * a margin for answers given a little out of the order their commands were sent in.
+ */
 export const ANSWER_WINDOW_MS = 10_000;
 
 /**
@@ -51,17 +55,17 @@ export const KEPT_ASKED = 1000;
 const KEPT_HEARD = 5000;
 
 /**
- * How far the bot has answered in each chat, from what it says: its clock. A reply tells it
- * exactly, the time of the message it replies to; a message of its own, now, while the bot is live
- * (its clock current at its last word, a moment before), and nothing otherwise: while it replays
- * (its last reply came more than `REPLAY_MS` after its message), or after a silence (more than
- * `REPLAY_MS` since its last word there, or its first heard), until a reply tells. Silent, the clock
- * stops. Pure, but for what a plugin hands it.
+ * How far the bot has answered in each chat: its clock, the time of the latest message it is known
+ * to have answered. A reply tells it, the time of the message it replies to; an answer of its own
+ * tells it once a watch pairs it with its command (`answered`), and nothing before: the bot is often
+ * slow while live, by seconds to minutes [M] (docs/game-bots.md §5.15, §5.16), so the time of its
+ * message is never taken for how far it has answered. Silent, the clock stops. Pure, but for what a
+ * plugin hands it.
  */
 export class BotClock {
   private readonly bot: string;
   private readonly heard = new Map<string, number>();
-  private readonly chats = new Map<string, { clock: number; last: number; replaying: boolean }>();
+  private readonly chats = new Map<string, { clock: number; replaying: boolean }>();
 
   constructor(bot: string) {
     this.bot = bot.toLowerCase();
@@ -73,25 +77,21 @@ export class BotClock {
       this.said(m.chat, m.id, m.time);
       return;
     }
-    const c = this.chats.get(m.chat);
     const to = m.replyTo === undefined ? undefined : this.heard.get(`${m.chat}\n${m.replyTo}`);
-    if (to !== undefined) {
-      const replaying = m.time - to > REPLAY_MS;
-      const clock = Math.max(c?.clock ?? -Infinity, replaying ? to : m.time);
-      this.chats.set(m.chat, { clock, last: m.time, replaying });
-      return;
-    }
-    if (c === undefined) {
-      // Its first word heard here, as after a silence: it may be a replay.
-      this.chats.set(m.chat, { clock: -Infinity, last: m.time, replaying: false });
-      return;
-    }
-    // Live: its clock was current at its last word, and that was a moment ago.
-    const live = !c.replaying && m.time - c.last <= REPLAY_MS && c.last - c.clock <= REPLAY_MS;
+    if (to === undefined) return;
+    const c = this.chats.get(m.chat);
     this.chats.set(m.chat, {
-      clock: live ? Math.max(c.clock, m.time) : c.clock,
-      last: m.time,
-      replaying: c.replaying,
+      clock: Math.max(c?.clock ?? -Infinity, to),
+      replaying: m.time - to > REPLAY_MS,
+    });
+  }
+
+  /** The bot answered, with a message of its own, a command sent at `time` in `chat`. */
+  answered(chat: string, time: number): void {
+    const c = this.chats.get(chat);
+    this.chats.set(chat, {
+      clock: Math.max(c?.clock ?? -Infinity, time),
+      replaying: c?.replaying ?? false,
     });
   }
 
@@ -261,6 +261,7 @@ export class AnswerWatch<R> {
     );
     if (i < 0) return false;
     const [h] = this.held.splice(i, 1) as [Held<R>];
+    this.clock.answered(a.chat, a.time);
     const answer = h.reply === undefined ? undefined : this.whose(a, h.reply, h.m.time);
     if (answer !== undefined) this.late.push({ message: h.m, answer });
     return true;
@@ -356,6 +357,7 @@ export class AnswerWatch<R> {
       const next = this.asked.findIndex((a) => a.chat === m.chat);
       if (next >= 0) {
         const [command] = this.asked.splice(next, 1) as [Asked];
+        this.clock.answered(command.chat, command.time);
         return whose(command, reply);
       }
     }

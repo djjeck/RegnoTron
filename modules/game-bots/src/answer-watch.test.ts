@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AccumuloWatch } from './accumulo.ts';
-import {
-  ANSWER_WINDOW_MS,
-  BotClock,
-  HOLD_MESSAGES,
-  HOLD_MS,
-  KEPT_ASKED,
-  REPLAY_MS,
-} from './answer-watch.ts';
+import { ANSWER_WINDOW_MS, BotClock, HOLD_MESSAGES, HOLD_MS, KEPT_ASKED } from './answer-watch.ts';
 import { type Heard } from './bans.ts';
 import { ForcedWatch, MarketWatch } from './market.ts';
 import { TrainingWatch } from './training.ts';
@@ -39,60 +32,58 @@ const bot = (text: string, time: number, m: Partial<Heard> = {}): Heard =>
   said('LoreGameBot', text, time, m);
 
 describe("the bot's clock", () => {
-  it('is now while the bot answers live, and stops while it is silent', () => {
+  it('is the time of what the bot replies to, however late, and stops while it is silent', () => {
     const c = new BotClock('LoreGameBot');
     expect(c.past(GROUP, T)).toBe(-Infinity);
     const lore = said('bob', '/lore', T);
     c.hear(lore);
-    c.hear(bot('Hai ottenuto un sasso [B1]!', T + 1000, { replyTo: lore.id as string }));
-    expect(c.past(GROUP, T)).toBe(1000);
+    // Live, but slow: the reply tells how far it has answered, not when it said so.
+    c.hear(bot('Hai ottenuto un sasso [B1]!', T + 30_000, { replyTo: lore.id as string }));
+    expect(c.past(GROUP, T)).toBe(0);
     expect(c.replaying(GROUP)).toBe(false);
     // Players' messages move nothing: the bot is silent.
     c.hear(said('carol', '/lore', T + 5 * HOUR));
-    expect(c.past(GROUP, T)).toBe(1000);
+    expect(c.past(GROUP, T)).toBe(0);
     // Another chat has a clock of its own.
     expect(c.past('@LoreGameBot', T)).toBe(-Infinity);
   });
 
-  it('is the time of what the bot replies to, while it replays', () => {
+  it('tells a replay from a live reply, and never goes back', () => {
     const c = new BotClock('LoreGameBot');
     const first = said('bob', '/lore', T);
     const second = said('carol', '/lore', T + HOUR);
     c.hear(first);
     c.hear(second);
-    c.hear(bot(CALM, T + 5 * HOUR, { replyTo: first.id as string }));
+    c.hear(bot(CALM, T + 5 * HOUR, { replyTo: second.id as string }));
     expect(c.replaying(GROUP)).toBe(true);
-    expect(c.past(GROUP, T)).toBe(0);
-    // A message of its own, mid-replay, tells nothing.
-    c.hear(bot(USED, T + 5 * HOUR + 1000));
-    expect(c.past(GROUP, T)).toBe(0);
-    c.hear(bot(CALM, T + 5 * HOUR + 2000, { replyTo: second.id as string }));
     expect(c.past(GROUP, T)).toBe(HOUR);
-    // Caught up: a reply within the minute is live again, and its own messages now.
+    // A late reply to an older message leaves the clock where it was.
+    c.hear(bot(CALM, T + 5 * HOUR + 1000, { replyTo: first.id as string }));
+    expect(c.past(GROUP, T)).toBe(HOUR);
+    // Caught up: a reply within the minute is live again.
     const fresh = said('dave', '/lore', T + 5 * HOUR + 3000);
     c.hear(fresh);
     c.hear(bot(CALM, T + 5 * HOUR + 4000, { replyTo: fresh.id as string }));
     expect(c.replaying(GROUP)).toBe(false);
-    c.hear(bot(USED, T + 5 * HOUR + 9000));
-    expect(c.past(GROUP, T)).toBe(5 * HOUR + 9000);
+    expect(c.past(GROUP, T)).toBe(5 * HOUR + 3000);
   });
 
-  it('does not move on a message of its own after a silence, until a reply tells', () => {
+  it('never moves on a message of its own, only once it is paired with its command', () => {
     const c = new BotClock('LoreGameBot');
-    // Its first words: nothing known yet, one after the other or not.
     c.hear(bot(USED, T));
-    c.hear(bot(USED, T + 1000));
-    expect(c.past(GROUP, T)).toBe(-Infinity);
-    // A reply within the minute: live, and its own messages move the clock on.
     const lore = said('bob', '/lore', T + 2000);
     c.hear(lore);
     c.hear(bot(CALM, T + 3000, { replyTo: lore.id as string }));
-    c.hear(bot(USED, T + 4000));
-    expect(c.past(GROUP, T)).toBe(4000);
-    // Silent past the minute: its next word of its own may be a replay's, and the next too.
-    c.hear(bot(USED, T + 4001 + REPLAY_MS));
-    c.hear(bot(USED, T + 5000 + REPLAY_MS));
-    expect(c.past(GROUP, T)).toBe(4000);
+    c.hear(bot(USED, T + 40_000));
+    expect(c.past(GROUP, T)).toBe(2000);
+    c.answered(GROUP, T + 5000);
+    expect(c.past(GROUP, T)).toBe(5000);
+    // An older command answered leaves it where it was; in a new chat, it starts it.
+    c.answered(GROUP, T + 1000);
+    expect(c.past(GROUP, T)).toBe(5000);
+    c.answered('-1002', T);
+    expect(c.past('-1002', T)).toBe(0);
+    expect(c.replaying('-1002')).toBe(false);
   });
 
   it("reads a reply to the owner's send, which it is told of", () => {
@@ -163,6 +154,34 @@ describe('a watch across an outage', () => {
       'alice'
     );
     expect(w.ownerWaiting(GROUP)).toEqual([]);
+  });
+
+  it('pairs an answer that comes long after its command, the bot live but slow', () => {
+    const w = new AccumuloWatch('LoreGameBot');
+    const lore = said('alice', '/lore', T - 20_000);
+    w.answer(lore, 'alice');
+    w.answer(
+      bot('Hai ottenuto un sasso [B1]!', T - 19_000, { replyTo: lore.id as string }),
+      'alice'
+    );
+    w.sent({ chat: GROUP, id: '7', t: T, command: '/accumulo' });
+    expect(w.answer(bot(USED, T + 22_000), 'alice')).toEqual({
+      player: 'alice',
+      owner: true,
+      reply: { result: 'used' },
+      asked: T,
+    });
+  });
+
+  it('pairs slow answers in order, the first not giving up the second', () => {
+    const w = new AccumuloWatch('LoreGameBot');
+    w.sent({ chat: GROUP, id: '7', t: T, command: '/acc' });
+    w.answer(said('bob', '/acc', T + 3000), 'alice');
+    expect(w.answer(bot(USED, T + 22_000), 'alice')).toMatchObject({ owner: true, asked: T });
+    expect(w.answer(bot(SHORT, T + 40_000), 'alice')).toMatchObject({
+      player: 'bob',
+      asked: T + 3000,
+    });
   });
 
   it('keeps at most KEPT_ASKED commands, the oldest given up first', () => {

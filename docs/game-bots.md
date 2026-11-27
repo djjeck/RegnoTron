@@ -1,6 +1,6 @@
 # The game bots RegnoTron reads
 
-Documented as of 26 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
+Documented as of 27 Nov 2026. Besides NorelecBot ([game-rules.md](game-rules.md)), the game's group
 has other game bots, each with its own game played one turn at a time. RegnoTron reads the turns of
 two of them, @LoreGameBot and @EpicLorelecBot, in `modules/game-bots/`: their reply grammars
 (`src/replies.ts`) and their parser plugins in `src/plugins/`. @InventoryBot's parser, the plugin
@@ -830,12 +830,14 @@ Aug–Nov 2026:
 others that reply are paired however late. The answers that do not reply (the accumulo's, §5.2, a
 training's, §5.3, a gift's, §5.10, the market's, §5.11) are paired in order with the commands
 waiting, and a command waits on **the bot's clock**, not the time's: how far the bot has answered in
-that chat. A reply sets it to the time of the message it answers; a message of its own, to now,
-while the bot is live (its clock current at its last word, a moment before), and leaves it otherwise
-(while it replays, or after a silence, until a reply tells). Silent, it stops. So a command is given
-up as unanswered only once the bot has answered more than 10 s past it, live or in a replay; a watch
-keeps at most 1,000 waiting. An answer more than a minute after its command is marked `replayed`,
-with its command's time (`asked`), in the events that carry it.
+that chat, the time of the latest message it is known to have answered. A reply sets it to the time
+of the message it answers; an answer of its own, once paired, to its command's time; nothing else
+moves it, not the time the bot speaks: live, it may answer a command 20 s or more after it, and
+before game-bots 0.58.1 the time of such an answer gave up the command it answered, which then went
+unpaired. Silent, it stops. So a command is given up as unanswered only once the bot has answered a
+message sent more than 10 s after it, however slow, live or in a replay; a watch keeps at most 1,000
+waiting. An answer more than a minute after its command is marked `replayed`, with its command's
+time (`asked`), in the events that carry it.
 
 **An answer heard before its command** (#16): the account may hear the owner's own command, typed by
 hand in the group, after the bot's answer to it, in the same second (4 of 10 such answers in one
